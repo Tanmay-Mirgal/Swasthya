@@ -1,69 +1,115 @@
-import Image from "next/image";
+"use client";
 
-export default function Home() {
+import { useEffect, useState } from "react";
+import Link from "next/link";
+import AppShell from "@/components/navigation/AppShell";
+import { getAggregateStats, getLatestSession } from "@/lib/session/sessionStore";
+import { SessionRecord } from "@/lib/exercises/types";
+
+export default function HomePage() {
+  const [stats, setStats] = useState({ totalSessions: 0, totalReps: 0, avgRom: 0 });
+  const [latestSession, setLatestSession] = useState<SessionRecord | null>(null);
+
+  useEffect(() => {
+    setStats(getAggregateStats());
+    setLatestSession(getLatestSession());
+  }, []);
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert h-5 w-[100px]"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the{" "}
-            <code className="rounded bg-black/[.06] px-1.5 py-0.5 font-mono text-[0.9em] dark:bg-white/[.08]">
-              page.tsx
-            </code>{" "}
-            file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
-        </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
+    <AppShell>
+      {/* Brand Header */}
+      <div className="space-y-1 pt-2">
+        <span className="text-xs font-bold tracking-widest text-emerald-600 dark:text-emerald-400 uppercase">
+          RehabLens
+        </span>
+        <h1 className="text-2xl font-extrabold text-zinc-900 dark:text-zinc-50 tracking-tight">
+          Your movement.<br />
+          <span className="text-zinc-500 font-semibold">Your progress.</span>
+        </h1>
+      </div>
+
+      {/* Primary CTA Button */}
+      <div className="pt-2">
+        <Link
+          href="/exercise"
+          className="w-full py-4 px-6 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-base rounded-2xl flex items-center justify-between shadow-lg shadow-emerald-950/20 transition-all group"
+        >
+          <span>Start Exercise</span>
+          <svg
+            className="w-5 h-5 transition-transform group-hover:translate-x-1"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
           >
-            <Image
-              className="dark:invert h-[14px] w-4"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={14}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M14 5l7 7m0 0l-7 7m7-7H3" />
+          </svg>
+        </Link>
+      </div>
+
+      {/* Today's / Aggregate Progress Summary Card */}
+      <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl p-5 shadow-sm space-y-4">
+        <h2 className="text-xs font-bold uppercase tracking-wider text-zinc-400">
+          Today&apos;s Progress
+        </h2>
+
+        <div className="grid grid-cols-3 gap-3 text-center">
+          <div className="space-y-0.5">
+            <span className="text-2xl font-black font-mono text-zinc-900 dark:text-zinc-100">
+              {stats.totalReps}
+            </span>
+            <p className="text-[10px] text-zinc-500 font-medium">Repetitions</p>
+          </div>
+
+          <div className="space-y-0.5 border-x border-zinc-100 dark:border-zinc-800">
+            <span className="text-2xl font-black font-mono text-emerald-600 dark:text-emerald-400">
+              {stats.avgRom}&deg;
+            </span>
+            <p className="text-[10px] text-zinc-500 font-medium">Range of Motion</p>
+          </div>
+
+          <div className="space-y-0.5">
+            <span className="text-2xl font-black font-mono text-zinc-900 dark:text-zinc-100">
+              {stats.totalSessions}
+            </span>
+            <p className="text-[10px] text-zinc-500 font-medium">Sessions</p>
+          </div>
         </div>
-      </main>
-    </div>
+      </div>
+
+      {/* Recent Session Card */}
+      <div className="space-y-2">
+        <h2 className="text-xs font-bold uppercase tracking-wider text-zinc-400">
+          Recent Session
+        </h2>
+
+        {latestSession ? (
+          <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl p-4 shadow-sm flex items-center justify-between">
+            <div className="space-y-1">
+              <span className="text-xs font-semibold text-emerald-600 dark:text-emerald-400">
+                {latestSession.exerciseName}
+              </span>
+              <p className="text-sm font-bold text-zinc-900 dark:text-zinc-100">
+                {latestSession.completedReps} reps completed
+              </p>
+              <p className="text-xs text-zinc-400">
+                {latestSession.goodFormCount} good form reps • {latestSession.rom}&deg; ROM
+              </p>
+            </div>
+            <Link
+              href="/progress"
+              className="p-2 text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100"
+            >
+              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+              </svg>
+            </Link>
+          </div>
+        ) : (
+          <div className="bg-white dark:bg-zinc-900 border border-dashed border-zinc-200 dark:border-zinc-800 rounded-2xl p-6 text-center text-zinc-400 text-xs">
+            No completed sessions yet. Click &quot;Start Exercise&quot; to perform your first session!
+          </div>
+        )}
+      </div>
+    </AppShell>
   );
 }
