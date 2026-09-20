@@ -21,6 +21,7 @@ export default function DynamicLiveExercisePage({ params }: PageProps) {
 
   const router = useRouter();
   const [frameData, setFrameData] = useState<FrameUpdateData | null>(null);
+  const [isFullScreenMode, setIsFullScreenMode] = useState<boolean>(false);
 
   const startTimeRef = useRef<number>(Date.now());
   const isEndingRef = useRef<boolean>(false);
@@ -83,14 +84,57 @@ export default function DynamicLiveExercisePage({ params }: PageProps) {
         <RepCounter completedReps={completedReps} targetReps={targetReps} />
 
         {/* Live Camera + Pose Skeleton Overlay */}
-        <div className="w-full">
+        <div className="w-full relative">
           <PoseDetector
             onFrameUpdate={handleFrameUpdate}
             autoStart={true}
             targetReps={exercise.targetReps}
             exerciseId={exercise.id}
             bodySegment={exercise.bodySegment}
-          />
+            forceFullScreen={isFullScreenMode}
+          >
+            {/* Floating HUD displayed inside camera view during Fullscreen */}
+            {isFullScreenMode && (
+              <div className="flex flex-col justify-between h-full w-full pointer-events-none p-3 space-y-4">
+                {/* Top HUD: Floating Header */}
+                <div className="flex items-center justify-between gap-2 bg-black/60 backdrop-blur-md p-3 rounded-2xl border border-white/10 pointer-events-auto shadow-2xl">
+                  <div className="flex items-center gap-2">
+                    <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
+                    <span className="text-xs font-extrabold text-white uppercase tracking-wider">{exercise.name}</span>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <span className="text-sm font-black font-mono text-emerald-400">
+                      {completedReps} / {targetReps} reps
+                    </span>
+                    <button
+                      onClick={() => setIsFullScreenMode(false)}
+                      className="px-3 py-1 bg-white/20 hover:bg-white/30 text-white rounded-lg text-xs font-semibold backdrop-blur transition-all"
+                    >
+                      Exit Fullscreen
+                    </button>
+                  </div>
+                </div>
+
+                {/* Center HUD: Live Feedback */}
+                <div className="pointer-events-auto max-w-md mx-auto w-full">
+                  <FeedbackBanner feedback={feedback} />
+                </div>
+
+                {/* Bottom HUD: Live Metrics + Action Button */}
+                <div className="space-y-3 pointer-events-auto">
+                  <div className="bg-black/60 backdrop-blur-md p-3 rounded-2xl border border-white/10">
+                    <LiveMetrics kneeAngle={jointAngle} rom={rom} tempo={tempo} />
+                  </div>
+                  <button
+                    onClick={() => finishSession(frameData)}
+                    className="w-full py-3.5 px-4 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-sm rounded-xl text-center shadow-lg transition-all"
+                  >
+                    Finish Session
+                  </button>
+                </div>
+              </div>
+            )}
+          </PoseDetector>
         </div>
 
         {/* Live Priority Feedback Banner */}
@@ -99,11 +143,21 @@ export default function DynamicLiveExercisePage({ params }: PageProps) {
         {/* Live Biomechanical Metrics */}
         <LiveMetrics kneeAngle={jointAngle} rom={rom} tempo={tempo} />
 
-        {/* End Session Button */}
-        <div className="mt-auto pt-2">
+        {/* Action Controls */}
+        <div className="mt-auto pt-2 grid grid-cols-2 gap-3">
+          <button
+            onClick={() => setIsFullScreenMode((prev) => !prev)}
+            className="py-3.5 px-4 bg-emerald-600/10 dark:bg-emerald-950/40 hover:bg-emerald-600/20 text-emerald-700 dark:text-emerald-400 border border-emerald-500/30 font-bold text-xs rounded-xl text-center shadow-sm transition-all flex items-center justify-center gap-1.5"
+          >
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8V4m0 0h4M4 4l5 5m11-5h-4m4 0v4m0-4l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" />
+            </svg>
+            <span>Full Screen Cam</span>
+          </button>
+
           <button
             onClick={() => finishSession(frameData)}
-            className="w-full py-3.5 px-4 bg-zinc-900 hover:bg-zinc-800 text-white font-semibold text-sm rounded-xl text-center shadow-md transition-all dark:bg-zinc-800 dark:hover:bg-zinc-700"
+            className="py-3.5 px-4 bg-zinc-900 hover:bg-zinc-800 text-white font-semibold text-xs rounded-xl text-center shadow-md transition-all dark:bg-zinc-800 dark:hover:bg-zinc-700"
           >
             End Session
           </button>

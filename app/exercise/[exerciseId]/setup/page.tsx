@@ -16,6 +16,7 @@ export default function DynamicCameraSetupPage({ params }: PageProps) {
   const router = useRouter();
 
   const [frameData, setFrameData] = useState<FrameUpdateData | null>(null);
+  const [isFullScreenMode, setIsFullScreenMode] = useState<boolean>(false);
 
   const handleFrameUpdate = useCallback((data: FrameUpdateData) => {
     setFrameData(data);
@@ -45,13 +46,50 @@ export default function DynamicCameraSetupPage({ params }: PageProps) {
         </div>
 
         {/* Live Camera Viewport */}
-        <div className="w-full">
+        <div className="w-full relative">
           <PoseDetector
             onFrameUpdate={handleFrameUpdate}
             autoStart={true}
             exerciseId={exercise.id}
             bodySegment={exercise.bodySegment}
-          />
+            forceFullScreen={isFullScreenMode}
+          >
+            {isFullScreenMode && (
+              <div className="flex flex-col justify-between h-full w-full pointer-events-none p-3 space-y-4">
+                {/* Top HUD */}
+                <div className="flex items-center justify-between gap-2 bg-black/60 backdrop-blur-md p-3 rounded-2xl border border-white/10 pointer-events-auto shadow-2xl">
+                  <span className="text-xs font-extrabold text-white uppercase tracking-wider">
+                    Camera Positioning Setup
+                  </span>
+                  <button
+                    onClick={() => setIsFullScreenMode(false)}
+                    className="px-3 py-1 bg-white/20 hover:bg-white/30 text-white rounded-lg text-xs font-semibold backdrop-blur transition-all"
+                  >
+                    Exit Fullscreen
+                  </button>
+                </div>
+
+                {/* Bottom HUD */}
+                <div className="space-y-3 pointer-events-auto">
+                  <div
+                    className={`p-3 rounded-xl border text-center text-xs font-semibold backdrop-blur-md ${
+                      isReady
+                        ? "bg-emerald-950/80 text-emerald-300 border-emerald-800"
+                        : "bg-amber-950/80 text-amber-300 border-amber-800"
+                    }`}
+                  >
+                    {isReady ? "✓ Camera ready! You can start the exercise." : confidence?.message || "Adjusting camera..."}
+                  </div>
+                  <button
+                    onClick={handleStartExercise}
+                    className="w-full py-4 px-6 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-base text-center block rounded-2xl transition-all shadow-lg"
+                  >
+                    Start Exercise &rarr;
+                  </button>
+                </div>
+              </div>
+            )}
+          </PoseDetector>
         </div>
 
         {/* Live Confidence Checklist */}
@@ -120,10 +158,20 @@ export default function DynamicCameraSetupPage({ params }: PageProps) {
         </div>
 
         {/* Start Exercise CTA */}
-        <div className="mt-auto pt-2">
+        <div className="mt-auto pt-2 grid grid-cols-2 gap-3">
+          <button
+            onClick={() => setIsFullScreenMode((prev) => !prev)}
+            className="py-4 px-4 bg-emerald-600/10 dark:bg-emerald-950/40 hover:bg-emerald-600/20 text-emerald-700 dark:text-emerald-400 border border-emerald-500/30 font-bold text-xs rounded-2xl text-center shadow-sm transition-all flex items-center justify-center gap-1.5"
+          >
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8V4m0 0h4M4 4l5 5m11-5h-4m4 0v4m0-4l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" />
+            </svg>
+            <span>Full Screen Cam</span>
+          </button>
+
           <button
             onClick={handleStartExercise}
-            className="w-full py-4 px-6 bg-emerald-600 hover:bg-emerald-500 active:scale-[0.98] text-white font-bold text-base text-center block rounded-2xl transition-all shadow-md cursor-pointer"
+            className="py-4 px-4 bg-emerald-600 hover:bg-emerald-500 active:scale-[0.98] text-white font-bold text-sm text-center block rounded-2xl transition-all shadow-md cursor-pointer"
           >
             Start Exercise &rarr;
           </button>

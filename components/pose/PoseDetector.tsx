@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, useCallback } from "react";
+import { useEffect, useRef, useState, useCallback, ReactNode } from "react";
 import { PoseLandmarker, FilesetResolver } from "@mediapipe/tasks-vision";
 import CameraView from "./CameraView";
 import { NormalizedLandmark } from "@/lib/pose/landmarks";
@@ -32,6 +32,8 @@ interface PoseDetectorProps {
   targetReps?: number;
   exerciseId?: string;
   bodySegment?: "lower" | "upper";
+  children?: ReactNode;
+  forceFullScreen?: boolean;
 }
 
 export default function PoseDetector({
@@ -40,6 +42,8 @@ export default function PoseDetector({
   targetReps = 10,
   exerciseId = "seated-knee-extension",
   bodySegment = "lower",
+  children,
+  forceFullScreen = false,
 }: PoseDetectorProps) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
 
@@ -273,6 +277,9 @@ export default function PoseDetector({
       videoDimensions={videoDimensions}
       errorMessage={errorMessage}
       onRetryCamera={startCamera}
-    />
+      forceFullScreen={forceFullScreen}
+    >
+      {children}
+    </CameraView>
   );
 }
