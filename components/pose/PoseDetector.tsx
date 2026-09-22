@@ -76,6 +76,22 @@ export default function PoseDetector({
   const lastFpsCheckRef = useRef<number>(performance.now());
   const currentFpsRef = useRef<number>(0);
 
+  // Performance throttling refs
+  const handFrameCounterRef = useRef<number>(0);
+  const lastUiUpdateRef = useRef<number>(0);
+
+  // Stable refs for props to avoid recreating processFrame / camera loops on parent state changes
+  const onFrameUpdateRef = useRef(onFrameUpdate);
+  useEffect(() => {
+    onFrameUpdateRef.current = onFrameUpdate;
+  }, [onFrameUpdate]);
+
+  const propsRef = useRef({ targetReps, exerciseId, bodySegment });
+  useEffect(() => {
+    propsRef.current = { targetReps, exerciseId, bodySegment };
+  }, [targetReps, exerciseId, bodySegment]);
+
+  // ── Fast Non-Blocking Model Initializer ─────────────────────────────────
   const initPoseLandmarker = useCallback(async () => {
     if (poseLandmarkerRef.current) return poseLandmarkerRef.current;
 
@@ -87,6 +103,7 @@ export default function PoseDetector({
         "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/wasm"
       );
 
+      // Initialize PoseLandmarker FIRST so camera opens immediately
       const landmarker = await PoseLandmarker.createFromOptions(vision, {
         baseOptions: {
           modelAssetPath: "/models/pose_landmarker.task",
@@ -97,24 +114,25 @@ export default function PoseDetector({
       });
 
       poseLandmarkerRef.current = landmarker;
-
-      // Also init HandLandmarker (best-effort, non-blocking)
-      try {
-        const handLandmarker = await HandLandmarker.createFromOptions(vision, {
-          baseOptions: {
-            modelAssetPath:
-              "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task",
-            delegate: "GPU",
-          },
-          runningMode: "VIDEO",
-          numHands: 2,
-        });
-        handLandmarkerRef.current = handLandmarker;
-      } catch (handErr) {
-        console.warn("HandLandmarker init failed (fingers will not be shown):", handErr);
-      }
-
       setIsLoadingModel(false);
+
+      // Async background load for HandLandmarker without blocking camera startup
+      HandLandmarker.createFromOptions(vision, {
+        baseOptions: {
+          modelAssetPath:
+            "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task",
+          delegate: "GPU",
+        },
+        runningMode: "VIDEO",
+        numHands: 2,
+      })
+        .then((handLandmarker) => {
+          handLandmarkerRef.current = handLandmarker;
+        })
+        .catch((handErr) => {
+          console.warn("HandLandmarker background init failed (non-critical):", handErr);
+        });
+
       return landmarker;
     } catch (err: unknown) {
       console.error("Failed to load MediaPipe PoseLandmarker:", err);
@@ -125,6 +143,7 @@ export default function PoseDetector({
     }
   }, []);
 
+  // ── High Performance 60 FPS Frame Loop (Stable - Never Recreated) ─────
   const processFrame = useCallback(() => {
     const video = videoRef.current;
     const landmarker = poseLandmarkerRef.current;
@@ -136,21 +155,25 @@ export default function PoseDetector({
     const videoTime = video.currentTime;
     if (videoTime !== lastVideoTimeRef.current && video.readyState >= 2) {
       lastVideoTimeRef.current = videoTime;
+      const now = performance.now();
+      const { targetReps: curTargetReps, exerciseId: curExerciseId, bodySegment: curBodySegment } = propsRef.current;
 
-      // Hand landmark detection (best-effort, additive)
-      if (handLandmarkerRef.current) {
+      // 1. Hand Detection — throttled to every 3rd frame
+      handFrameCounterRef.current++;
+      if (handLandmarkerRef.current && handFrameCounterRef.current % 3 === 0) {
         try {
-          const handResults = handLandmarkerRef.current.detectForVideo(video, performance.now());
-          setCurrentHandLandmarks(
-            handResults.landmarks && handResults.landmarks.length > 0
-              ? handResults.landmarks
-              : null
-          );
+          const handResults = handLandmarkerRef.current.detectForVideo(video, now);
+          if (handResults.landmarks && handResults.landmarks.length > 0) {
+            setCurrentHandLandmarks(handResults.landmarks);
+          } else {
+            setCurrentHandLandmarks(null);
+          }
         } catch {
-          // Silently ignore hand detection errors
+          // Silently ignore hand detection glitches
         }
       }
 
+      // Update video dimensions once if changed
       if (
         videoDimensions.width !== video.videoWidth ||
         videoDimensions.height !== video.videoHeight
@@ -161,9 +184,8 @@ export default function PoseDetector({
         });
       }
 
-      const now = performance.now();
+      // 2. Pose Detection (60 FPS)
       const results = landmarker.detectForVideo(video, now);
-
       const landmarks =
         results.landmarks && results.landmarks.length > 0
           ? results.landmarks[0]
@@ -171,16 +193,15 @@ export default function PoseDetector({
 
       setCurrentLandmarks(landmarks);
 
-      const confidence = checkPoseConfidence(landmarks, bodySegment);
-
+      // 3. Biomechanical calculations
+      const confidence = checkPoseConfidence(landmarks, curBodySegment);
       let jointAngle = 0;
       let repJustCompleted = false;
 
       if (confidence.status === "READY" && landmarks) {
         const side = confidence.activeSide;
 
-        if (exerciseId === "neck-rotation") {
-          // For neck rotation, compute lateral offset as the "primary angle"
+        if (curExerciseId === "neck-rotation") {
           const nose = getLandmark(landmarks, PoseLandmark.NOSE);
           const leftShoulder = getLandmark(landmarks, PoseLandmark.LEFT_SHOULDER);
           const rightShoulder = getLandmark(landmarks, PoseLandmark.RIGHT_SHOULDER);
@@ -190,7 +211,7 @@ export default function PoseDetector({
           let p2Idx: PoseLandmark;
           let p3Idx: PoseLandmark;
 
-          if (bodySegment === "upper") {
+          if (curBodySegment === "upper") {
             p1Idx = side === "right" ? PoseLandmark.RIGHT_SHOULDER : PoseLandmark.LEFT_SHOULDER;
             p2Idx = side === "right" ? PoseLandmark.RIGHT_ELBOW : PoseLandmark.LEFT_ELBOW;
             p3Idx = side === "right" ? PoseLandmark.RIGHT_WRIST : PoseLandmark.LEFT_WRIST;
@@ -209,11 +230,12 @@ export default function PoseDetector({
 
         romTrackerRef.current = updateROM(romTrackerRef.current, jointAngle);
 
-        const repResult = processRepFrame(repStateRef.current, jointAngle, now, exerciseId);
+        const repResult = processRepFrame(repStateRef.current, jointAngle, now, curExerciseId);
         repStateRef.current = repResult.newState;
         repJustCompleted = repResult.repJustCompleted;
       }
 
+      // 4. FPS counter
       frameCountRef.current++;
       const elapsed = now - lastFpsCheckRef.current;
       if (elapsed >= 500) {
@@ -222,31 +244,36 @@ export default function PoseDetector({
         lastFpsCheckRef.current = now;
       }
 
-      const feedback = generateFeedback(
-        confidence,
-        repStateRef.current.movementState,
-        jointAngle,
-        repJustCompleted,
-        repStateRef.current.completedReps,
-        targetReps,
-        exerciseId
-      );
+      // 5. Throttled UI parent notification (every 80ms ~ 12 FPS)
+      if (now - lastUiUpdateRef.current >= 80 || repJustCompleted) {
+        lastUiUpdateRef.current = now;
 
-      if (onFrameUpdate) {
-        onFrameUpdate({
-          landmarks,
+        const feedback = generateFeedback(
           confidence,
+          repStateRef.current.movementState,
           jointAngle,
-          romTracker: romTrackerRef.current,
-          repState: repStateRef.current,
-          feedback,
-          fps: currentFpsRef.current,
-        });
+          repJustCompleted,
+          repStateRef.current.completedReps,
+          curTargetReps,
+          curExerciseId
+        );
+
+        if (onFrameUpdateRef.current) {
+          onFrameUpdateRef.current({
+            landmarks,
+            confidence,
+            jointAngle,
+            romTracker: romTrackerRef.current,
+            repState: repStateRef.current,
+            feedback,
+            fps: currentFpsRef.current,
+          });
+        }
       }
     }
 
     animationFrameIdRef.current = requestAnimationFrame(processFrame);
-  }, [videoDimensions, onFrameUpdate, targetReps, exerciseId, bodySegment]);
+  }, [videoDimensions]);
 
   const stopCamera = useCallback(() => {
     if (animationFrameIdRef.current !== null) {
@@ -302,6 +329,7 @@ export default function PoseDetector({
     }
   }, [initPoseLandmarker, processFrame, stopCamera]);
 
+  // Run camera initialization ONCE on mount
   useEffect(() => {
     if (autoStart) {
       startCamera();
