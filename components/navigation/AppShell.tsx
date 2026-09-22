@@ -1,4 +1,8 @@
+"use client";
+
 import { ReactNode } from "react";
+import Link from "next/link";
+import { ChevronLeft, Sparkles, Activity } from "lucide-react";
 import BottomNav from "./BottomNav";
 
 interface AppShellProps {
@@ -7,6 +11,7 @@ interface AppShellProps {
   showBackNav?: boolean;
   backHref?: string;
   hideNav?: boolean;
+  rightAction?: ReactNode;
 }
 
 export default function AppShell({
@@ -15,31 +20,48 @@ export default function AppShell({
   showBackNav = false,
   backHref = "/",
   hideNav = false,
+  rightAction,
 }: AppShellProps) {
   return (
-    <div className="min-h-screen bg-zinc-100 dark:bg-zinc-950 flex flex-col items-center justify-start text-zinc-900 dark:text-zinc-100 antialiased selection:bg-emerald-500 selection:text-white">
-      {/* Centered Mobile Frame Shell */}
-      <div className="w-full max-w-[430px] min-h-screen bg-white dark:bg-zinc-900 border-x border-zinc-200 dark:border-zinc-800 flex flex-col shadow-2xl relative pb-20">
-        {/* Optional Header */}
+    <div className="min-h-screen bg-zinc-950 flex flex-col items-center justify-start text-zinc-100 antialiased selection:bg-emerald-500/30 selection:text-emerald-200">
+      {/* Background Ambient Glow */}
+      <div className="fixed top-0 left-1/2 -translate-x-1/2 w-full max-w-lg h-96 bg-emerald-600/10 blur-[120px] pointer-events-none z-0" />
+
+      {/* Centered App Container Shell (Mobile & Desktop Responsive) */}
+      <div className="w-full max-w-[440px] min-h-screen bg-zinc-950/95 border-x border-zinc-800/80 flex flex-col shadow-2xl relative z-10 pb-20">
+        {/* Sleek Top Navigation Header */}
         {title && (
-          <header className="sticky top-0 z-40 bg-white/90 dark:bg-zinc-900/90 backdrop-blur border-b border-zinc-200 dark:border-zinc-800 px-4 h-14 flex items-center justify-between">
+          <header className="sticky top-0 z-40 bg-zinc-950/80 backdrop-blur-xl border-b border-zinc-800/80 px-4 h-14 flex items-center justify-between transition-all">
             {showBackNav ? (
-              <a
+              <Link
                 href={backHref}
-                className="text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 p-1 rounded-lg flex items-center gap-1 text-sm font-medium"
+                className="text-zinc-400 hover:text-white p-1.5 -ml-1.5 rounded-xl hover:bg-zinc-800/60 transition-colors flex items-center gap-1 text-xs font-semibold"
               >
-                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-                </svg>
-                Back
-              </a>
+                <ChevronLeft className="w-4 h-4 text-emerald-400" />
+                <span>Back</span>
+              </Link>
             ) : (
-              <div className="w-8" />
+              <div className="flex items-center gap-2">
+                <div className="w-7 h-7 rounded-lg bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center">
+                  <Activity className="w-4 h-4 text-emerald-400" />
+                </div>
+                <span className="text-xs font-bold tracking-tight text-white flex items-center gap-1">
+                  RehabLens <span className="text-[9px] font-black text-emerald-400 bg-emerald-950/80 border border-emerald-800/60 px-1.5 py-0.2 rounded-full uppercase">AI</span>
+                </span>
+              </div>
             )}
-            <h1 className="text-base font-semibold tracking-tight text-zinc-900 dark:text-zinc-100">
+
+            <h1 className="text-sm font-bold tracking-tight text-white truncate max-w-[180px]">
               {title}
             </h1>
-            <div className="w-8" />
+
+            {rightAction ? (
+              <div className="flex items-center">{rightAction}</div>
+            ) : (
+              <div className="w-8 flex justify-end">
+                <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" title="System Active" />
+              </div>
+            )}
           </header>
         )}
 

@@ -10,6 +10,8 @@ import FeedbackBanner from "@/components/exercise/FeedbackBanner";
 import { getExerciseById } from "@/lib/exercises/registry";
 import { saveSession } from "@/lib/session/sessionStore";
 import { FeedbackMessage } from "@/lib/exercises/types";
+import PoseGuidePanel from "@/components/exercise/PoseGuidePanel";
+import { useExerciseEngine } from "@/hooks/useExerciseEngine";
 
 interface PageProps {
   params: Promise<{ exerciseId: string }>;
@@ -23,22 +25,31 @@ export default function DynamicLiveExercisePage({ params }: PageProps) {
   const [frameData, setFrameData] = useState<FrameUpdateData | null>(null);
   const [isFullScreenMode, setIsFullScreenMode] = useState<boolean>(false);
 
+  const engine = useExerciseEngine(exercise.id, exercise.name);
+
   const startTimeRef = useRef<number>(Date.now());
   const isEndingRef = useRef<boolean>(false);
 
-  const handleFrameUpdate = useCallback((data: FrameUpdateData) => {
-    setFrameData(data);
+  const handleFrameUpdate = useCallback(
+    (data: FrameUpdateData) => {
+      setFrameData(data);
 
-    if (
-      data.repState.completedReps >= data.repState.targetReps &&
-      !isEndingRef.current
-    ) {
-      isEndingRef.current = true;
-      setTimeout(() => {
-        finishSession(data);
-      }, 1000);
-    }
-  }, []);
+      if (data.landmarks) {
+        engine.processFrame(data.landmarks);
+      }
+
+      if (
+        data.repState.completedReps >= data.repState.targetReps &&
+        !isEndingRef.current
+      ) {
+        isEndingRef.current = true;
+        setTimeout(() => {
+          finishSession(data);
+        }, 1000);
+      }
+    },
+    [engine]
+  );
 
   const finishSession = (latestData?: FrameUpdateData | null) => {
     const data = latestData || frameData;
@@ -75,13 +86,39 @@ export default function DynamicLiveExercisePage({ params }: PageProps) {
   const jointAngle = frameData?.jointAngle ?? 0;
   const rom = frameData?.romTracker.rom ?? 0;
   const tempo = frameData?.repState.tempoTracker.averageTempo ?? 0;
-  const feedback = frameData?.feedback ?? defaultFeedback;
+
+  // Use AI engine feedback if active, otherwise fallback to frame data feedback
+  const feedback: FeedbackMessage = engine.activeFeedback
+    ? { type: "warning", message: engine.activeFeedback }
+    : (frameData?.feedback ?? defaultFeedback);
 
   return (
     <AppShell title={exercise.name} showBackNav backHref="/exercise" hideNav>
       <div className="space-y-4 flex flex-col flex-1 pb-4">
         {/* Rep Counter Banner */}
         <RepCounter completedReps={completedReps} targetReps={targetReps} />
+
+        {/* Live Step Guidance Header */}
+        <div className="bg-zinc-900/90 border border-zinc-800 rounded-2xl p-3.5 shadow-md flex items-start gap-3">
+          <div className="shrink-0 w-8 h-8 rounded-xl bg-emerald-600/20 border border-emerald-500/40 text-emerald-400 text-xs font-black flex items-center justify-center mt-0.5">
+            {engine.currentStepIndex + 1}/{engine.totalSteps}
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2">
+              <h3 className="text-xs font-extrabold text-white truncate">
+                {engine.currentStepTitle}
+              </h3>
+              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-950 text-emerald-400 border border-emerald-800/60 uppercase tracking-widest shrink-0">
+                {engine.currentPhase}
+              </span>
+            </div>
+            {engine.currentStepInstruction && (
+              <p className="text-xs text-zinc-300 mt-1 leading-snug">
+                {engine.currentStepInstruction}
+              </p>
+            )}
+          </div>
+        </div>
 
         {/* Live Camera + Pose Skeleton Overlay */}
         <div className="w-full relative">
@@ -92,6 +129,8 @@ export default function DynamicLiveExercisePage({ params }: PageProps) {
             exerciseId={exercise.id}
             bodySegment={exercise.bodySegment}
             forceFullScreen={isFullScreenMode}
+            incorrectLandmarkIndices={engine.incorrectLandmarkIndices}
+            lowConfidenceLandmarkIndices={engine.lowConfidenceLandmarkIndices}
           >
             {/* Floating HUD displayed inside camera view during Fullscreen */}
             {isFullScreenMode && (
@@ -163,6 +202,13 @@ export default function DynamicLiveExercisePage({ params }: PageProps) {
           </button>
         </div>
       </div>
+
+      {/* Floating Pose Guide Panel — side button always visible */}
+      <PoseGuidePanel
+        exerciseId={exercise.id}
+        exerciseName={exercise.name}
+        instructions={exercise.instructions}
+      />
     </AppShell>
   );
 }

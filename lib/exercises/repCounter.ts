@@ -2,6 +2,11 @@ import { MovementState } from "./types";
 import { evaluateSeatedKneeExtensionState } from "./seatedKneeExtension";
 import { evaluateSeatedBicepCurlState } from "./seatedBicepCurl";
 import {
+  evaluateNeckRotationState,
+  NeckRepPhase,
+  createNeckRepPhase,
+} from "./neckRotation";
+import {
   TempoTracker,
   createTempoTracker,
   startRepTimer,
@@ -16,6 +21,7 @@ export interface RepCounterState {
   goodFormCount: number;
   warningCount: number;
   lastRepTimestamp: number;
+  neckPhase: NeckRepPhase;
 }
 
 export function createRepCounterState(targetReps = 10): RepCounterState {
@@ -27,6 +33,7 @@ export function createRepCounterState(targetReps = 10): RepCounterState {
     goodFormCount: 0,
     warningCount: 0,
     lastRepTimestamp: 0,
+    neckPhase: createNeckRepPhase(),
   };
 }
 
@@ -40,10 +47,28 @@ export function processRepFrame(
     return { newState: state, repJustCompleted: false };
   }
 
-  const { nextState, repIncremented, event } =
-    exerciseId === "seated-bicep-curl"
-      ? evaluateSeatedBicepCurlState(state.movementState, primaryAngle)
-      : evaluateSeatedKneeExtensionState(state.movementState, primaryAngle);
+  let nextMovementState: MovementState = state.movementState;
+  let repIncremented = false;
+  let event: "NONE" | "STARTED" | "PEAK_REACHED" | "REP_COMPLETED" = "NONE";
+  let newNeckPhase = state.neckPhase;
+
+  if (exerciseId === "neck-rotation") {
+    const result = evaluateNeckRotationState(state.movementState, primaryAngle, state.neckPhase);
+    nextMovementState = result.nextState;
+    repIncremented = result.repIncremented;
+    event = result.event;
+    newNeckPhase = result.newPhase;
+  } else if (exerciseId === "seated-bicep-curl") {
+    const result = evaluateSeatedBicepCurlState(state.movementState, primaryAngle);
+    nextMovementState = result.nextState;
+    repIncremented = result.repIncremented;
+    event = result.event;
+  } else {
+    const result = evaluateSeatedKneeExtensionState(state.movementState, primaryAngle);
+    nextMovementState = result.nextState;
+    repIncremented = result.repIncremented;
+    event = result.event;
+  }
 
   let updatedTempo = state.tempoTracker;
   if (event === "STARTED") {
@@ -72,11 +97,12 @@ export function processRepFrame(
   const newState: RepCounterState = {
     ...state,
     completedReps: newCompletedReps,
-    movementState: nextState,
+    movementState: nextMovementState,
     tempoTracker: updatedTempo,
     goodFormCount: newGoodFormCount,
     warningCount: newWarningCount,
     lastRepTimestamp: repJustCompleted ? now : state.lastRepTimestamp,
+    neckPhase: newNeckPhase,
   };
 
   return { newState, repJustCompleted };

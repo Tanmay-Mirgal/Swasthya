@@ -7,6 +7,7 @@ import { NormalizedLandmark } from "@/lib/pose/landmarks";
 interface CameraViewProps {
   videoRef: RefObject<HTMLVideoElement | null>;
   landmarks: NormalizedLandmark[] | null;
+  handLandmarks?: NormalizedLandmark[][] | null;
   isActive: boolean;
   isLoading: boolean;
   videoDimensions: { width: number; height: number };
@@ -15,11 +16,14 @@ interface CameraViewProps {
   onRetryCamera?: () => void;
   children?: ReactNode;
   forceFullScreen?: boolean;
+  incorrectLandmarkIndices?: number[];
+  lowConfidenceLandmarkIndices?: number[];
 }
 
 export default function CameraView({
   videoRef,
   landmarks,
+  handLandmarks,
   isActive,
   isLoading,
   videoDimensions,
@@ -28,6 +32,8 @@ export default function CameraView({
   onRetryCamera,
   children,
   forceFullScreen = false,
+  incorrectLandmarkIndices = [],
+  lowConfidenceLandmarkIndices = [],
 }: CameraViewProps) {
   const [isFullScreen, setIsFullScreen] = useState(forceFullScreen);
 
@@ -72,8 +78,11 @@ export default function CameraView({
       {isActive && (
         <PoseCanvas
           landmarks={landmarks}
+          handLandmarks={handLandmarks}
           videoWidth={videoDimensions.width}
           videoHeight={videoDimensions.height}
+          incorrectLandmarkIndices={incorrectLandmarkIndices}
+          lowConfidenceLandmarkIndices={lowConfidenceLandmarkIndices}
         />
       )}
 

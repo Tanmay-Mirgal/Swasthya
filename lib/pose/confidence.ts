@@ -20,11 +20,11 @@ export interface ConfidenceCheckResult {
 }
 
 /**
- * Evaluates pose confidence for either lower body (hip, knee, ankle) or upper body (shoulder, elbow, wrist).
+ * Evaluates pose confidence for lower body (hip, knee, ankle), upper body (shoulder, elbow, wrist), or neck (nose, shoulders).
  */
 export function checkPoseConfidence(
   landmarks: NormalizedLandmark[] | null | undefined,
-  bodySegment: "lower" | "upper" = "lower"
+  bodySegment: "lower" | "upper" | "neck" = "lower"
 ): ConfidenceCheckResult {
   if (!landmarks || landmarks.length === 0) {
     return {
@@ -45,7 +45,12 @@ export function checkPoseConfidence(
   let idx3: PoseLandmark;
   let names: [string, string, string];
 
-  if (bodySegment === "upper") {
+  if (bodySegment === "neck") {
+    idx1 = PoseLandmark.NOSE;
+    idx2 = PoseLandmark.LEFT_SHOULDER;
+    idx3 = PoseLandmark.RIGHT_SHOULDER;
+    names = ["nose", "left shoulder", "right shoulder"];
+  } else if (bodySegment === "upper") {
     idx1 = activeSide === "right" ? PoseLandmark.RIGHT_SHOULDER : PoseLandmark.LEFT_SHOULDER;
     idx2 = activeSide === "right" ? PoseLandmark.RIGHT_ELBOW : PoseLandmark.LEFT_ELBOW;
     idx3 = activeSide === "right" ? PoseLandmark.RIGHT_WRIST : PoseLandmark.LEFT_WRIST;

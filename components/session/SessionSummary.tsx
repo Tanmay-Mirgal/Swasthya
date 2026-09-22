@@ -1,25 +1,40 @@
 import Link from "next/link";
 import { SessionRecord } from "@/lib/exercises/types";
+import {
+  Trophy,
+  CheckCircle2,
+  Activity,
+  Clock,
+  Compass,
+  AlertTriangle,
+  RotateCcw,
+  ArrowRight,
+  ShieldCheck,
+} from "lucide-react";
 
 interface SessionSummaryProps {
   session: SessionRecord;
 }
 
 export default function SessionSummary({ session }: SessionSummaryProps) {
+  const accuracy = Math.round(
+    (session.goodFormCount / Math.max(1, session.completedReps)) * 100
+  );
+
   return (
-    <div className="w-full space-y-6">
+    <div className="w-full space-y-5">
       {/* Header Badge */}
-      <div className="text-center space-y-2">
-        <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-400">
-          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-          </svg>
-          Session Complete
-        </span>
-        <h2 className="text-2xl font-extrabold text-zinc-900 dark:text-zinc-50">
+      <div className="text-center space-y-2 pt-1">
+        <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-black bg-emerald-500/15 border border-emerald-500/30 text-emerald-400">
+          <Trophy className="w-4 h-4 text-emerald-400" />
+          <span>Session Completed</span>
+        </div>
+
+        <h2 className="text-2xl font-black text-white tracking-tight">
           {session.exerciseName}
         </h2>
-        <p className="text-xs text-zinc-400">
+
+        <p className="text-xs text-zinc-400 font-mono">
           {new Date(session.date).toLocaleDateString(undefined, {
             weekday: "short",
             month: "short",
@@ -30,76 +45,86 @@ export default function SessionSummary({ session }: SessionSummaryProps) {
         </p>
       </div>
 
-      {/* Main Metric Highlight Card */}
-      <div className="bg-gradient-to-br from-emerald-500 to-teal-600 rounded-2xl p-6 text-white text-center shadow-lg space-y-1">
-        <span className="text-xs font-medium uppercase tracking-wider opacity-90">
+      {/* Main Rep Highlight Card */}
+      <div className="relative rounded-3xl bg-gradient-to-br from-emerald-600 via-teal-600 to-emerald-700 p-6 text-white text-center shadow-2xl overflow-hidden space-y-1">
+        <div className="absolute top-0 right-0 w-40 h-40 bg-white/10 blur-2xl rounded-full pointer-events-none" />
+
+        <span className="text-xs font-bold uppercase tracking-widest text-emerald-100">
           Repetitions Completed
         </span>
-        <div className="text-5xl font-extrabold font-mono tracking-tight">
-          {session.completedReps} / {session.targetReps}
+
+        <div className="text-5xl font-black font-mono tracking-tight my-1">
+          {session.completedReps} <span className="text-2xl font-bold text-emerald-200">/ {session.targetReps}</span>
+        </div>
+
+        <div className="inline-block px-3 py-1 rounded-full bg-black/20 backdrop-blur border border-white/20 text-xs font-semibold">
+          Form Accuracy: {accuracy}%
         </div>
       </div>
 
       {/* Secondary Metrics Grid */}
       <div className="grid grid-cols-2 gap-3">
-        <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl p-4 text-center">
-          <span className="text-[10px] font-semibold uppercase tracking-wider text-zinc-400">
-            Range of Motion
-          </span>
-          <p className="text-2xl font-bold font-mono text-zinc-900 dark:text-zinc-100 mt-1">
+        <div className="bg-zinc-900/90 border border-zinc-800/80 rounded-2xl p-4 text-center backdrop-blur-xl shadow-lg space-y-1">
+          <div className="flex items-center justify-center gap-1 text-[10px] font-extrabold uppercase tracking-widest text-zinc-400">
+            <Compass className="w-3.5 h-3.5 text-emerald-400" />
+            <span>Range of Motion</span>
+          </div>
+          <p className="text-2xl font-black font-mono text-emerald-400">
             {session.rom}&deg;
           </p>
         </div>
 
-        <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl p-4 text-center">
-          <span className="text-[10px] font-semibold uppercase tracking-wider text-zinc-400">
-            Average Tempo
-          </span>
-          <p className="text-2xl font-bold font-mono text-zinc-900 dark:text-zinc-100 mt-1">
-            {session.averageTempo}s
+        <div className="bg-zinc-900/90 border border-zinc-800/80 rounded-2xl p-4 text-center backdrop-blur-xl shadow-lg space-y-1">
+          <div className="flex items-center justify-center gap-1 text-[10px] font-extrabold uppercase tracking-widest text-zinc-400">
+            <Clock className="w-3.5 h-3.5 text-cyan-400" />
+            <span>Average Tempo</span>
+          </div>
+          <p className="text-2xl font-black font-mono text-cyan-300">
+            {session.averageTempo > 0 ? `${session.averageTempo}s` : "--"}
           </p>
         </div>
 
-        <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl p-4 text-center">
-          <span className="text-[10px] font-semibold uppercase tracking-wider text-zinc-400">
-            Good Form Reps
-          </span>
-          <p className="text-2xl font-bold font-mono text-emerald-600 dark:text-emerald-400 mt-1">
+        <div className="bg-zinc-900/90 border border-zinc-800/80 rounded-2xl p-4 text-center backdrop-blur-xl shadow-lg space-y-1">
+          <div className="flex items-center justify-center gap-1 text-[10px] font-extrabold uppercase tracking-widest text-zinc-400">
+            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+            <span>Good Form</span>
+          </div>
+          <p className="text-2xl font-black font-mono text-emerald-400">
             {session.goodFormCount}
           </p>
         </div>
 
-        <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl p-4 text-center">
-          <span className="text-[10px] font-semibold uppercase tracking-wider text-zinc-400">
-            Corrections
-          </span>
-          <p className="text-2xl font-bold font-mono text-amber-600 dark:text-amber-400 mt-1">
+        <div className="bg-zinc-900/90 border border-zinc-800/80 rounded-2xl p-4 text-center backdrop-blur-xl shadow-lg space-y-1">
+          <div className="flex items-center justify-center gap-1 text-[10px] font-extrabold uppercase tracking-widest text-zinc-400">
+            <AlertTriangle className="w-3.5 h-3.5 text-amber-400" />
+            <span>Form Hints</span>
+          </div>
+          <p className="text-2xl font-black font-mono text-amber-400">
             {session.warningCount}
           </p>
         </div>
       </div>
 
       {/* LocalStorage Saved Badge */}
-      <div className="flex items-center justify-center gap-2 text-xs text-zinc-400 bg-zinc-50 dark:bg-zinc-900/50 py-2.5 rounded-xl border border-zinc-200/60 dark:border-zinc-800">
-        <svg className="w-4 h-4 text-emerald-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4" />
-        </svg>
-        Session saved to LocalStorage
+      <div className="flex items-center justify-center gap-2 text-xs text-zinc-400 bg-zinc-900/80 py-3 rounded-2xl border border-zinc-800/80 backdrop-blur-xl shadow-sm">
+        <ShieldCheck className="w-4 h-4 text-emerald-400" />
+        <span>Session record permanently saved</span>
       </div>
 
       {/* Action Buttons */}
-      <div className="space-y-3 pt-2">
+      <div className="space-y-2.5 pt-2">
         <Link
           href="/progress"
-          className="w-full py-3.5 px-4 bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-sm rounded-xl text-center shadow-md block transition-all"
+          className="w-full py-4 px-5 bg-gradient-to-r from-emerald-600 to-teal-500 hover:from-emerald-500 hover:to-teal-400 text-white font-extrabold text-sm rounded-2xl text-center shadow-xl shadow-emerald-950/40 flex items-center justify-center gap-2 transition-all"
         >
-          View Progress
+          <span>View Detailed Analytics</span>
+          <ArrowRight className="w-4 h-4" />
         </Link>
         <Link
           href="/"
-          className="w-full py-3.5 px-4 bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-zinc-800 dark:text-zinc-200 font-semibold text-sm rounded-xl text-center block transition-all"
+          className="w-full py-3.5 px-5 bg-zinc-900 hover:bg-zinc-800 text-zinc-300 font-bold text-xs rounded-2xl text-center border border-zinc-800 block transition-all"
         >
-          Done
+          Back to Dashboard
         </Link>
       </div>
     </div>

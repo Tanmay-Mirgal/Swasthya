@@ -51,6 +51,48 @@ export function generateFeedback(
   }
 
   const isBicep = exerciseId === "seated-bicep-curl";
+  const isNeck = exerciseId === "neck-rotation";
+
+  // 5. Movement state & form guidance
+  if (isNeck) {
+    switch (movementState) {
+      case "READY":
+        return {
+          type: "info",
+          actionDirective: "TURN HEAD SLOWLY",
+          icon: "↩️",
+          message: "Ready! Slowly rotate your head to one side.",
+        };
+      case "EXTENDING":
+        return {
+          type: "info",
+          actionDirective: "KEEP ROTATING",
+          icon: "➡️",
+          message: "Good! Keep turning your head — reach your maximum comfortable range.",
+        };
+      case "EXTENDED":
+        return {
+          type: "success",
+          actionDirective: "RETURN TO CENTER",
+          icon: "⏸️",
+          message: "Peak reached! Now slowly return your head to the center.",
+        };
+      case "RETURNING":
+        return {
+          type: "info",
+          actionDirective: "NOW OTHER SIDE",
+          icon: "⬅️",
+          message: "Great! Now rotate to the OTHER side to complete the rep.",
+        };
+      default:
+        return {
+          type: "info",
+          actionDirective: "KEEP GOING",
+          icon: "💪",
+          message: "Keep moving slowly and smoothly.",
+        };
+    }
+  }
 
   // 5. Movement state & form guidance
   switch (movementState) {

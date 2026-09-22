@@ -1,9 +1,10 @@
 import { ExerciseConfig } from "./types";
 import { seatedKneeExtensionConfig } from "./seatedKneeExtension";
 import { seatedBicepCurlConfig } from "./seatedBicepCurl";
+import { neckRotationConfig } from "./neckRotation";
 
 export interface ExtendedExerciseConfig extends ExerciseConfig {
-  bodySegment: "lower" | "upper";
+  bodySegment: "lower" | "upper" | "neck";
   isAvailable: boolean;
 }
 
@@ -16,6 +17,11 @@ export const EXERCISE_REGISTRY: Record<string, ExtendedExerciseConfig> = {
   "seated-knee-extension": {
     ...seatedKneeExtensionConfig,
     bodySegment: "lower",
+    isAvailable: true,
+  },
+  "neck-rotation": {
+    ...neckRotationConfig,
+    bodySegment: "neck",
     isAvailable: true,
   },
   "shoulder-raise": {
