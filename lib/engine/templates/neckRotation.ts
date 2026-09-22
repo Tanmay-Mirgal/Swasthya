@@ -2,14 +2,9 @@ import { PoseLandmark } from "../../pose/landmarks";
 import { ExerciseTemplate } from "../types";
 
 /**
- * Full exercise template for Neck Rotation.
+ * Full exercise template for Neck Rotation with explicit Left and Right guidance steps.
  *
  * Camera: Front view so nose and both shoulders are visible.
- * Uses a simplified 2-step loop (left and right) since neck rotation
- * is handled by lateral offset rather than a 3-joint angle.
- *
- * The engine uses step validation with trunkUpright as the primary gated check;
- * the existing neckRotation state machine handles the per-direction rep counting.
  */
 export const neckRotationTemplate: ExerciseTemplate = {
   exerciseId: "neck-rotation",
@@ -28,9 +23,8 @@ export const neckRotationTemplate: ExerciseTemplate = {
     {
       id: "step_1_center",
       order: 1,
-      title: "Starting Position",
-      instruction: "Sit upright facing the camera. Keep your shoulders relaxed.",
-      // Neck rotation doesn't use joint angle ranges — trunk check is primary
+      title: "Neutral Center",
+      instruction: "Sit tall facing camera with shoulders level and relaxed.",
       jointAngleRanges: {},
       postureConstraints: { trunkUpright: true },
       movementPhase: "SETUP",
@@ -40,13 +34,52 @@ export const neckRotationTemplate: ExerciseTemplate = {
       incorrectConditions: ["TRUNK_LEAN"],
     },
     {
-      id: "step_2_ready",
+      id: "step_2_rotate_left",
       order: 2,
-      title: "Ready to Rotate",
-      instruction: "Good! Now slowly rotate your head to one side.",
+      title: "Rotate Head LEFT",
+      instruction: "Slowly rotate your head to the LEFT as far as comfortable.",
       jointAngleRanges: {},
       postureConstraints: { trunkUpright: true },
-      movementPhase: "READY",
+      movementPhase: "EXTENDING",
+      minimumConfidence: 0.55,
+      tolerance: { angle: 10 },
+      completionCondition: { holdDurationMs: 500 },
+      incorrectConditions: ["TRUNK_LEAN"],
+    },
+    {
+      id: "step_3_return_center",
+      order: 3,
+      title: "Return to Center",
+      instruction: "Pause at peak, then smoothly turn back to neutral center.",
+      jointAngleRanges: {},
+      postureConstraints: { trunkUpright: true },
+      movementPhase: "RETURNING",
+      minimumConfidence: 0.55,
+      tolerance: { angle: 10 },
+      completionCondition: { holdDurationMs: 500 },
+      incorrectConditions: ["TRUNK_LEAN"],
+    },
+    {
+      id: "step_4_rotate_right",
+      order: 4,
+      title: "Rotate Head RIGHT",
+      instruction: "Now slowly rotate your head to the RIGHT as far as comfortable.",
+      jointAngleRanges: {},
+      postureConstraints: { trunkUpright: true },
+      movementPhase: "EXTENDING",
+      minimumConfidence: 0.55,
+      tolerance: { angle: 10 },
+      completionCondition: { holdDurationMs: 500 },
+      incorrectConditions: ["TRUNK_LEAN"],
+    },
+    {
+      id: "step_5_return_center",
+      order: 5,
+      title: "Return to Center",
+      instruction: "Pause at peak, then return to neutral center to complete rep.",
+      jointAngleRanges: {},
+      postureConstraints: { trunkUpright: true },
+      movementPhase: "RETURNING",
       minimumConfidence: 0.55,
       tolerance: { angle: 10 },
       completionCondition: { holdDurationMs: 500 },
@@ -67,8 +100,8 @@ export const neckRotationTemplate: ExerciseTemplate = {
         PoseLandmark.LEFT_SHOULDER, PoseLandmark.RIGHT_SHOULDER,
         PoseLandmark.LEFT_HIP, PoseLandmark.RIGHT_HIP,
       ],
-      fallbackMessage: "Keep your back straight and shoulders even.",
-      groqContext: "User is leaning their trunk or tilting their body during neck rotation.",
+      fallbackMessage: "Keep your back straight and shoulders level.",
+      groqContext: "User is leaning their body or tilting shoulders during neck rotation.",
     },
   ],
 };

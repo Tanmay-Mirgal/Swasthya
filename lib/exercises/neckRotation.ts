@@ -12,30 +12,29 @@ export const neckRotationConfig: ExerciseConfig = {
   description:
     "Gently rotate your head side to side while seated upright. Improves cervical range of motion and reduces stiffness.",
   instructions: [
-    "Sit upright facing the camera directly.",
-    "Ensure your head, nose, and both shoulders are clearly visible.",
-    "Slowly rotate your head to the RIGHT, then back to center.",
-    "Then rotate your head to the LEFT, then back to center.",
-    "That counts as 1 full rep. Move slowly and smoothly.",
+    "Sit upright facing the camera directly with shoulders level.",
+    "Slowly rotate your head to the LEFT as far as comfortable, then return to center.",
+    "Then slowly rotate your head to the RIGHT as far as comfortable, then return to center.",
+    "Each side rotation and return to center counts toward your repetition goal.",
   ],
 };
 
 export const NECK_ROTATION_THRESHOLDS = {
-  /** Nose must shift this far from shoulder midpoint to start a rep */
-  ROTATION_TRIGGER: 0.04,
-  /** Nose must reach this offset to count as a valid peak on one side */
-  ROTATION_PEAK: 0.06,
-  /** Within this offset from center = considered "back to center" */
-  CENTER_DEAD_ZONE: 0.022,
+  /** Nose must shift this far from shoulder midpoint to trigger rotation start */
+  ROTATION_TRIGGER: 0.020,
+  /** Nose must reach this offset to count as a valid peak on left or right */
+  ROTATION_PEAK: 0.035,
+  /** Within this offset from center = considered back at neutral center */
+  CENTER_DEAD_ZONE: 0.015,
 };
 
 export interface NeckRepPhase {
-  firstSideSign: number;    // +1 or -1 (direction of first turn), 0 when unknown
-  peakedSecondSide: boolean;
+  currentSide: "left" | "right" | "center";
+  peaked: boolean;
 }
 
 export function createNeckRepPhase(): NeckRepPhase {
-  return { firstSideSign: 0, peakedSecondSide: false };
+  return { currentSide: "center", peaked: false };
 }
 
 export interface NeckRotationStateMachineResult {
@@ -47,7 +46,8 @@ export interface NeckRotationStateMachineResult {
 
 /**
  * Compute lateral offset of nose relative to the midpoint of both shoulders.
- * Positive = nose is to patient's RIGHT (in mirrored webcam: nose moves to image-left → shoulderMidX > nose.x)
+ * Positive = nose is toward patient's RIGHT
+ * Negative = nose is toward patient's LEFT
  */
 export function computeNeckLateralOffset(
   nose: NormalizedLandmark | null,
@@ -56,19 +56,12 @@ export function computeNeckLateralOffset(
 ): number {
   if (!nose || !leftShoulder || !rightShoulder) return 0;
   const shoulderMidX = (leftShoulder.x + rightShoulder.x) / 2;
-  // Mirrored webcam: patient turns RIGHT → nose goes to image-left → nose.x decreases → shoulderMidX - nose.x > 0
   return shoulderMidX - nose.x;
 }
 
 /**
- * Pure state machine for a full Neck Rotation rep.
- * One rep = rotate to one side (peak) → return to center → rotate to opposite side (peak) → return to center.
- *
- * State mapping (reusing MovementState):
- *   READY     = neutral at center, waiting to start
- *   EXTENDING = moving toward first side
- *   EXTENDED  = peaked first side, returning to center
- *   RETURNING = moving toward second side (and back to center)
+ * Robust state machine for Neck Rotation.
+ * Supports turning EITHER Left OR Right first, and counts a rep on returning to center.
  */
 export function evaluateNeckRotationState(
   currentState: MovementState,
@@ -77,7 +70,7 @@ export function evaluateNeckRotationState(
 ): NeckRotationStateMachineResult {
   const T = NECK_ROTATION_THRESHOLDS;
   const absOffset = Math.abs(lateralOffset);
-  const sign = lateralOffset > 0 ? 1 : lateralOffset < 0 ? -1 : 0;
+  const detectedSide: "left" | "right" = lateralOffset < 0 ? "left" : "right";
 
   const unchanged = (s: MovementState): NeckRotationStateMachineResult => ({
     nextState: s,
@@ -88,27 +81,29 @@ export function evaluateNeckRotationState(
 
   switch (currentState) {
     case "READY": {
+      // User starts turning head away from center (left or right)
       if (absOffset >= T.ROTATION_TRIGGER) {
         return {
           nextState: "EXTENDING",
           repIncremented: false,
           event: "STARTED",
-          newPhase: { firstSideSign: sign, peakedSecondSide: false },
+          newPhase: { currentSide: detectedSide, peaked: false },
         };
       }
       return unchanged("READY");
     }
 
     case "EXTENDING": {
+      // Check if user reaches side peak threshold (for either left or right turn)
       if (absOffset >= T.ROTATION_PEAK) {
         return {
           nextState: "EXTENDED",
           repIncremented: false,
           event: "PEAK_REACHED",
-          newPhase: phase,
+          newPhase: { ...phase, peaked: true },
         };
       }
-      // Abandoned before peak — returned to center
+      // Abandoned turn before reaching peak — returned to center
       if (absOffset <= T.CENTER_DEAD_ZONE) {
         return {
           nextState: "READY",
@@ -121,47 +116,28 @@ export function evaluateNeckRotationState(
     }
 
     case "EXTENDED": {
-      // Waiting to return to center after first peak
+      // Head peaked on side (left or right) — now waiting to return to center
       if (absOffset <= T.CENTER_DEAD_ZONE) {
         return {
-          nextState: "RETURNING",
-          repIncremented: false,
-          event: "NONE",
-          newPhase: phase,
+          nextState: "READY",
+          repIncremented: true,
+          event: "REP_COMPLETED",
+          newPhase: createNeckRepPhase(),
         };
       }
       return unchanged("EXTENDED");
     }
 
     case "RETURNING": {
-      const secondSideSign = -phase.firstSideSign;
-      const onSecondSide =
-        secondSideSign !== 0
-          ? lateralOffset * secondSideSign >= T.ROTATION_PEAK
-          : absOffset >= T.ROTATION_PEAK;
-
-      if (!phase.peakedSecondSide) {
-        if (onSecondSide) {
-          return {
-            nextState: "RETURNING",
-            repIncremented: false,
-            event: "PEAK_REACHED",
-            newPhase: { ...phase, peakedSecondSide: true },
-          };
-        }
-        return unchanged("RETURNING");
-      } else {
-        // Already peaked second side — wait for return to center
-        if (absOffset <= T.CENTER_DEAD_ZONE) {
-          return {
-            nextState: "READY",
-            repIncremented: true,
-            event: "REP_COMPLETED",
-            newPhase: createNeckRepPhase(),
-          };
-        }
-        return unchanged("RETURNING");
+      if (absOffset <= T.CENTER_DEAD_ZONE) {
+        return {
+          nextState: "READY",
+          repIncremented: true,
+          event: "REP_COMPLETED",
+          newPhase: createNeckRepPhase(),
+        };
       }
+      return unchanged("RETURNING");
     }
 
     default:

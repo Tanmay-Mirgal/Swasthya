@@ -35,32 +35,29 @@ export interface ExerciseEngineOutput {
   processFrame: (landmarks: NormalizedLandmark[] | null) => void;
 }
 
-/**
- * useExerciseEngine — React hook that runs the template-driven exercise guidance engine.
- *
- * Usage:
- *   const engine = useExerciseEngine(exercise.id, exercise.name)
- *   // In onFrameUpdate: engine.processFrame(data.landmarks)
- *   // Render: incorrectLandmarkIndices, activeFeedback, currentStepInstruction, etc.
- */
+/** Minimum display time in MS for an AI feedback message so user can read it */
+const MIN_FEEDBACK_DISPLAY_MS = 4500;
+
 export function useExerciseEngine(
   exerciseId: string,
   exerciseName: string
 ): ExerciseEngineOutput {
-  // ── Refs (never trigger re-renders — updated every frame) ─────────────────
+  // ── Refs ──────────────────────────────────────────────────────────────────
   const engineStateRef = useRef<EngineState>(createInitialEngineState());
   const smoothedLandmarksRef = useRef<NormalizedLandmark[] | null>(null);
   const templateRef = useRef<ExerciseTemplate | null>(null);
   const groqServiceRef = useRef(new GroqFeedbackService());
   const lastStepIndexRef = useRef(-1);
   const lastIssueCodeRef = useRef<string | null>(null);
+  const feedbackSetTimeRef = useRef<number>(0);
+  const feedbackTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  // ── State (triggers UI re-renders — updated at meaningful moments) ────────
+  // ── State ──────────────────────────────────────────────────────────────────
   const [stepResult, setStepResult] = useState<StepValidationResult | null>(null);
   const [activeFeedback, setActiveFeedback] = useState("");
   const [feedbackLoading, setFeedbackLoading] = useState(false);
 
-  // ── Load template when exerciseId changes ─────────────────────────────────
+  // ── Reset when exerciseId changes ──────────────────────────────────────────
   useEffect(() => {
     templateRef.current = getTemplate(exerciseId);
     engineStateRef.current = createInitialEngineState();
@@ -68,26 +65,28 @@ export function useExerciseEngine(
     groqServiceRef.current.reset();
     lastStepIndexRef.current = -1;
     lastIssueCodeRef.current = null;
+    feedbackSetTimeRef.current = 0;
+    if (feedbackTimeoutRef.current) clearTimeout(feedbackTimeoutRef.current);
     setStepResult(null);
     setActiveFeedback("");
   }, [exerciseId]);
 
-  // ── Per-frame processor (called from onFrameUpdate, non-blocking) ─────────
+  // ── Per-frame processor ────────────────────────────────────────────────────
   const processFrame = useCallback(
     (landmarks: NormalizedLandmark[] | null) => {
       const template = templateRef.current;
       if (!template || !landmarks || landmarks.length === 0) return;
 
-      // 1. Smooth landmarks (EMA)
+      // 1. Smooth landmarks
       smoothedLandmarksRef.current = smoothLandmarks(
         landmarks,
         smoothedLandmarksRef.current
       );
 
-      // 2. Determine active side
+      // 2. Active side
       const side = getBestSide(smoothedLandmarksRef.current);
 
-      // 3. Run engine (pure function, synchronous)
+      // 3. Process engine frame
       const result = processEngineFrame(
         engineStateRef.current,
         smoothedLandmarksRef.current,
@@ -98,7 +97,7 @@ export function useExerciseEngine(
 
       engineStateRef.current = result.engineState;
 
-      // 4. Update React state only when something meaningful changed
+      // 4. Meaningful UI changes check
       const stepChanged = result.currentStepIndex !== lastStepIndexRef.current;
       const issueChanged = (result.primaryIssue?.code ?? null) !== lastIssueCodeRef.current;
 
@@ -107,7 +106,7 @@ export function useExerciseEngine(
         lastIssueCodeRef.current = result.primaryIssue?.code ?? null;
         setStepResult(result);
 
-        // 5. Groq feedback for new/changed issue
+        // 5. Groq AI feedback processing
         if (result.primaryIssue) {
           const issue = result.primaryIssue;
           const step = template.steps[result.currentStepIndex];
@@ -125,24 +124,34 @@ export function useExerciseEngine(
               )
               .then((feedback) => {
                 setActiveFeedback(feedback);
+                feedbackSetTimeRef.current = Date.now();
               })
               .finally(() => setFeedbackLoading(false));
           } else {
-            // Still show cached or fallback while in cooldown
             const cached = groqServiceRef.current.getCachedFeedback();
-            setActiveFeedback(cached || issue.fallbackMessage);
+            const msg = cached || issue.fallbackMessage;
+            setActiveFeedback(msg);
+            feedbackSetTimeRef.current = Date.now();
           }
         } else {
-          // No issue — clear feedback
-          setActiveFeedback("");
-          setFeedbackLoading(false);
+          // No issue currently — hold previous feedback for MIN_FEEDBACK_DISPLAY_MS so user has time to read it
+          const elapsed = Date.now() - feedbackSetTimeRef.current;
+          if (elapsed >= MIN_FEEDBACK_DISPLAY_MS) {
+            setActiveFeedback("");
+            setFeedbackLoading(false);
+          } else {
+            if (feedbackTimeoutRef.current) clearTimeout(feedbackTimeoutRef.current);
+            feedbackTimeoutRef.current = setTimeout(() => {
+              setActiveFeedback("");
+              setFeedbackLoading(false);
+            }, MIN_FEEDBACK_DISPLAY_MS - elapsed);
+          }
         }
       }
     },
     [exerciseId, exerciseName]
   );
 
-  // ── Derive output from latest result ─────────────────────────────────────
   const template = templateRef.current;
   const currentStepIndex = stepResult?.currentStepIndex ?? 0;
   const totalSteps = template?.steps.length ?? 1;

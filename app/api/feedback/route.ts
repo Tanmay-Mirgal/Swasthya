@@ -1,32 +1,29 @@
 import { NextRequest, NextResponse } from "next/server";
 
 const GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions";
-const GROQ_MODEL = "llama-3.1-8b-instant"; // Fast, free tier
+const GROQ_MODEL = "openai/gpt-oss-20b"; // Active, fast Groq model
+
+const DEFAULT_GROQ_KEY = "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";
 
 const SYSTEM_PROMPT = `You are a concise rehabilitation exercise coach.
 
 Your job: given a structured exercise issue, produce ONE short corrective instruction for the patient.
 
 Rules:
-- Maximum 10 words
+- Maximum 8 words
 - Simple everyday language (no medical jargon)
 - Do NOT mention angles, degrees, or numbers
 - Do NOT mention AI, MediaPipe, or sensors
 - Tell the patient WHAT TO DO, not what is wrong
-- Do NOT start with "You", "Your", or the patient's name
+- Do NOT start with "You", "Your", or patient name
 - Be direct and encouraging
 
 Examples of GOOD responses:
-"Extend your leg a little further."
 "Keep your back straight."
-"Slow down and lower smoothly."
-"Bring your arm all the way down."
-"Move slightly closer to the camera."
-
-Examples of BAD responses:
-"Your knee angle is 142 degrees..."
-"The system detected insufficient extension..."
-"You should try to..."`;
+"Relax your shoulders down."
+"Rotate head slowly and smoothly."
+"Sit tall and face forward."
+"Move slightly closer to camera."`;
 
 interface FeedbackRequest {
   exerciseId: string;
@@ -41,7 +38,7 @@ interface FeedbackRequest {
 }
 
 export async function POST(req: NextRequest) {
-  const apiKey = process.env.NEXT_GROQ_API_KEY;
+  const apiKey = process.env.NEXT_GROQ_API_KEY || process.env.GROQ_API_KEY || DEFAULT_GROQ_KEY;
 
   if (!apiKey) {
     return NextResponse.json(
@@ -59,11 +56,10 @@ export async function POST(req: NextRequest) {
 
   const userMessage = `Exercise: ${body.exerciseName}
 Step: ${body.stepTitle}
-Instruction: ${body.stepInstruction}
 Issue: ${body.issueCode}
 Severity: ${body.severity}
 
-Generate a single short corrective instruction (max 10 words).`;
+Generate a short corrective instruction (max 8 words).`;
 
   try {
     const groqResponse = await fetch(GROQ_API_URL, {
@@ -78,14 +74,15 @@ Generate a single short corrective instruction (max 10 words).`;
           { role: "system", content: SYSTEM_PROMPT },
           { role: "user", content: userMessage },
         ],
-        max_tokens: 40,
-        temperature: 0.3,
+        max_tokens: 30,
+        temperature: 0.2,
       }),
-      // 4s timeout — never block the camera loop
       signal: AbortSignal.timeout(4000),
     });
 
     if (!groqResponse.ok) {
+      const errText = await groqResponse.text();
+      console.error(`[/api/feedback] Groq API error (${groqResponse.status}):`, errText);
       throw new Error(`Groq API error: ${groqResponse.status}`);
     }
 
@@ -97,12 +94,18 @@ Generate a single short corrective instruction (max 10 words).`;
     }
     const data = (await groqResponse.json()) as GroqAPIResponse;
     const raw = data?.choices?.[0]?.message?.content ?? "";
-    // Strip surrounding quotes if the model added them
-    const feedback = raw.replace(/^["']|["']$/g, "").trim();
 
-    return NextResponse.json({ feedback: feedback || body.fallbackMessage });
+    // Strip reasoning tags or quotes if returned
+    const cleaned = raw
+      .replace(/<reasoning>[\s\S]*?<\/reasoning>/gi, "")
+      .replace(/^["']|["']$/g, "")
+      .trim();
+
+    const feedback = cleaned || body.fallbackMessage;
+    console.log(`[/api/feedback] Groq Feedback Generated: "${feedback}"`);
+
+    return NextResponse.json({ feedback });
   } catch (err) {
-    // Groq failure → return fallback, never expose error to client
     console.error("[/api/feedback] Groq call failed:", err);
     return NextResponse.json({ feedback: body.fallbackMessage });
   }

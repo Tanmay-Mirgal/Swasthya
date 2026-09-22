@@ -1,6 +1,6 @@
 import { ExerciseIssue, IssueCode } from "./types";
 
-const GROQ_COOLDOWN_MS = 3000; // Don't re-request same issue within 3s
+const GROQ_COOLDOWN_MS = 5000; // Cooldown 5s so AI calls do not spam and text remains readable
 const API_ENDPOINT = "/api/feedback";
 
 interface GroqRequest {
@@ -15,25 +15,14 @@ interface GroqRequest {
   fallbackMessage: string;
 }
 
-/**
- * GroqFeedbackService — debounced, non-blocking Groq feedback client.
- *
- * Design:
- *  - Tracks last issued code + timestamp
- *  - Returns null if the same issue was sent within GROQ_COOLDOWN_MS
- *  - Returns cached feedback for the same issue during cooldown
- *  - Calls /api/feedback (server-side proxy) to keep key secure
- *  - Never blocks the camera loop (all async)
- */
 export class GroqFeedbackService {
   private lastIssueCode: IssueCode | null = null;
   private lastRequestMs = 0;
   private cachedFeedback = "";
   private pendingRequest: Promise<string> | null = null;
 
-  /** Should we make a new Groq request for this issue? */
   shouldRequest(issue: ExerciseIssue, nowMs = Date.now()): boolean {
-    if (this.pendingRequest !== null) return false; // already in-flight
+    if (this.pendingRequest !== null) return false;
 
     const sameIssue = issue.code === this.lastIssueCode;
     const withinCooldown = nowMs - this.lastRequestMs < GROQ_COOLDOWN_MS;
@@ -43,15 +32,10 @@ export class GroqFeedbackService {
     return true;
   }
 
-  /** Returns the last cached feedback synchronously (used while cooldown is active) */
   getCachedFeedback(): string {
     return this.cachedFeedback;
   }
 
-  /**
-   * Fires an async Groq request and returns a Promise<string> with the feedback.
-   * Call this only when shouldRequest() returns true.
-   */
   async requestFeedback(
     issue: ExerciseIssue,
     exerciseId: string,
@@ -88,7 +72,6 @@ export class GroqFeedbackService {
         return feedback;
       })
       .catch(() => {
-        // Groq failed → return fallback silently
         this.cachedFeedback = issue.fallbackMessage;
         return issue.fallbackMessage;
       })
@@ -100,7 +83,6 @@ export class GroqFeedbackService {
     return request;
   }
 
-  /** Reset when exercise session restarts */
   reset() {
     this.lastIssueCode = null;
     this.lastRequestMs = 0;
