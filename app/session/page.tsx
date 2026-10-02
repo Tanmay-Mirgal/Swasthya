@@ -43,8 +43,8 @@ export default function SessionSummaryPage() {
   }
 
   return (
-    <AppShell title="Session Summary">
-      <div className="pt-2">
+    <AppShell hideNav>
+      <div className="pt-4 h-full flex flex-col flex-1">
         <SessionSummary session={session} />
       </div>
     </AppShell>
