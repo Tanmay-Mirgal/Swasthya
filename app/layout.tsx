@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 
@@ -14,7 +14,28 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: "RehabLens — AI Physical Therapy & Pose Guidance",
-  description: "Real-time AI pose detection, step-by-step guidance, and biomechanical form analysis for physical rehabilitation.",
+  description:
+    "Real-time AI pose detection, step-by-step guidance, and biomechanical form analysis for physical rehabilitation.",
+  // Mobile web app meta
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "black-translucent",
+    title: "RehabLens",
+  },
+};
+
+// Separate viewport export (required in Next.js 14+)
+export const viewport: Viewport = {
+  // Proper mobile viewport — prevents scaling issues on Android
+  width: "device-width",
+  initialScale: 1,
+  minimumScale: 1,
+  maximumScale: 1,
+  userScalable: false,
+  // Android status bar color — matches app's emerald theme
+  themeColor: "#09090b",
+  // Support notch / gesture bar safe areas
+  viewportFit: "cover",
 };
 
 export default function RootLayout({

@@ -23,15 +23,22 @@ export default function AppShell({
   rightAction,
 }: AppShellProps) {
   return (
-    <div className="min-h-screen bg-zinc-950 flex flex-col items-center justify-start text-zinc-100 antialiased selection:bg-emerald-500/30 selection:text-emerald-200">
+    <div className="min-h-screen min-h-dvh bg-zinc-950 flex flex-col items-center justify-start text-zinc-100 antialiased selection:bg-emerald-500/30 selection:text-emerald-200">
       {/* Background Ambient Glow */}
       <div className="fixed top-0 left-1/2 -translate-x-1/2 w-full max-w-lg h-96 bg-emerald-600/10 blur-[120px] pointer-events-none z-0" />
 
       {/* Centered App Container Shell (Mobile & Desktop Responsive) */}
-      <div className="w-full max-w-[440px] min-h-screen bg-zinc-950/95 border-x border-zinc-800/80 flex flex-col shadow-2xl relative z-10 pb-20">
+      <div className="w-full max-w-[440px] min-h-screen min-h-dvh bg-zinc-950/95 border-x border-zinc-800/80 flex flex-col shadow-2xl relative z-10 pb-20">
         {/* Sleek Top Navigation Header */}
         {title && (
-          <header className="sticky top-0 z-40 bg-zinc-950/80 backdrop-blur-xl border-b border-zinc-800/80 px-4 h-14 flex items-center justify-between transition-all">
+          <header
+            className="sticky top-0 z-40 bg-zinc-950/80 backdrop-blur-xl border-b border-zinc-800/80 px-4 flex items-center justify-between transition-all"
+            style={{
+              // Account for Android status bar height using safe-area-inset-top
+              paddingTop: "calc(env(safe-area-inset-top, 0px) + 0px)",
+              height: "calc(env(safe-area-inset-top, 0px) + 56px)",
+            }}
+          >
             {showBackNav ? (
               <Link
                 href={backHref}
@@ -74,3 +81,4 @@ export default function AppShell({
     </div>
   );
 }
+

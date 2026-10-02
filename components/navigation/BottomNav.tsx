@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Home, Dumbbell, BarChart2, Shield } from "lucide-react";
+import { Home, Dumbbell, BarChart2 } from "lucide-react";
 
 export default function BottomNav() {
   const pathname = usePathname();
@@ -31,7 +31,13 @@ export default function BottomNav() {
   ];
 
   return (
-    <nav className="fixed bottom-0 left-0 right-0 z-50 max-w-[440px] mx-auto px-4 pb-3 pt-1 pointer-events-none">
+    <nav
+      className="fixed bottom-0 left-0 right-0 z-50 max-w-[440px] mx-auto px-4 pt-1 pointer-events-none"
+      style={{
+        // Extend past gesture bar on Android phones
+        paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 8px)",
+      }}
+    >
       <div className="pointer-events-auto bg-zinc-900/90 backdrop-blur-2xl border border-zinc-800/80 rounded-2xl shadow-2xl flex items-center justify-around h-14 px-2">
         {navItems.map((item) => {
           const isActive = pathname === item.href;
@@ -61,3 +67,4 @@ export default function BottomNav() {
     </nav>
   );
 }
+

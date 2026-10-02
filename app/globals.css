@@ -22,7 +22,21 @@
     --input: 240 3.7% 15.9%;
     --ring: 158 64% 45%;
     --radius: 0.75rem;
+
+    /* Safe area insets for Android notch / gesture bar */
+    --safe-area-top: env(safe-area-inset-top, 0px);
+    --safe-area-bottom: env(safe-area-inset-bottom, 0px);
+    --safe-area-left: env(safe-area-inset-left, 0px);
+    --safe-area-right: env(safe-area-inset-right, 0px);
   }
+}
+
+/* ── Global Base Styles ────────────────────────────────────────────── */
+html {
+  /* Prevent bounce/overscroll on Android WebView */
+  overscroll-behavior: none;
+  /* Smooth scroll */
+  scroll-behavior: smooth;
 }
 
 body {
@@ -30,9 +44,48 @@ body {
   color: #f4f4f5;
   font-family: var(--font-geist-sans), -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   overflow-x: hidden;
+  /* Prevent rubber-band bounce on Android */
+  overscroll-behavior-y: none;
+  /* Remove 300ms tap delay on Android */
+  touch-action: manipulation;
+  /* Remove blue tap highlight on Android WebView */
+  -webkit-tap-highlight-color: transparent;
 }
 
-/* Custom glassmorphism and ambient glow utilities */
+/* ── Touch Target Sizing ───────────────────────────────────────────── */
+/* Ensures all interactive elements meet 44×44px minimum touch target */
+button,
+[role="button"],
+a {
+  min-height: 44px;
+  min-width: 44px;
+  /* Faster touch response */
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Inline links don't need full 44px height */
+p a,
+span a {
+  min-height: unset;
+  min-width: unset;
+}
+
+/* ── Safe Area Utilities ───────────────────────────────────────────── */
+.safe-top {
+  padding-top: var(--safe-area-top);
+}
+
+.safe-bottom {
+  padding-bottom: var(--safe-area-bottom);
+}
+
+.safe-x {
+  padding-left: var(--safe-area-left);
+  padding-right: var(--safe-area-right);
+}
+
+/* ── Glassmorphism & Ambient Glow Utilities ────────────────────────── */
 .glass-panel {
   background: rgba(18, 18, 22, 0.75);
   backdrop-filter: blur(16px);
@@ -56,7 +109,7 @@ body {
   box-shadow: 0 0 35px -5px rgba(16, 185, 129, 0.25);
 }
 
-/* Smooth custom scrollbars */
+/* ── Smooth Custom Scrollbars ──────────────────────────────────────── */
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;
@@ -73,4 +126,29 @@ body {
 
 ::-webkit-scrollbar-thumb:hover {
   background: #3f3f46;
+}
+
+/* ── Android Keyboard Fix ──────────────────────────────────────────── */
+/* Prevents content from being pushed up when soft keyboard opens */
+@media (max-height: 500px) {
+  .min-h-screen {
+    min-height: 100dvh;
+  }
+}
+
+/* ── Capacitor / WebView Specific ──────────────────────────────────── */
+/* Prevents text selection in camera/exercise views */
+.no-select {
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+/* Full-screen camera overlay must cover Android status bar area */
+.camera-fullscreen {
+  position: fixed;
+  inset: 0;
+  padding-top: var(--safe-area-top);
+  padding-bottom: var(--safe-area-bottom);
+  z-index: 9999;
+  background: #000;
 }

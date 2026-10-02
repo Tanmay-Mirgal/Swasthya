@@ -1,17 +1,16 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  async headers() {
-    return [
-      {
-        source: "/models/:path*",
-        headers: [
-          { key: "Access-Control-Allow-Origin", value: "*" },
-          { key: "Cache-Control", value: "public, max-age=31536000, immutable" },
-        ],
-      },
-    ];
+  // Required for Capacitor: generates a fully static HTML/JS/CSS bundle in /out
+  output: "export",
+
+  // next/image is not supported in static export without a loader
+  images: {
+    unoptimized: true,
   },
+
+  // Trailing slash ensures correct asset paths inside Capacitor WebView
+  trailingSlash: true,
 };
 
 export default nextConfig;

@@ -1,7 +1,7 @@
 import { ExerciseIssue, IssueCode } from "./types";
+import { fetchGroqFeedback } from "../feedback/groqClient";
 
 const GROQ_COOLDOWN_MS = 5000; // Cooldown 5s so AI calls do not spam and text remains readable
-const API_ENDPOINT = "/api/feedback";
 
 interface GroqRequest {
   exerciseId: string;
@@ -59,15 +59,9 @@ export class GroqFeedbackService {
       fallbackMessage: issue.fallbackMessage,
     };
 
-    const request = fetch(API_ENDPOINT, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    })
-      .then(async (res) => {
-        if (!res.ok) throw new Error(`API error ${res.status}`);
-        const data = (await res.json()) as { feedback?: string };
-        const feedback = data.feedback ?? issue.fallbackMessage;
+    // Call Groq API directly from the browser (no server route needed)
+    const request = fetchGroqFeedback(body)
+      .then((feedback) => {
         this.cachedFeedback = feedback;
         return feedback;
       })

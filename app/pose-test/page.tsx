@@ -1,10 +1,9 @@
-import PoseDetector from "@/components/pose/PoseDetector";
-import Metadata from "next";
+"use client";
 
-export const metadata = {
-  title: "Pose Detection Test - RehabLens PoC",
-  description: "Proof of Concept for MediaPipe Pose Landmarker inside Next.js",
-};
+// pose-test is a dev/debug page — full client component is fine here.
+// metadata removed because "use client" and metadata export cannot coexist.
+
+import PoseDetector from "@/components/pose/PoseDetector";
 
 export default function PoseTestPage() {
   return (
