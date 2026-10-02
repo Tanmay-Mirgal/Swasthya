@@ -1,3 +1,4 @@
+/* eslint-disable react-hooks/set-state-in-effect */
 "use client";
 
 import { useEffect, useState } from "react";
@@ -117,6 +118,19 @@ export default function HomePage() {
             View All <ArrowUpRight className="w-3 h-3" />
           </Link>
         </div>
+
+        <Link
+          href="/therapist"
+          className="group w-full bg-indigo-950/40 border border-indigo-500/30 hover:border-indigo-400/60 rounded-2xl p-3 flex items-center justify-between transition-all backdrop-blur-xl shadow-lg mb-2"
+        >
+          <div className="flex items-center gap-2">
+            <div className="p-1.5 rounded-xl bg-indigo-500/20 text-indigo-400">
+              <ShieldCheck className="w-4 h-4" />
+            </div>
+            <span className="text-xs font-bold text-indigo-200">Therapist Portal</span>
+          </div>
+          <ChevronRight className="w-4 h-4 text-indigo-400 group-hover:translate-x-1 transition-transform" />
+        </Link>
 
         <div className="space-y-2.5">
           {exercises.slice(0, 3).map((ex) => (
