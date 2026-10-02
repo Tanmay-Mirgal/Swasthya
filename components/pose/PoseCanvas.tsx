@@ -59,55 +59,46 @@ export default function PoseCanvas({
 
     // ── Body skeleton ──────────────────────────────────────────────────
     if (landmarks && landmarks.length > 0) {
-      if (hasErrors) {
-        // Manual per-segment coloring for error highlighting
-        const connections = PoseLandmarker.POSE_CONNECTIONS as ReadonlyArray<{ start: number; end: number }>;
-        for (const conn of connections) {
-          const a = landmarks[conn.start];
-          const b = landmarks[conn.end];
-          if (!a || !b) continue;
+      const connections = PoseLandmarker.POSE_CONNECTIONS as ReadonlyArray<{ start: number; end: number }>;
+      
+      // Draw smooth connections
+      ctx.beginPath();
+      for (const conn of connections) {
+        const a = landmarks[conn.start];
+        const b = landmarks[conn.end];
+        if (!a || !b) continue;
 
-          const isError = incorrectSet.has(conn.start) || incorrectSet.has(conn.end);
-          const isLowConf = lowConfSet.has(conn.start) || lowConfSet.has(conn.end);
+        const isError = incorrectSet.has(conn.start) || incorrectSet.has(conn.end);
+        
+        ctx.moveTo(a.x * W, a.y * H);
+        ctx.lineTo(b.x * W, b.y * H);
+      }
+      ctx.lineWidth = 3;
+      // Use a subtle white line with low opacity if no error, otherwise red
+      ctx.strokeStyle = hasErrors ? "#F43F5E" : "rgba(255, 255, 255, 0.4)";
+      ctx.stroke();
 
-          ctx.beginPath();
-          ctx.lineWidth = isError ? 4 : 3;
-          ctx.strokeStyle = isError ? "#EF4444" : isLowConf ? "#FBBF24" : "#10B981";
-          ctx.globalAlpha = isError ? 1 : 0.85;
-          ctx.moveTo(a.x * W, a.y * H);
-          ctx.lineTo(b.x * W, b.y * H);
-          ctx.stroke();
+      // Draw subtle landmark dots
+      for (let i = 0; i < landmarks.length; i++) {
+        const lm = landmarks[i];
+        if (!lm) continue;
+        const isError = incorrectSet.has(i);
+
+        ctx.beginPath();
+        ctx.arc(lm.x * W, lm.y * H, isError ? 5 : 3.5, 0, Math.PI * 2);
+        
+        if (isError) {
+          ctx.fillStyle = "#F43F5E";
+          ctx.strokeStyle = "rgba(244, 63, 94, 0.3)";
+          ctx.lineWidth = 4;
+        } else {
+          ctx.fillStyle = "#FFFFFF";
+          ctx.strokeStyle = "rgba(16, 185, 129, 0.8)"; // Subtle emerald halo
+          ctx.lineWidth = 2;
         }
-        ctx.globalAlpha = 1;
-
-        // Landmark dots
-        for (let i = 0; i < landmarks.length; i++) {
-          const lm = landmarks[i];
-          if (!lm) continue;
-          const isError = incorrectSet.has(i);
-          const isLowConf = lowConfSet.has(i);
-
-          ctx.beginPath();
-          ctx.arc(lm.x * W, lm.y * H, isError ? 6 : 4, 0, Math.PI * 2);
-          ctx.fillStyle = isError ? "#EF4444" : isLowConf ? "#FBBF24" : "#06B6D4";
-          ctx.strokeStyle = isError ? "#FF0000" : "#ffffff";
-          ctx.lineWidth = isError ? 2.5 : 1.5;
-          ctx.fill();
-          ctx.stroke();
-        }
-      } else {
-        // All correct — fast DrawingUtils path
-        const drawingUtils = new DrawingUtils(ctx);
-        drawingUtils.drawConnectors(landmarks, PoseLandmarker.POSE_CONNECTIONS, {
-          color: "#10B981",
-          lineWidth: 3,
-        });
-        drawingUtils.drawLandmarks(landmarks, {
-          color: "#F43F5E",
-          fillColor: "#06B6D4",
-          lineWidth: 2,
-          radius: 4,
-        });
+        
+        ctx.fill();
+        ctx.stroke();
       }
     }
 
