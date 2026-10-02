@@ -3,6 +3,7 @@
 import { ReactNode } from "react";
 import Link from "next/link";
 import { ChevronLeft } from "lucide-react";
+import { SignInButton, SignUpButton, UserButton, useAuth } from "@clerk/react";
 import BottomNav from "./BottomNav";
 import { cn } from "@/lib/utils";
 
@@ -23,17 +24,18 @@ export default function AppShell({
   hideNav = false,
   rightAction,
 }: AppShellProps) {
+  const { isLoaded, isSignedIn } = useAuth();
+
   return (
     <div className="min-h-screen min-h-dvh bg-slate-50 flex flex-col items-center justify-start text-slate-900 antialiased">
       
       {/* Centered App Container Shell (Mobile & Desktop Responsive) */}
       <div className="w-full max-w-[440px] min-h-screen min-h-dvh bg-slate-50 sm:border-x sm:border-slate-200 flex flex-col relative z-10 pb-20">
         
-        {/* Header */}
         <header
           className={cn(
             "sticky top-0 z-40 bg-slate-50/80 backdrop-blur-md border-b border-slate-200 px-4 flex items-center justify-between transition-all",
-            !title && !showBackNav && !rightAction && "hidden"
+            !title && !showBackNav && !rightAction && hideNav && "hidden"
           )}
           style={{
             paddingTop: "calc(env(safe-area-inset-top, 0px) + 0px)",
@@ -57,8 +59,21 @@ export default function AppShell({
             </h1>
           )}
 
-          <div className="flex items-center justify-end flex-1">
+          <div className="flex items-center justify-end flex-1 gap-2">
             {rightAction}
+            {isLoaded && !isSignedIn && (
+              <>
+                <SignInButton mode="modal">
+                  <button className="text-sm font-medium text-slate-700 hover:text-slate-900">Sign in</button>
+                </SignInButton>
+                <SignUpButton mode="modal">
+                  <button className="text-sm font-semibold text-blue-600 hover:text-blue-700">Sign up</button>
+                </SignUpButton>
+              </>
+            )}
+            {isLoaded && isSignedIn && (
+              <UserButton />
+            )}
           </div>
         </header>
 

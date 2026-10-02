@@ -1,5 +1,7 @@
+import ClerkClientProvider from "@/components/auth/ClerkClientProvider";
 import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
+import AuthGuard from "@/components/auth/AuthGuard";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -49,7 +51,11 @@ export default function RootLayout({
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col bg-slate-50 text-slate-900 selection:bg-blue-500/30 selection:text-blue-900">
-        {children}
+        <ClerkClientProvider publishableKey={process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY || ""}>
+          <AuthGuard>
+            {children}
+          </AuthGuard>
+        </ClerkClientProvider>
       </body>
     </html>
   );
