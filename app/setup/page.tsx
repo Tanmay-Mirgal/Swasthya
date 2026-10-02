@@ -24,7 +24,7 @@ export default function SetupPage() {
   const [error, setError] = useState("");
 
   // Form states
-  const [primaryConcern, setPrimaryConcern] = useState("");
+  const [concerns, setConcerns] = useState<string[]>([]);
   const [professionalName, setProfessionalName] = useState("");
   const [specialization, setSpecialization] = useState("");
 
@@ -33,7 +33,7 @@ export default function SetupPage() {
       const publicMetadata = user.publicMetadata;
       if (publicMetadata.onboardingCompleted) {
         router.push(
-          publicMetadata.role === "therapist" ? "/therapist" : "/patient",
+          publicMetadata.role === "therapist" ? "/therapist" : "/",
         );
       } else if (publicMetadata.role) {
         setStep(publicMetadata.role as "patient" | "therapist");
@@ -91,12 +91,12 @@ export default function SetupPage() {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({ primaryConcern }),
+        body: JSON.stringify({ concerns }),
       });
 
       if (!res.ok) throw new Error("Failed to save profile");
       await user?.reload();
-      router.push("/patient"); // Or wherever the patient dashboard is
+      router.push("/"); // Patient dashboard is at /
     } catch (err) {
       setError("An error occurred while saving your profile." + err);
     } finally {
@@ -234,18 +234,32 @@ export default function SetupPage() {
             </div>
 
             <div className="space-y-4">
-              <div className="space-y-1.5">
+              <div className="space-y-3">
                 <label className="text-sm font-medium text-slate-700">
-                  Primary Concern
+                  What areas do you need help with?
                 </label>
-                <input
-                  type="text"
-                  required
-                  placeholder="e.g. Knee pain, shoulder recovery"
-                  value={primaryConcern}
-                  onChange={(e) => setPrimaryConcern(e.target.value)}
-                  className="w-full p-3 rounded-xl border border-slate-200 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
-                />
+                <div className="grid grid-cols-2 gap-3">
+                  {["Neck", "Shoulder", "Arm / Elbow", "Back", "Hip", "Knee", "Ankle"].map((area) => (
+                    <button
+                      key={area}
+                      type="button"
+                      onClick={() => {
+                        setConcerns((prev) =>
+                          prev.includes(area)
+                            ? prev.filter((a) => a !== area)
+                            : [...prev, area]
+                        );
+                      }}
+                      className={`p-3 rounded-xl border text-sm font-medium transition-all ${
+                        concerns.includes(area)
+                          ? "border-blue-600 bg-blue-50 text-blue-700"
+                          : "border-slate-200 bg-white text-slate-600 hover:border-slate-300"
+                      }`}
+                    >
+                      {area}
+                    </button>
+                  ))}
+                </div>
               </div>
             </div>
 

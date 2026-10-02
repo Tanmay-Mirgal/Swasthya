@@ -2,7 +2,8 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   // Required for Capacitor: generates a fully static HTML/JS/CSS bundle in /out
-  output: "export",
+  // Conditional so that API routes work in development
+  output: process.env.CAPACITOR_BUILD === "true" ? "export" : undefined,
 
   // next/image is not supported in static export without a loader
   images: {

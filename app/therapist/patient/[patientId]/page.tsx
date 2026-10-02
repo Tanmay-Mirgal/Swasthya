@@ -1,39 +1,80 @@
-/* eslint-disable react-hooks/set-state-in-effect */
+/* eslint-disable react-hooks/exhaustive-deps */
 "use client";
 
 import { useEffect, useState, use } from "react";
 import Link from "next/link";
 import AppShell from "@/components/navigation/AppShell";
-import { getPatientById, getPatientSessions } from "@/lib/therapist/therapistStore";
-import { Patient } from "@/lib/therapist/types";
-import { SessionRecord } from "@/lib/exercises/types";
 import { getExerciseById } from "@/lib/exercises/registry";
-import { FilePlus, CheckCircle2, Activity, AlertCircle } from "lucide-react";
+import { FilePlus, CheckCircle2, Activity, AlertCircle, Loader2 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
+import { useAuth } from "@clerk/react";
 
 export default function PatientDetailPage({ params }: { params: Promise<{ patientId: string }> }) {
   const { patientId } = use(params);
-  const [patient, setPatient] = useState<Patient | null>(null);
-  const [sessions, setSessions] = useState<SessionRecord[]>([]);
+  const { getToken } = useAuth();
+  
+  const [patientData, setPatientData] = useState<any>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  
+  // For now, sessions are local only as per existing system
+  const [sessions, setSessions] = useState<any[]>([]);
 
   useEffect(() => {
-    setPatient(getPatientById(patientId));
-    setSessions(getPatientSessions(patientId));
+    fetchPatientDetail();
   }, [patientId]);
 
-  if (!patient) {
+  const fetchPatientDetail = async () => {
+    try {
+      setIsLoading(true);
+      const token = await getToken();
+      if (!token) return;
+
+      const res = await fetch(`/api/therapist/patient/${patientId}`, {
+        headers: {
+          Authorization: `Bearer ${token}`
+        }
+      });
+      
+      const data = await res.json();
+      if (data.success) {
+        setPatientData(data.data);
+      } else {
+        setError(data.error);
+      }
+    } catch (err) {
+      setError("Failed to load patient data");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  if (isLoading) {
     return (
-      <AppShell title="Loading..." showBackNav backHref="/therapist">
-        <div className="text-center py-10 text-slate-500 text-sm">Patient not found.</div>
+      <AppShell title="Patient Profile" showBackNav backHref="/therapist">
+        <div className="flex h-full items-center justify-center">
+          <Loader2 className="w-8 h-8 animate-spin text-slate-400" />
+        </div>
       </AppShell>
     );
   }
 
-  const totalSessions = sessions.length;
-  const avgRom = totalSessions > 0 
-    ? Math.round(sessions.reduce((acc, s) => acc + s.rom, 0) / totalSessions) 
-    : 0;
+  if (error || !patientData) {
+    return (
+      <AppShell title="Patient Profile" showBackNav backHref="/therapist">
+        <div className="flex flex-col h-full items-center justify-center p-6 text-center space-y-4">
+          <AlertCircle className="w-12 h-12 text-red-500" />
+          <h2 className="text-xl font-semibold text-slate-900">Error loading patient</h2>
+          <p className="text-slate-500">{error || "Patient not found"}</p>
+        </div>
+      </AppShell>
+    );
+  }
+
+  const { user, profile, exerciseAssignments } = patientData;
+  const name = `${user?.firstName || ""} ${user?.lastName || ""}`.trim() || "Patient";
+  const concerns = profile?.concerns?.join(", ") || "No specific concerns listed";
 
   return (
     <AppShell title="Patient Profile" showBackNav backHref="/therapist">
@@ -43,42 +84,22 @@ export default function PatientDetailPage({ params }: { params: Promise<{ patien
         <Card>
           <CardContent className="p-4 space-y-3">
             <div>
-              <h2 className="text-xl font-bold text-slate-900">{patient.name}</h2>
+              <h2 className="text-xl font-bold text-slate-900">{name}</h2>
               <div className="flex items-center gap-4 text-sm text-slate-500 mt-1">
-                <span>Age {patient.age}</span>
-                <span>{patient.height}</span>
+                <span>{user?.email}</span>
               </div>
             </div>
             <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-amber-50 text-amber-700 text-xs font-medium border border-amber-200">
               <AlertCircle className="w-3.5 h-3.5" />
-              {patient.condition}
+              Concerns: {concerns}
             </div>
           </CardContent>
         </Card>
 
-        {/* Performance Summary */}
-        <section className="space-y-3">
-          <h3 className="text-sm font-semibold text-slate-900">Performance Summary</h3>
-          <div className="grid grid-cols-2 gap-3">
-            <Card>
-              <CardContent className="p-4 text-center space-y-1">
-                <span className="text-xs font-medium text-slate-500">Average ROM</span>
-                <p className="text-2xl font-bold text-slate-900">{avgRom}&deg;</p>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardContent className="p-4 text-center space-y-1">
-                <span className="text-xs font-medium text-slate-500">Sessions</span>
-                <p className="text-2xl font-bold text-slate-900">{totalSessions}</p>
-              </CardContent>
-            </Card>
-          </div>
-        </section>
-
         {/* Prescriptions */}
         <section className="space-y-3">
           <div className="flex items-center justify-between">
-            <h3 className="text-sm font-semibold text-slate-900">Prescriptions</h3>
+            <h3 className="text-sm font-semibold text-slate-900">Assigned Exercises</h3>
             <Button asChild size="sm" variant="outline">
               <Link href={`/therapist/patient/${patientId}/prescribe`}>
                 <FilePlus className="w-4 h-4 mr-2" /> Assign New
@@ -87,17 +108,17 @@ export default function PatientDetailPage({ params }: { params: Promise<{ patien
           </div>
           
           <div className="space-y-3">
-            {patient.prescriptions.length === 0 ? (
-              <p className="text-sm text-slate-500 italic">No active prescriptions.</p>
+            {exerciseAssignments.length === 0 ? (
+              <p className="text-sm text-slate-500 italic">No active exercises assigned.</p>
             ) : (
-              patient.prescriptions.map(rx => {
-                const ex = getExerciseById(rx.exerciseId);
+              exerciseAssignments.map((ea: any) => {
+                const ex = getExerciseById(ea.exerciseId);
                 return (
-                  <Card key={rx.id}>
+                  <Card key={ea._id}>
                     <CardContent className="p-4">
-                      <h4 className="text-sm font-semibold text-slate-900">{ex?.name || rx.exerciseId}</h4>
+                      <h4 className="text-sm font-semibold text-slate-900">{ex?.name || ea.exerciseId}</h4>
                       <p className="text-xs text-slate-500 mt-1">
-                        {rx.targetSets} sets × {rx.targetReps} reps {rx.targetROM ? `• Target ${rx.targetROM}° ROM` : ''}
+                        {ea.targetSets} sets × {ea.targetReps} reps • {ea.type === "assigned" ? "Assigned" : "Suggested"}
                       </p>
                     </CardContent>
                   </Card>
@@ -114,7 +135,7 @@ export default function PatientDetailPage({ params }: { params: Promise<{ patien
             <p className="text-sm text-slate-500 italic">No sessions recorded yet.</p>
           ) : (
             <div className="space-y-3">
-              {sessions.map(s => (
+              {sessions.map((s: any) => (
                 <Card key={s.id}>
                   <CardContent className="p-4">
                     <div className="flex justify-between items-start mb-3">

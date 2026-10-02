@@ -27,7 +27,7 @@ export default function AuthGuard({ children }: { children: React.ReactNode }) {
         router.push("/setup");
       } else if (publicMetadata.onboardingCompleted && isSetupRoute) {
         // Prevent users from accessing setup again after onboarding
-        router.push(publicMetadata.role === "therapist" ? "/therapist" : "/patient");
+        router.push(publicMetadata.role === "therapist" ? "/therapist" : "/");
       }
     }
   }, [isLoaded, isSignedIn, userLoaded, user, pathname, router]);

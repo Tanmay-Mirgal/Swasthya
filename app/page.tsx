@@ -1,3 +1,4 @@
+/* eslint-disable react-hooks/exhaustive-deps */
 /* eslint-disable react-hooks/set-state-in-effect */
 "use client";
 
@@ -6,19 +7,64 @@ import Link from "next/link";
 import AppShell from "@/components/navigation/AppShell";
 import { getAggregateStats, getLatestSession } from "@/lib/session/sessionStore";
 import { SessionRecord } from "@/lib/exercises/types";
-import { getAllExercises } from "@/lib/exercises/registry";
-import { Play, ChevronRight, Activity, CalendarDays, CheckCircle2 } from "lucide-react";
+import { getExerciseById } from "@/lib/exercises/registry";
+import { Play, ChevronRight, Activity, CalendarDays, CheckCircle2, User, Loader2, AlertCircle, Clock, Search, MessageSquare } from "lucide-react";
 import { Button } from "@/components/ui/Button";
+import { useAuth, useUser } from "@clerk/react";
 
 export default function HomePage() {
+  const { getToken } = useAuth();
+  const { user } = useUser();
+  
   const [stats, setStats] = useState({ totalSessions: 0, totalReps: 0, avgRom: 0 });
   const [latestSession, setLatestSession] = useState<SessionRecord | null>(null);
-  const exercises = getAllExercises();
+  
+  const [isLoading, setIsLoading] = useState(true);
+  const [dashboardData, setDashboardData] = useState<any>(null);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     setStats(getAggregateStats());
     setLatestSession(getLatestSession());
+    
+    fetchDashboardData();
   }, []);
+
+  const fetchDashboardData = async () => {
+    try {
+      setIsLoading(true);
+      const token = await getToken();
+      if (!token) return;
+
+      const res = await fetch("/api/patient/dashboard", {
+        headers: {
+          Authorization: `Bearer ${token}`
+        }
+      });
+      
+      if (!res.ok) {
+        const text = await res.text();
+        try {
+           const json = JSON.parse(text);
+           setError(json.error || "Failed to load dashboard data");
+        } catch {
+           setError("Failed to load dashboard data (Server returned non-JSON)");
+        }
+        return;
+      }
+
+      const data = await res.json();
+      if (data.success) {
+        setDashboardData(data.data);
+      } else {
+        setError(data.error);
+      }
+    } catch (err) {
+      setError("Failed to load dashboard data");
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   const getGreeting = () => {
     const hour = new Date().getHours();
@@ -27,7 +73,40 @@ export default function HomePage() {
     return "Good evening";
   };
 
-  const featuredExercise = exercises[0];
+  if (isLoading) {
+    return (
+      <AppShell>
+        <div className="flex h-full items-center justify-center">
+          <Loader2 className="w-8 h-8 animate-spin text-slate-400" />
+        </div>
+      </AppShell>
+    );
+  }
+
+  if (error) {
+    return (
+      <AppShell>
+        <div className="flex flex-col h-full items-center justify-center p-6 text-center space-y-4">
+          <AlertCircle className="w-12 h-12 text-red-500" />
+          <h2 className="text-xl font-semibold text-slate-900">Error loading dashboard</h2>
+          <p className="text-slate-500">{error}</p>
+        </div>
+      </AppShell>
+    );
+  }
+
+  const { profile, assignment, therapist, pendingRequest, requestedTherapist, exerciseAssignments } = dashboardData || {};
+
+  // Enrich exercise assignments with registry data
+  const enrichedAssignments = exerciseAssignments?.map((ea: any) => {
+    const ex = getExerciseById(ea.exerciseId);
+    return {
+      ...ea,
+      exercise: ex
+    };
+  }).filter((ea: any) => ea.exercise) || [];
+
+  const featuredAssignment = enrichedAssignments.length > 0 ? enrichedAssignments[0] : null;
 
   return (
     <AppShell>
@@ -37,23 +116,173 @@ export default function HomePage() {
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-xl font-medium tracking-tight text-slate-900">
-              {getGreeting()}, Aditya
+              {getGreeting()}, {user?.firstName || "Patient"}
             </h1>
-            <p className="text-sm text-slate-500 mt-1">Keep your momentum going.</p>
+            <p className="text-sm text-slate-500 mt-1">
+               {assignment ? "Your care plan is active." : "Let's connect you with care."}
+            </p>
           </div>
-          <Link href="/therapist" className="shrink-0 group">
+          <Link href="/profile" className="shrink-0 group">
             <div className="w-11 h-11 rounded-full bg-slate-200 border-2 border-white shadow-sm overflow-hidden flex items-center justify-center transition-transform group-hover:scale-105 group-active:scale-95">
-              <span className="text-sm font-semibold text-slate-500">AD</span>
+              {user?.imageUrl ? (
+                 <img src={user.imageUrl} alt="Profile" className="w-full h-full object-cover" />
+              ) : (
+                <User className="w-5 h-5 text-slate-500" />
+              )}
             </div>
           </Link>
         </div>
+        
+        {/* Relationship / Therapist Section */}
+        <section>
+          {assignment && assignment.status === "active" ? (
+            // STATE C: Therapist accepted
+            <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col gap-4">
+              <div className="flex items-center justify-between">
+                 <h2 className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+                   Your Therapist
+                 </h2>
+                 <span className="text-[10px] font-semibold uppercase tracking-wider text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-sm">Active</span>
+              </div>
+              <div className="flex items-center gap-4">
+                 <div className="w-12 h-12 rounded-full bg-blue-100 flex items-center justify-center shrink-0">
+                   <User className="w-6 h-6 text-blue-600" />
+                 </div>
+                 <div>
+                    <p className="text-base font-medium text-slate-900">{therapist?.professionalName || "Assigned Therapist"}</p>
+                    <p className="text-sm text-slate-500">{therapist?.specialization || "Physical Therapist"}</p>
+                 </div>
+              </div>
+              <div className="flex gap-2 pt-2 border-t border-slate-100">
+                 <Button asChild variant="outline" className="flex-1 text-sm h-9">
+                   <Link href={`/chat/${therapist?.clerkUserId}`}>
+                     <MessageSquare className="w-4 h-4 mr-2" /> Message
+                   </Link>
+                 </Button>
+                 <Button asChild variant="secondary" className="flex-1 text-sm h-9">
+                   <Link href={`/therapist-profile/${therapist?.clerkUserId}`}>
+                     View Profile
+                   </Link>
+                 </Button>
+              </div>
+            </div>
+          ) : pendingRequest ? (
+            // STATE B: Appointment request pending
+            <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
+              <div className="flex items-center gap-1.5 mb-4">
+                <Clock className="w-4 h-4 text-amber-500" />
+                <h2 className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+                  Appointment Request
+                </h2>
+              </div>
+              
+              <div className="bg-slate-50 rounded-xl p-4 flex flex-col gap-3">
+                 <p className="text-sm font-medium text-slate-900">Waiting for response</p>
+                 <p className="text-xs text-slate-500 leading-relaxed">
+                   Your request has been sent to <strong>{requestedTherapist?.professionalName || "the therapist"}</strong>. We'll notify you when they review your request.
+                 </p>
+                 <Button asChild variant="outline" className="w-full mt-2 h-9 text-xs">
+                   <Link href="/requests">View Request Details</Link>
+                 </Button>
+              </div>
+            </div>
+          ) : (
+            // STATE A: No therapist interaction yet
+            <div className="bg-blue-50/50 p-5 rounded-2xl border border-blue-100 flex flex-col gap-4">
+              <div className="flex items-center gap-2">
+                <div className="p-1.5 bg-blue-100 rounded-lg">
+                  <Search className="w-4 h-4 text-blue-600" />
+                </div>
+                <h2 className="text-sm font-semibold text-slate-900">Find a Therapist</h2>
+              </div>
+              
+              <p className="text-xs text-slate-600 leading-relaxed">
+                Connect with a specialist based on your reported concerns: 
+                <span className="font-medium text-slate-900 ml-1">
+                  {(profile?.concerns || []).join(", ") || "Rehabilitation"}
+                </span>
+              </p>
+              
+              <Button asChild className="w-full bg-blue-600 hover:bg-blue-700 text-white h-10 mt-1">
+                 <Link href="/discover">
+                   Browse Recommended Therapists
+                 </Link>
+              </Button>
+            </div>
+          )}
+        </section>
 
-        {/* Compact Progress Area */}
+        {/* STATE D: Active exercise plan */}
+        {assignment && assignment.status === "active" && (
+          <section>
+            <h2 className="text-xs font-semibold uppercase tracking-wider text-slate-500 mb-3">
+              Your Exercises
+            </h2>
+            
+            {!featuredAssignment ? (
+               <div className="bg-slate-50 border border-slate-200 rounded-2xl p-6 text-center space-y-2">
+                   <p className="text-sm font-medium text-slate-900">No active exercises.</p>
+                   <p className="text-xs text-slate-500">Your therapist will assign exercises here.</p>
+               </div>
+            ) : (
+               <div className="relative bg-slate-900 text-white rounded-2xl p-5 shadow-lg overflow-hidden group">
+                 <div className="absolute top-0 right-0 p-4 opacity-10 transition-transform duration-500 group-hover:scale-110 group-hover:rotate-6">
+                   <Activity className="w-32 h-32 -mt-4 -mr-4" />
+                 </div>
+                 
+                 <div className="relative z-10">
+                   <div className="inline-block px-2.5 py-1 bg-white/20 rounded-md text-[10px] font-semibold tracking-wide uppercase mb-4 backdrop-blur-sm">
+                     {featuredAssignment.type === "assigned" ? "Assigned by therapist" : "Suggested"}
+                   </div>
+                   
+                   <h3 className="text-xl font-semibold mb-1">{featuredAssignment.exercise.name}</h3>
+                   <p className="text-sm text-slate-300 mb-6 font-medium">
+                     {featuredAssignment.targetReps} reps • {featuredAssignment.exercise.difficulty}
+                   </p>
+                   
+                   <Button asChild className="w-full bg-white text-slate-900 hover:bg-slate-100 h-12 rounded-xl text-sm font-semibold shadow-sm transition-all group-hover:shadow-md">
+                     <Link href={`/exercise/${featuredAssignment.exercise.id}/setup`}>
+                       Start Session <ChevronRight className="w-4 h-4 ml-1.5" />
+                     </Link>
+                   </Button>
+                 </div>
+               </div>
+            )}
+
+            {/* Other Exercises List */}
+            {enrichedAssignments.length > 1 && (
+               <div className="flex flex-col mt-4">
+                 <h2 className="text-[10px] font-semibold uppercase tracking-wider text-slate-500 mb-2 px-1">
+                   More in Your Plan
+                 </h2>
+                 {enrichedAssignments.slice(1).map((ea: any) => (
+                   <Link 
+                     key={ea._id}
+                     href={`/exercise/${ea.exercise.id}/setup`} 
+                     className="flex items-center justify-between py-3 px-3 bg-white border border-slate-100 rounded-xl mb-2 group shadow-sm hover:border-slate-200 transition-colors"
+                   >
+                     <div>
+                       <h3 className="text-sm font-medium text-slate-900 group-hover:text-blue-600 transition-colors">
+                         {ea.exercise.name}
+                       </h3>
+                       <p className="text-xs text-slate-500 mt-0.5">
+                         {ea.targetReps} reps • {ea.type === "assigned" ? "Assigned" : "Suggested"}
+                       </p>
+                     </div>
+                     <ChevronRight className="w-4 h-4 text-slate-300 group-hover:text-blue-600 transition-colors" />
+                   </Link>
+                 ))}
+               </div>
+            )}
+          </section>
+        )}
+
+        {/* STATE E: Completed activity */}
         <section>
           <div className="flex items-center gap-1.5 mb-3">
             <CalendarDays className="w-4 h-4 text-slate-400" />
             <h2 className="text-xs font-semibold uppercase tracking-wider text-slate-500">
-              Your Journey
+              Your Progress
             </h2>
           </div>
           
@@ -75,36 +304,6 @@ export default function HomePage() {
           </div>
         </section>
 
-        {/* Primary Featured Exercise Action */}
-        <section>
-          <h2 className="text-xs font-semibold uppercase tracking-wider text-slate-500 mb-3">
-            Up Next
-          </h2>
-          <div className="relative bg-slate-900 text-white rounded-2xl p-5 shadow-lg overflow-hidden group">
-            <div className="absolute top-0 right-0 p-4 opacity-10 transition-transform duration-500 group-hover:scale-110 group-hover:rotate-6">
-              <Activity className="w-32 h-32 -mt-4 -mr-4" />
-            </div>
-            
-            <div className="relative z-10">
-              <div className="inline-block px-2.5 py-1 bg-white/20 rounded-md text-[10px] font-semibold tracking-wide uppercase mb-4 backdrop-blur-sm">
-                Prescribed
-              </div>
-              
-              <h3 className="text-xl font-semibold mb-1">{featuredExercise.name}</h3>
-              <p className="text-sm text-slate-300 mb-6 font-medium">
-                {featuredExercise.targetReps} reps • {featuredExercise.difficulty}
-              </p>
-              
-              <Button asChild className="w-full bg-white text-slate-900 hover:bg-slate-100 h-12 rounded-xl text-sm font-semibold shadow-sm transition-all group-hover:shadow-md">
-                <Link href={`/exercise/${featuredExercise.id}/setup`}>
-                  Start Session <ChevronRight className="w-4 h-4 ml-1.5" />
-                </Link>
-              </Button>
-            </div>
-          </div>
-        </section>
-
-        {/* Compact Recent Activity */}
         <section>
           <h2 className="text-xs font-semibold uppercase tracking-wider text-slate-500 mb-3">
             Recent Activity
@@ -129,41 +328,9 @@ export default function HomePage() {
             </div>
           ) : (
             <p className="text-sm text-slate-500 italic py-2">
-              No recent activity found.
+              Complete your first session to start building your progress.
             </p>
           )}
-        </section>
-
-        {/* Other Exercises List */}
-        <section>
-          <div className="flex items-center justify-between mb-3">
-            <h2 className="text-xs font-semibold uppercase tracking-wider text-slate-500">
-              Other Exercises
-            </h2>
-            <Link href="/exercise" className="text-xs font-medium text-blue-600 hover:text-blue-700 transition-colors">
-              See all
-            </Link>
-          </div>
-          
-          <div className="flex flex-col">
-            {exercises.slice(1, 4).map((ex) => (
-              <Link 
-                key={ex.id}
-                href={`/exercise/${ex.id}/setup`} 
-                className="flex items-center justify-between py-3.5 border-b border-slate-100 last:border-0 group"
-              >
-                <div>
-                  <h3 className="text-sm font-medium text-slate-900 group-hover:text-blue-600 transition-colors">
-                    {ex.name}
-                  </h3>
-                  <p className="text-xs text-slate-500 mt-0.5">
-                    {ex.targetReps} reps • {ex.difficulty}
-                  </p>
-                </div>
-                <ChevronRight className="w-4 h-4 text-slate-300 group-hover:text-blue-600 transition-colors" />
-              </Link>
-            ))}
-          </div>
         </section>
 
       </div>

@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "cap:build": "next build && npx cap sync android",
+    "cap:build": "CAPACITOR_BUILD=true next build && npx cap sync android",
     "cap:sync": "npx cap sync android",
     "cap:open": "npx cap open android",
     "cap:run": "npx cap run android"

@@ -3,9 +3,7 @@ import mongoose, { Schema, Document } from "mongoose";
 export interface IPatientProfile extends Document {
   clerkUserId: string;
   dateOfBirth?: Date;
-  primaryConcern?: string;
-  affectedBodyArea?: string;
-  experienceLevel?: string;
+  concerns: string[];
   onboardingCompleted: boolean;
   createdAt: Date;
   updatedAt: Date;
@@ -22,14 +20,9 @@ const PatientProfileSchema = new Schema(
     dateOfBirth: {
       type: Date,
     },
-    primaryConcern: {
-      type: String,
-    },
-    affectedBodyArea: {
-      type: String,
-    },
-    experienceLevel: {
-      type: String,
+    concerns: {
+      type: [String],
+      default: [],
     },
     onboardingCompleted: {
       type: Boolean,

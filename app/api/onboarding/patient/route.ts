@@ -22,7 +22,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const { primaryConcern, affectedBodyArea, experienceLevel } = await req.json();
+    const { concerns } = await req.json();
 
     await connectToDatabase();
 
@@ -36,13 +36,34 @@ export async function POST(req: Request) {
     await PatientProfile.findOneAndUpdate(
       { clerkUserId },
       {
-        primaryConcern,
-        affectedBodyArea,
-        experienceLevel,
+        concerns: concerns || [],
         onboardingCompleted: true
       },
       { upsert: true, new: true }
     );
+
+    // Rule-based Exercise Suggestions
+    if (concerns && concerns.length > 0) {
+       const ExerciseAssignment = (await import("@/lib/models/ExerciseAssignment")).default;
+       
+       const suggestions: any[] = [];
+       
+       if (concerns.includes("Neck")) {
+          suggestions.push({ patientId: clerkUserId, exerciseId: "neck-rotation", type: "suggested", status: "active", targetSets: 2, targetReps: 10 });
+       }
+       if (concerns.includes("Shoulder") || concerns.includes("Arm / Elbow")) {
+          suggestions.push({ patientId: clerkUserId, exerciseId: "seated-bicep-curl", type: "suggested", status: "active", targetSets: 3, targetReps: 12 });
+       }
+       if (concerns.includes("Knee")) {
+          suggestions.push({ patientId: clerkUserId, exerciseId: "seated-knee-extension", type: "suggested", status: "active", targetSets: 3, targetReps: 10 });
+       }
+
+       if (suggestions.length > 0) {
+          // Delete existing suggestions to replace them
+          await ExerciseAssignment.deleteMany({ patientId: clerkUserId, type: "suggested" });
+          await ExerciseAssignment.insertMany(suggestions);
+       }
+    }
 
     user.onboardingCompleted = true;
     await user.save();
