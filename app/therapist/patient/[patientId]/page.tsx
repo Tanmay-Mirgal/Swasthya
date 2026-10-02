@@ -8,8 +8,9 @@ import { getPatientById, getPatientSessions } from "@/lib/therapist/therapistSto
 import { Patient } from "@/lib/therapist/types";
 import { SessionRecord } from "@/lib/exercises/types";
 import { getExerciseById } from "@/lib/exercises/registry";
-import { FilePlus, Calendar, Activity, CheckCircle2, AlertTriangle, ChevronRight } from "lucide-react";
-
+import { FilePlus, CheckCircle2, Activity, AlertCircle } from "lucide-react";
+import { Card, CardContent } from "@/components/ui/Card";
+import { Button } from "@/components/ui/Button";
 
 export default function PatientDetailPage({ params }: { params: Promise<{ patientId: string }> }) {
   const { patientId } = use(params);
@@ -24,12 +25,11 @@ export default function PatientDetailPage({ params }: { params: Promise<{ patien
   if (!patient) {
     return (
       <AppShell title="Loading..." showBackNav backHref="/therapist">
-        <div className="text-center py-10 text-zinc-400 text-xs">Patient not found.</div>
+        <div className="text-center py-10 text-slate-500 text-sm">Patient not found.</div>
       </AppShell>
     );
   }
 
-  // Summary logic
   const totalSessions = sessions.length;
   const avgRom = totalSessions > 0 
     ? Math.round(sessions.reduce((acc, s) => acc + s.rom, 0) / totalSessions) 
@@ -37,91 +37,108 @@ export default function PatientDetailPage({ params }: { params: Promise<{ patien
 
   return (
     <AppShell title="Patient Profile" showBackNav backHref="/therapist">
-      <div className="space-y-4 pt-2">
+      <div className="space-y-6">
+        
         {/* Patient Details */}
-        <div className="bg-zinc-900/90 border border-zinc-800/80 rounded-2xl p-4 shadow-xl backdrop-blur-xl">
-          <h2 className="text-lg font-extrabold text-white">{patient.name}</h2>
-          <div className="flex flex-wrap items-center gap-x-4 gap-y-2 mt-2 text-xs text-zinc-400">
-            <span>Age: {patient.age}</span>
-            <span>Height: {patient.height}</span>
+        <Card>
+          <CardContent className="p-4 space-y-3">
+            <div>
+              <h2 className="text-xl font-bold text-slate-900">{patient.name}</h2>
+              <div className="flex items-center gap-4 text-sm text-slate-500 mt-1">
+                <span>Age {patient.age}</span>
+                <span>{patient.height}</span>
+              </div>
+            </div>
+            <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-amber-50 text-amber-700 text-xs font-medium border border-amber-200">
+              <AlertCircle className="w-3.5 h-3.5" />
+              {patient.condition}
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Performance Summary */}
+        <section className="space-y-3">
+          <h3 className="text-sm font-semibold text-slate-900">Performance Summary</h3>
+          <div className="grid grid-cols-2 gap-3">
+            <Card>
+              <CardContent className="p-4 text-center space-y-1">
+                <span className="text-xs font-medium text-slate-500">Average ROM</span>
+                <p className="text-2xl font-bold text-slate-900">{avgRom}&deg;</p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="p-4 text-center space-y-1">
+                <span className="text-xs font-medium text-slate-500">Sessions</span>
+                <p className="text-2xl font-bold text-slate-900">{totalSessions}</p>
+              </CardContent>
+            </Card>
           </div>
-          <div className="mt-3 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-zinc-800/80 border border-zinc-700/60 text-[10px] font-bold text-zinc-300">
-            <AlertTriangle className="w-3.5 h-3.5 text-amber-400" />
-            {patient.condition}
-          </div>
-        </div>
+        </section>
 
         {/* Prescriptions */}
-        <div className="space-y-2">
-          <div className="flex items-center justify-between px-1">
-            <h3 className="text-xs font-extrabold uppercase tracking-widest text-zinc-400">Active Prescriptions</h3>
-            <Link 
-              href={`/therapist/patient/${patientId}/prescribe`}
-              className="flex items-center gap-1 text-[10px] font-bold bg-indigo-600/20 text-indigo-400 px-2 py-1 rounded-full hover:bg-indigo-600/40 transition-colors"
-            >
-              <FilePlus className="w-3 h-3" /> Assign New
-            </Link>
+        <section className="space-y-3">
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-semibold text-slate-900">Prescriptions</h3>
+            <Button asChild size="sm" variant="outline">
+              <Link href={`/therapist/patient/${patientId}/prescribe`}>
+                <FilePlus className="w-4 h-4 mr-2" /> Assign New
+              </Link>
+            </Button>
           </div>
-          <div className="space-y-2">
+          
+          <div className="space-y-3">
             {patient.prescriptions.length === 0 ? (
-              <p className="text-xs text-zinc-500 italic px-1">No active prescriptions.</p>
+              <p className="text-sm text-slate-500 italic">No active prescriptions.</p>
             ) : (
               patient.prescriptions.map(rx => {
                 const ex = getExerciseById(rx.exerciseId);
                 return (
-                  <div key={rx.id} className="bg-zinc-900/80 border border-indigo-500/20 rounded-2xl p-3.5 shadow-md flex justify-between items-center">
-                    <div>
-                      <h4 className="text-sm font-bold text-white">{ex?.name || rx.exerciseId}</h4>
-                      <p className="text-[11px] text-zinc-400 mt-0.5">
-                        {rx.targetSets} sets × {rx.targetReps} reps {rx.targetROM ? `• ${rx.targetROM}° Target ROM` : ''}
+                  <Card key={rx.id}>
+                    <CardContent className="p-4">
+                      <h4 className="text-sm font-semibold text-slate-900">{ex?.name || rx.exerciseId}</h4>
+                      <p className="text-xs text-slate-500 mt-1">
+                        {rx.targetSets} sets × {rx.targetReps} reps {rx.targetROM ? `• Target ${rx.targetROM}° ROM` : ''}
                       </p>
-                    </div>
-                  </div>
+                    </CardContent>
+                  </Card>
                 );
               })
             )}
           </div>
-        </div>
-
-        {/* Performance Summary */}
-        <div className="space-y-2 pt-2">
-           <h3 className="text-xs font-extrabold uppercase tracking-widest text-zinc-400 px-1">Performance Summary</h3>
-           <div className="grid grid-cols-2 gap-2.5">
-             <div className="bg-zinc-900/80 border border-zinc-800/80 rounded-2xl p-3.5 text-center shadow-lg">
-                <span className="text-2xl font-black font-mono text-cyan-400">{avgRom}&deg;</span>
-                <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider mt-1">Average ROM</p>
-             </div>
-             <div className="bg-zinc-900/80 border border-zinc-800/80 rounded-2xl p-3.5 text-center shadow-lg">
-                <span className="text-2xl font-black font-mono text-white">{totalSessions}</span>
-                <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider mt-1">Sessions</p>
-             </div>
-           </div>
-        </div>
+        </section>
 
         {/* Recent Sessions */}
-        <div className="space-y-2 pt-2 pb-6">
-          <h3 className="text-xs font-extrabold uppercase tracking-widest text-zinc-400 px-1">Recent Sessions</h3>
+        <section className="space-y-3 pb-6">
+          <h3 className="text-sm font-semibold text-slate-900">Recent Sessions</h3>
           {sessions.length === 0 ? (
-            <p className="text-xs text-zinc-500 italic px-1">No sessions recorded yet.</p>
+            <p className="text-sm text-slate-500 italic">No sessions recorded yet.</p>
           ) : (
-            <div className="space-y-2">
+            <div className="space-y-3">
               {sessions.map(s => (
-                <div key={s.id} className="bg-zinc-900/80 border border-zinc-800/80 rounded-2xl p-3.5 shadow-md">
-                   <div className="flex justify-between items-center mb-2">
-                     <span className="text-xs font-bold text-white">{s.exerciseName}</span>
-                     <span className="text-[9px] font-mono text-zinc-400 bg-zinc-800 px-1.5 py-0.5 rounded-full">
-                       {new Date(s.date).toLocaleDateString()}
-                     </span>
-                   </div>
-                   <div className="flex items-center gap-4 text-[10px] text-zinc-300">
-                     <div className="flex items-center gap-1"><CheckCircle2 className="w-3 h-3 text-emerald-400" /> {s.completedReps} Reps</div>
-                     <div className="flex items-center gap-1"><Activity className="w-3 h-3 text-cyan-400" /> {s.rom}&deg; ROM</div>
-                   </div>
-                </div>
+                <Card key={s.id}>
+                  <CardContent className="p-4">
+                    <div className="flex justify-between items-start mb-3">
+                      <span className="text-sm font-semibold text-slate-900">{s.exerciseName}</span>
+                      <span className="text-xs text-slate-500">
+                        {new Date(s.date).toLocaleDateString()}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-4 text-xs font-medium text-slate-600">
+                      <div className="flex items-center gap-1.5">
+                        <CheckCircle2 className="w-4 h-4 text-emerald-500" /> 
+                        {s.completedReps} Reps
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        <Activity className="w-4 h-4 text-blue-500" /> 
+                        {s.rom}&deg; ROM
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
               ))}
             </div>
           )}
-        </div>
+        </section>
       </div>
     </AppShell>
   );

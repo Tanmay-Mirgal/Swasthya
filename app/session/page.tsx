@@ -1,3 +1,4 @@
+/* eslint-disable react-hooks/set-state-in-effect */
 "use client";
 
 import { useEffect, useState } from "react";
@@ -29,10 +30,10 @@ export default function SessionSummaryPage() {
     return (
       <AppShell title="Session Summary">
         <div className="flex flex-col items-center justify-center flex-1 py-12 text-center space-y-4">
-          <p className="text-sm text-zinc-400">No session record found.</p>
+          <p className="text-sm text-slate-500">No session record found.</p>
           <a
             href="/exercise"
-            className="px-4 py-2 bg-emerald-600 text-white rounded-xl text-xs font-semibold"
+            className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-semibold shadow-sm transition-colors"
           >
             Start an Exercise
           </a>

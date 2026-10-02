@@ -85,29 +85,19 @@ span a {
   padding-right: var(--safe-area-right);
 }
 
-/* ── Glassmorphism & Ambient Glow Utilities ────────────────────────── */
+/* ── Standard UI Overrides ─────────────────────────────────────────── */
 .glass-panel {
-  background: rgba(18, 18, 22, 0.75);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border: 1px solid rgba(226, 232, 240, 1);
 }
 
 .glass-card {
-  background: rgba(24, 24, 27, 0.6);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border: 1px solid rgba(255, 255, 255, 0.07);
+  background: #ffffff;
+  border: 1px solid rgba(226, 232, 240, 1);
 }
 
-.glass-card:hover {
-  border-color: rgba(16, 185, 129, 0.3);
-  box-shadow: 0 0 25px -5px rgba(16, 185, 129, 0.12);
-}
-
-.glow-emerald {
-  box-shadow: 0 0 35px -5px rgba(16, 185, 129, 0.25);
-}
 
 /* ── Smooth Custom Scrollbars ──────────────────────────────────────── */
 ::-webkit-scrollbar {

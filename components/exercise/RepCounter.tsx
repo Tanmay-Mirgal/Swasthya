@@ -1,4 +1,5 @@
-import { Target, Activity } from "lucide-react";
+import { Target } from "lucide-react";
+import { Card, CardContent } from "@/components/ui/Card";
 
 interface RepCounterProps {
   completedReps: number;
@@ -7,51 +8,44 @@ interface RepCounterProps {
 
 export default function RepCounter({ completedReps, targetReps }: RepCounterProps) {
   const percentage = Math.min(100, Math.round((completedReps / Math.max(1, targetReps)) * 100));
+  const isComplete = completedReps >= targetReps;
 
   return (
-    <div className="bg-zinc-900/90 border border-zinc-800/80 rounded-2xl p-4 shadow-xl backdrop-blur-xl space-y-3 relative overflow-hidden">
-      {/* Background glow when target completed */}
-      {completedReps >= targetReps && (
-        <div className="absolute inset-0 bg-emerald-500/10 backdrop-blur-xl border border-emerald-500/30 animate-pulse pointer-events-none" />
-      )}
-
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <div className="w-8 h-8 rounded-xl bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center">
-            <Target className="w-4 h-4 text-emerald-400" />
-          </div>
-          <div>
-            <p className="text-[10px] font-bold uppercase tracking-widest text-zinc-400">
-              Exercise Goal
-            </p>
-            <h2 className="text-sm font-extrabold text-white leading-tight">
-              Repetition Target
+    <Card className={isComplete ? "bg-emerald-50 border-emerald-200" : ""}>
+      <CardContent className="p-4 space-y-3">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Target className={`w-5 h-5 ${isComplete ? "text-emerald-600" : "text-slate-600"}`} />
+            <h2 className="text-sm font-semibold text-slate-900">
+              Repetitions
             </h2>
           </div>
-        </div>
 
-        <div className="text-right">
-          <div className="flex items-baseline gap-1 justify-end">
-            <span className="text-2xl font-black font-mono text-emerald-400 tracking-tight">
-              {completedReps}
-            </span>
-            <span className="text-xs font-bold text-zinc-500 font-mono">
-              / {targetReps}
-            </span>
+          <div className="text-right">
+            <div className="flex items-baseline gap-1 justify-end">
+              <span className={`text-2xl font-bold tracking-tight ${isComplete ? "text-emerald-700" : "text-slate-900"}`}>
+                {completedReps}
+              </span>
+              <span className="text-sm text-slate-500 font-medium">
+                / {targetReps}
+              </span>
+            </div>
           </div>
-          <p className="text-[10px] font-semibold text-zinc-400">
-            {completedReps >= targetReps ? "Target Reached! 🎉" : `${percentage}% Completed`}
-          </p>
         </div>
-      </div>
 
-      {/* Progress Bar */}
-      <div className="w-full h-2.5 bg-zinc-950 rounded-full overflow-hidden border border-zinc-800/60 p-0.5">
-        <div
-          className="h-full bg-gradient-to-r from-emerald-500 to-teal-400 rounded-full transition-all duration-500 ease-out shadow-[0_0_12px_#10b981]"
-          style={{ width: `${percentage}%` }}
-        />
-      </div>
-    </div>
+        {/* Progress Bar */}
+        <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden">
+          <div
+            className={`h-full transition-all duration-500 ease-out ${isComplete ? "bg-emerald-500" : "bg-slate-900"}`}
+            style={{ width: `${percentage}%` }}
+          />
+        </div>
+        {isComplete && (
+          <p className="text-xs text-emerald-600 font-medium text-center">
+            Target Reached!
+          </p>
+        )}
+      </CardContent>
+    </Card>
   );
 }

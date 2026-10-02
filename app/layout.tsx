@@ -32,8 +32,8 @@ export const viewport: Viewport = {
   minimumScale: 1,
   maximumScale: 1,
   userScalable: false,
-  // Android status bar color — matches app's emerald theme
-  themeColor: "#09090b",
+  // Android status bar color — matches app's light theme
+  themeColor: "#ffffff",
   // Support notch / gesture bar safe areas
   viewportFit: "cover",
 };
@@ -46,9 +46,9 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased dark`}
+      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col bg-zinc-950 text-zinc-100 selection:bg-emerald-500/30 selection:text-emerald-200">
+      <body className="min-h-full flex flex-col bg-slate-50 text-slate-900 selection:bg-blue-500/30 selection:text-blue-900">
         {children}
       </body>
     </html>

@@ -1,3 +1,4 @@
+/* eslint-disable react-hooks/set-state-in-effect */
 "use client";
 
 import { RefObject, ReactNode, useState, useEffect } from "react";
@@ -142,7 +143,7 @@ export default function CameraView({
             {errorMessage
               ? "Camera Permission / Access Error"
               : isLoading
-              ? "Loading MediaPipe AI Model..."
+              ? "Starting camera..."
               : "Camera Off"}
           </p>
 

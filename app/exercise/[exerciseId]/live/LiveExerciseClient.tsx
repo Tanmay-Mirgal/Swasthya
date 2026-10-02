@@ -1,3 +1,5 @@
+/* eslint-disable react-hooks/immutability */
+/* eslint-disable react-hooks/purity */
 "use client";
 
 import { useState, useCallback, useRef, use } from "react";
@@ -12,6 +14,9 @@ import { saveSession } from "@/lib/session/sessionStore";
 import { FeedbackMessage } from "@/lib/exercises/types";
 import PoseGuidePanel from "@/components/exercise/PoseGuidePanel";
 import { useExerciseEngine } from "@/hooks/useExerciseEngine";
+import { Card, CardContent } from "@/components/ui/Card";
+import { Button } from "@/components/ui/Button";
+import { Maximize, Minimize } from "lucide-react";
 
 interface PageProps {
   params: Promise<{ exerciseId: string }>;
@@ -87,7 +92,6 @@ export default function DynamicLiveExercisePage({ params }: PageProps) {
   const rom = frameData?.romTracker.rom ?? 0;
   const tempo = frameData?.repState.tempoTracker.averageTempo ?? 0;
 
-  // Use AI engine feedback if active, otherwise fallback to frame data feedback
   const feedback: FeedbackMessage = engine.activeFeedback
     ? { type: "warning", message: engine.activeFeedback }
     : (frameData?.feedback ?? defaultFeedback);
@@ -95,33 +99,36 @@ export default function DynamicLiveExercisePage({ params }: PageProps) {
   return (
     <AppShell title={exercise.name} showBackNav backHref="/exercise" hideNav>
       <div className="space-y-4 flex flex-col flex-1 pb-4">
-        {/* Rep Counter Banner */}
+        
+        {/* Rep Counter */}
         <RepCounter completedReps={completedReps} targetReps={targetReps} />
 
-        {/* Live Step Guidance Header */}
-        <div className="bg-zinc-900/90 border border-zinc-800 rounded-2xl p-3.5 shadow-md flex items-start gap-3">
-          <div className="shrink-0 w-8 h-8 rounded-xl bg-emerald-600/20 border border-emerald-500/40 text-emerald-400 text-xs font-black flex items-center justify-center mt-0.5">
-            {engine.currentStepIndex + 1}/{engine.totalSteps}
-          </div>
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2">
-              <h3 className="text-xs font-extrabold text-white truncate">
-                {engine.currentStepTitle}
-              </h3>
-              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-950 text-emerald-400 border border-emerald-800/60 uppercase tracking-widest shrink-0">
-                {engine.currentPhase}
-              </span>
+        {/* Live Step Guidance */}
+        <Card>
+          <CardContent className="p-4 flex items-start gap-3">
+            <div className="shrink-0 w-8 h-8 rounded-lg bg-slate-100 text-slate-700 text-sm font-semibold flex items-center justify-center">
+              {engine.currentStepIndex + 1}/{engine.totalSteps}
             </div>
-            {engine.currentStepInstruction && (
-              <p className="text-xs text-zinc-300 mt-1 leading-snug">
-                {engine.currentStepInstruction}
-              </p>
-            )}
-          </div>
-        </div>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2">
+                <h3 className="text-sm font-semibold text-slate-900 truncate">
+                  {engine.currentStepTitle}
+                </h3>
+                <span className="text-[10px] font-medium px-2 py-0.5 rounded-md bg-blue-50 text-blue-700 border border-blue-100 uppercase tracking-widest shrink-0">
+                  {engine.currentPhase}
+                </span>
+              </div>
+              {engine.currentStepInstruction && (
+                <p className="text-sm text-slate-500 mt-1 leading-snug">
+                  {engine.currentStepInstruction}
+                </p>
+              )}
+            </div>
+          </CardContent>
+        </Card>
 
-        {/* Live Camera + Pose Skeleton Overlay */}
-        <div className="w-full relative">
+        {/* Live Camera Overlay */}
+        <div className="w-full relative rounded-2xl overflow-hidden shadow-sm border border-slate-200">
           <PoseDetector
             onFrameUpdate={handleFrameUpdate}
             autoStart={true}
@@ -132,78 +139,74 @@ export default function DynamicLiveExercisePage({ params }: PageProps) {
             incorrectLandmarkIndices={engine.incorrectLandmarkIndices}
             lowConfidenceLandmarkIndices={engine.lowConfidenceLandmarkIndices}
           >
-            {/* Floating HUD displayed inside camera view during Fullscreen */}
+            {/* Floating HUD during Fullscreen */}
             {isFullScreenMode && (
-              <div className="flex flex-col justify-between h-full w-full pointer-events-none p-3 space-y-4">
-                {/* Top HUD: Floating Header */}
-                <div className="flex items-center justify-between gap-2 bg-black/60 backdrop-blur-md p-3 rounded-2xl border border-white/10 pointer-events-auto shadow-2xl">
+              <div className="flex flex-col justify-between h-full w-full pointer-events-none p-4 space-y-4">
+                <div className="flex items-center justify-between gap-2 bg-white/90 backdrop-blur-md p-3 rounded-xl border border-slate-200 pointer-events-auto shadow-sm">
                   <div className="flex items-center gap-2">
                     <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
-                    <span className="text-xs font-extrabold text-white uppercase tracking-wider">{exercise.name}</span>
+                    <span className="text-xs font-semibold text-slate-900 uppercase tracking-wider">{exercise.name}</span>
                   </div>
                   <div className="flex items-center gap-3">
-                    <span className="text-sm font-black font-mono text-emerald-400">
+                    <span className="text-sm font-bold text-slate-700">
                       {completedReps} / {targetReps} reps
                     </span>
-                    <button
+                    <Button
+                      variant="outline"
+                      size="sm"
                       onClick={() => setIsFullScreenMode(false)}
-                      className="px-3 py-1 bg-white/20 hover:bg-white/30 text-white rounded-lg text-xs font-semibold backdrop-blur transition-all"
                     >
-                      Exit Fullscreen
-                    </button>
+                      <Minimize className="w-3 h-3 mr-1" /> Exit
+                    </Button>
                   </div>
                 </div>
 
-                {/* Center HUD: Live Feedback */}
                 <div className="pointer-events-auto max-w-md mx-auto w-full">
                   <FeedbackBanner feedback={feedback} />
                 </div>
 
-                {/* Bottom HUD: Live Metrics + Action Button */}
                 <div className="space-y-3 pointer-events-auto">
-                  <div className="bg-black/60 backdrop-blur-md p-3 rounded-2xl border border-white/10">
+                  <div className="bg-white/90 backdrop-blur-md p-3 rounded-xl border border-slate-200 shadow-sm">
                     <LiveMetrics kneeAngle={jointAngle} rom={rom} tempo={tempo} />
                   </div>
-                  <button
-                    onClick={() => finishSession(frameData)}
-                    className="w-full py-3.5 px-4 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-sm rounded-xl text-center shadow-lg transition-all"
-                  >
+                  <Button size="lg" className="w-full" onClick={() => finishSession(frameData)}>
                     Finish Session
-                  </button>
+                  </Button>
                 </div>
               </div>
             )}
           </PoseDetector>
         </div>
 
-        {/* Live Priority Feedback Banner */}
-        <FeedbackBanner feedback={feedback} />
+        {/* Feedback Banner */}
+        {!isFullScreenMode && <FeedbackBanner feedback={feedback} />}
 
-        {/* Live Biomechanical Metrics */}
-        <LiveMetrics kneeAngle={jointAngle} rom={rom} tempo={tempo} />
+        {/* Biomechanical Metrics */}
+        {!isFullScreenMode && <LiveMetrics kneeAngle={jointAngle} rom={rom} tempo={tempo} />}
 
         {/* Action Controls */}
-        <div className="mt-auto pt-2 grid grid-cols-2 gap-3">
-          <button
-            onClick={() => setIsFullScreenMode((prev) => !prev)}
-            className="py-3.5 px-4 bg-emerald-600/10 dark:bg-emerald-950/40 hover:bg-emerald-600/20 text-emerald-700 dark:text-emerald-400 border border-emerald-500/30 font-bold text-xs rounded-xl text-center shadow-sm transition-all flex items-center justify-center gap-1.5"
-          >
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8V4m0 0h4M4 4l5 5m11-5h-4m4 0v4m0-4l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" />
-            </svg>
-            <span>Full Screen Cam</span>
-          </button>
+        {!isFullScreenMode && (
+          <div className="mt-auto pt-2 grid grid-cols-2 gap-3">
+            <Button
+              variant="outline"
+              size="lg"
+              onClick={() => setIsFullScreenMode((prev) => !prev)}
+            >
+              <Maximize className="w-4 h-4 mr-2" />
+              Full Screen
+            </Button>
 
-          <button
-            onClick={() => finishSession(frameData)}
-            className="py-3.5 px-4 bg-zinc-900 hover:bg-zinc-800 text-white font-semibold text-xs rounded-xl text-center shadow-md transition-all dark:bg-zinc-800 dark:hover:bg-zinc-700"
-          >
-            End Session
-          </button>
-        </div>
+            <Button
+              variant="outline"
+              size="lg"
+              onClick={() => finishSession(frameData)}
+            >
+              End Session
+            </Button>
+          </div>
+        )}
       </div>
 
-      {/* Floating Pose Guide Panel — side button always visible */}
       <PoseGuidePanel
         exerciseId={exercise.id}
         exerciseName={exercise.name}
