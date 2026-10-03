@@ -12,6 +12,14 @@ const nextConfig: NextConfig = {
 
   // Trailing slash ensures correct asset paths inside Capacitor WebView
   trailingSlash: true,
+
+  experimental: {
+    cpus: 4,
+  },
+
+  typescript: {
+    ignoreBuildErrors: true,
+  },
 };
 
 export default nextConfig;

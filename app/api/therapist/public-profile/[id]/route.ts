@@ -2,12 +2,18 @@ import { NextResponse } from "next/server";
 import connectToDatabase from "@/lib/mongodb";
 import TherapistProfile from "@/lib/models/TherapistProfile";
 
-export const dynamic = "force-dynamic";
+export function generateStaticParams() {
+  return [{ id: "export" }];
+}
 
 export async function GET(
   req: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  if (process.env.CAPACITOR_BUILD === "true") {
+    return NextResponse.json({ ok: true });
+  }
+
   try {
     const { id } = await params;
 

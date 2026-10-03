@@ -8,12 +8,18 @@ import User from "@/lib/models/User";
 
 const clerkClient = createClerkClient({ secretKey: process.env.CLERK_SECRET_KEY });
 
-export const dynamic = "force-dynamic";
+export function generateStaticParams() {
+  return [{ patientId: "export" }];
+}
 
 export async function GET(
   req: Request,
   { params }: { params: Promise<{ patientId: string }> }
 ) {
+  if (process.env.CAPACITOR_BUILD === "true") {
+    return NextResponse.json({ ok: true });
+  }
+
   try {
     const { patientId } = await params;
     const authHeader = req.headers.get("Authorization");
