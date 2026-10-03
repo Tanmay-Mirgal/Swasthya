@@ -36,14 +36,14 @@ export async function GET(req: Request) {
     let therapists = await TherapistProfile.find({}).lean();
     
     // Sort therapists: those whose specialization matches concerns come first
-    const concernsLower = (profile.concerns || []).map(c => c.toLowerCase());
+    const concernsLower = (profile.concerns || []).map((c: string) => c.toLowerCase());
     
     therapists = therapists.sort((a, b) => {
       const aSpec = (a.specialization || "").toLowerCase();
       const bSpec = (b.specialization || "").toLowerCase();
       
-      const aMatches = concernsLower.some(c => aSpec.includes(c));
-      const bMatches = concernsLower.some(c => bSpec.includes(c));
+      const aMatches = concernsLower.some((c: string) => aSpec.includes(c));
+      const bMatches = concernsLower.some((c: string) => bSpec.includes(c));
       
       if (aMatches && !bMatches) return -1;
       if (!aMatches && bMatches) return 1;

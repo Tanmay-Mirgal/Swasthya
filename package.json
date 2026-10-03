@@ -10,9 +10,11 @@
     "cap:build": "CAPACITOR_BUILD=true next build && npx cap sync android",
     "cap:sync": "npx cap sync android",
     "cap:open": "npx cap open android",
-    "cap:run": "npx cap run android"
+    "cap:run": "npx cap run android",
+    "apk": "powershell -ExecutionPolicy Bypass -File ./build-apk.ps1"
   },
   "dependencies": {
+    "@capacitor-community/text-to-speech": "^8.0.2",
     "@capacitor/android": "^8.5.2",
     "@capacitor/core": "^8.5.2",
     "@clerk/backend": "^3.22.0",

@@ -75,7 +75,7 @@ export default function HomePage() {
 
   if (isLoading) {
     return (
-      <AppShell>
+      <AppShell hideHeader>
         <div className="flex h-full items-center justify-center">
           <Loader2 className="w-8 h-8 animate-spin text-slate-400" />
         </div>
@@ -85,7 +85,7 @@ export default function HomePage() {
 
   if (error) {
     return (
-      <AppShell>
+      <AppShell hideHeader>
         <div className="flex flex-col h-full items-center justify-center p-6 text-center space-y-4">
           <AlertCircle className="w-12 h-12 text-red-500" />
           <h2 className="text-xl font-semibold text-slate-900">Error loading dashboard</h2>
@@ -109,7 +109,7 @@ export default function HomePage() {
   const featuredAssignment = enrichedAssignments.length > 0 ? enrichedAssignments[0] : null;
 
   return (
-    <AppShell>
+    <AppShell hideHeader>
       <div className="flex flex-col space-y-8 pb-4 pt-2">
         
         {/* Top Profile / Greeting Area */}

@@ -16,7 +16,7 @@ import PoseGuidePanel from "@/components/exercise/PoseGuidePanel";
 import { useExerciseEngine } from "@/hooks/useExerciseEngine";
 import { Card, CardContent } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
-import { Maximize, Minimize } from "lucide-react";
+import { Maximize, Minimize, BookOpen } from "lucide-react";
 
 interface PageProps {
   params: Promise<{ exerciseId: string }>;
@@ -29,6 +29,7 @@ export default function DynamicLiveExercisePage({ params }: PageProps) {
   const router = useRouter();
   const [frameData, setFrameData] = useState<FrameUpdateData | null>(null);
   const [isFullScreenMode, setIsFullScreenMode] = useState<boolean>(false);
+  const [isGuideOpen, setIsGuideOpen] = useState<boolean>(false);
 
   const engine = useExerciseEngine(exercise.id, exercise.name);
 
@@ -97,7 +98,22 @@ export default function DynamicLiveExercisePage({ params }: PageProps) {
     : (frameData?.feedback ?? defaultFeedback);
 
   return (
-    <AppShell title={exercise.name} showBackNav backHref="/exercise" hideNav>
+    <AppShell
+      title={exercise.name}
+      showBackNav
+      backHref="/exercise"
+      hideNav
+      rightAction={
+        <button
+          onClick={() => setIsGuideOpen(true)}
+          className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200/80 rounded-xl transition-all shadow-xs active:scale-95"
+          title="View Exercise Guide"
+        >
+          <BookOpen className="w-3.5 h-3.5 text-blue-600" />
+          <span>Guide</span>
+        </button>
+      }
+    >
       <div className="space-y-4 flex flex-col flex-1 pb-4">
         
         {/* Rep Counter */}
@@ -147,10 +163,18 @@ export default function DynamicLiveExercisePage({ params }: PageProps) {
                     <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
                     <span className="text-xs font-semibold text-slate-900 uppercase tracking-wider">{exercise.name}</span>
                   </div>
-                  <div className="flex items-center gap-3">
-                    <span className="text-sm font-bold text-slate-700">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-bold text-slate-700 mr-1">
                       {completedReps} / {targetReps} reps
                     </span>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setIsGuideOpen(true)}
+                      className="bg-white/80"
+                    >
+                      <BookOpen className="w-3.5 h-3.5 mr-1 text-blue-600" /> Guide
+                    </Button>
                     <Button
                       variant="outline"
                       size="sm"
@@ -162,7 +186,7 @@ export default function DynamicLiveExercisePage({ params }: PageProps) {
                 </div>
 
                 <div className="pointer-events-auto max-w-md mx-auto w-full">
-                  <FeedbackBanner feedback={feedback} />
+                  <FeedbackBanner feedback={feedback} issueCode={engine.activeIssueCode ?? undefined} isLoading={engine.feedbackLoading} />
                 </div>
 
                 <div className="space-y-3 pointer-events-auto">
@@ -179,7 +203,7 @@ export default function DynamicLiveExercisePage({ params }: PageProps) {
         </div>
 
         {/* Feedback Banner */}
-        {!isFullScreenMode && <FeedbackBanner feedback={feedback} />}
+        {!isFullScreenMode && <FeedbackBanner feedback={feedback} issueCode={engine.activeIssueCode ?? undefined} isLoading={engine.feedbackLoading} />}
 
         {/* Biomechanical Metrics */}
         {!isFullScreenMode && <LiveMetrics kneeAngle={jointAngle} rom={rom} tempo={tempo} />}
@@ -211,6 +235,8 @@ export default function DynamicLiveExercisePage({ params }: PageProps) {
         exerciseId={exercise.id}
         exerciseName={exercise.name}
         instructions={exercise.instructions}
+        isOpen={isGuideOpen}
+        onOpenChange={setIsGuideOpen}
       />
     </AppShell>
   );

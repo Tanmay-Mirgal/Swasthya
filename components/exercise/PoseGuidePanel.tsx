@@ -9,6 +9,9 @@ interface PoseGuidePanelProps {
   exerciseId: string;
   exerciseName: string;
   instructions: string[];
+  isOpen?: boolean;
+  onOpenChange?: (open: boolean) => void;
+  hideFloatingTrigger?: boolean;
 }
 
 function getGuideImage(exerciseId: string): string | null {
@@ -24,40 +27,58 @@ export default function PoseGuidePanel({
   exerciseId,
   exerciseName,
   instructions,
+  isOpen: controlledIsOpen,
+  onOpenChange,
+  hideFloatingTrigger = false,
 }: PoseGuidePanelProps) {
-  const [isOpen, setIsOpen] = useState(false);
+  const [internalIsOpen, setInternalIsOpen] = useState(false);
+  const isControlled = controlledIsOpen !== undefined;
+  const isOpen = isControlled ? controlledIsOpen : internalIsOpen;
+
+  const setOpen = (open: boolean) => {
+    if (!isControlled) {
+      setInternalIsOpen(open);
+    }
+    onOpenChange?.(open);
+  };
+
   const guideImage = getGuideImage(exerciseId);
 
   return (
     <>
-      {/* Floating trigger button */}
-      <button
-        id="pose-guide-toggle"
-        onClick={() => setIsOpen((prev) => !prev)}
-        className={`
-          fixed right-0 top-1/2 -translate-y-1/2 z-50
-          flex items-center gap-1.5 py-3 pl-3 pr-2
-          rounded-l-xl border border-r-0 shadow-md backdrop-blur-md transition-all
-          ${isOpen
-            ? "bg-slate-900 border-slate-900 text-white"
-            : "bg-white border-slate-200 text-slate-700 hover:bg-slate-50"
-          }
-        `}
-      >
-        {isOpen ? <X className="w-4 h-4 shrink-0" /> : <BookOpen className="w-4 h-4 shrink-0" />}
-        <span
-          className="text-[10px] font-bold uppercase tracking-widest leading-none"
-          style={{ writingMode: "vertical-rl", transform: "rotate(180deg)" }}
+      {/* Mobile-friendly Floating trigger button */}
+      {!hideFloatingTrigger && (
+        <button
+          id="pose-guide-toggle"
+          onClick={() => setOpen(!isOpen)}
+          className={`
+            fixed right-3 sm:right-6 top-20 z-40
+            flex items-center gap-1.5 px-3 py-2
+            rounded-full border shadow-md backdrop-blur-md transition-all active:scale-95
+            ${
+              isOpen
+                ? "bg-slate-900 border-slate-900 text-white"
+                : "bg-white/95 border-slate-200 text-slate-800 hover:bg-white"
+            }
+          `}
+          title={isOpen ? "Close Guide" : "Open Exercise Guide"}
         >
-          {isOpen ? "Close" : "Guide"}
-        </span>
-      </button>
+          {isOpen ? (
+            <X className="w-4 h-4 shrink-0 text-slate-400" />
+          ) : (
+            <BookOpen className="w-4 h-4 shrink-0 text-blue-600" />
+          )}
+          <span className="text-xs font-semibold">
+            {isOpen ? "Close" : "Guide"}
+          </span>
+        </button>
+      )}
 
       {/* Slide-in panel */}
       <div
         className={`
-          fixed right-0 top-0 h-full z-40
-          w-[85vw] max-w-sm bg-white border-l border-slate-200 shadow-2xl
+          fixed right-0 top-0 h-full z-50
+          w-full max-w-[400px] bg-white border-l border-slate-200 shadow-2xl
           flex flex-col transition-transform duration-300 ease-in-out
           ${isOpen ? "translate-x-0" : "translate-x-full"}
         `}
@@ -69,11 +90,11 @@ export default function PoseGuidePanel({
             <h2 className="text-base font-semibold text-slate-900 leading-tight">
               {exerciseName}
             </h2>
-            <p className="text-xs font-medium uppercase tracking-wider text-slate-500 mt-1">
-              Exercise Guide
+            <p className="text-xs font-medium uppercase tracking-wider text-slate-500 mt-0.5">
+              Exercise Guide & Form
             </p>
           </div>
-          <Button variant="ghost" size="icon" onClick={() => setIsOpen(false)}>
+          <Button variant="ghost" size="icon" onClick={() => setOpen(false)}>
             <X className="w-4 h-4" />
           </Button>
         </div>
@@ -96,15 +117,15 @@ export default function PoseGuidePanel({
           {/* Step-by-step Instructions */}
           <div className="p-4 space-y-4">
             <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-900">
-              Instructions
+              Proper Execution Steps
             </h3>
             <ol className="space-y-3">
               {instructions.map((step, idx) => (
                 <li key={idx} className="flex items-start gap-3">
-                  <span className="shrink-0 w-6 h-6 rounded-md bg-slate-100 text-slate-700 text-xs font-medium flex items-center justify-center">
+                  <span className="shrink-0 w-6 h-6 rounded-md bg-blue-50 text-blue-700 text-xs font-semibold flex items-center justify-center border border-blue-100">
                     {idx + 1}
                   </span>
-                  <span className="text-sm text-slate-600 leading-relaxed pt-0.5">{step}</span>
+                  <span className="text-sm text-slate-700 leading-relaxed pt-0.5">{step}</span>
                 </li>
               ))}
             </ol>
@@ -113,13 +134,13 @@ export default function PoseGuidePanel({
           {/* Quick Tips */}
           <div className="mx-4 mb-6 p-4 rounded-xl bg-slate-50 border border-slate-200">
             <div className="flex items-center gap-2 mb-2">
-              <Info className="w-4 h-4 text-slate-500" />
+              <Info className="w-4 h-4 text-blue-600" />
               <p className="text-xs font-semibold uppercase tracking-wider text-slate-900">
-                Important Note
+                Safety & Form Tips
               </p>
             </div>
             <p className="text-sm text-slate-600 leading-relaxed">
-              Move slowly and smoothly. Stop if you feel pain. Focus on controlled motion, not speed.
+              Move slowly and smoothly. Stop if you feel any sharp pain. Focus on controlled cadence rather than speed.
             </p>
           </div>
         </div>
@@ -128,8 +149,8 @@ export default function PoseGuidePanel({
       {/* Backdrop */}
       {isOpen && (
         <div
-          className="fixed inset-0 z-30 bg-slate-900/20 backdrop-blur-sm"
-          onClick={() => setIsOpen(false)}
+          className="fixed inset-0 z-40 bg-slate-900/30 backdrop-blur-xs"
+          onClick={() => setOpen(false)}
           aria-hidden="true"
         />
       )}
