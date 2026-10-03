@@ -117,7 +117,7 @@ export default function TherapistDashboard() {
               </h2>
             </div>
             
-            <div className="flex flex-col space-y-3">
+            <div className="flex flex-col space-y-3 md:grid md:grid-cols-2 lg:grid-cols-3 md:gap-4 md:space-y-0">
               {pendingRequests.map((req) => {
                 const name = `${req.user?.firstName || ""} ${req.user?.lastName || ""}`.trim() || "Patient";
                 const concerns = req.profile?.concerns?.join(", ") || "No specific concerns";
@@ -170,7 +170,7 @@ export default function TherapistDashboard() {
             </h2>
           </div>
           
-          <div className="flex flex-col space-y-3">
+          <div className="flex flex-col space-y-3 md:grid md:grid-cols-2 lg:grid-cols-3 md:gap-4 md:space-y-0">
             {patients.length === 0 ? (
               <div className="bg-slate-50 border border-slate-200 rounded-2xl p-6 text-center space-y-2">
                    <p className="text-sm font-medium text-slate-900">No active patients.</p>

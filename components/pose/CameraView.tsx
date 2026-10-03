@@ -19,6 +19,7 @@ interface CameraViewProps {
   forceFullScreen?: boolean;
   incorrectLandmarkIndices?: number[];
   lowConfidenceLandmarkIndices?: number[];
+  onFullScreenChange?: (isFullScreen: boolean) => void;
 }
 
 export default function CameraView({
@@ -35,6 +36,7 @@ export default function CameraView({
   forceFullScreen = false,
   incorrectLandmarkIndices = [],
   lowConfidenceLandmarkIndices = [],
+  onFullScreenChange,
 }: CameraViewProps) {
   const [isFullScreen, setIsFullScreen] = useState(forceFullScreen);
 
@@ -47,14 +49,19 @@ export default function CameraView({
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape" && isFullScreen) {
         setIsFullScreen(false);
+        onFullScreenChange?.(false);
       }
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [isFullScreen]);
+  }, [isFullScreen, onFullScreenChange]);
 
   const toggleFullScreen = () => {
-    setIsFullScreen((prev) => !prev);
+    setIsFullScreen((prev) => {
+      const next = !prev;
+      onFullScreenChange?.(next);
+      return next;
+    });
   };
 
   return (
@@ -62,7 +69,7 @@ export default function CameraView({
       className={
         isFullScreen
           ? "fixed inset-0 z-50 w-screen h-screen bg-black flex items-center justify-center overflow-hidden"
-          : "relative w-full aspect-[3/4] sm:aspect-[4/3] max-h-[580px] bg-zinc-950 rounded-2xl overflow-hidden border border-zinc-800 shadow-xl flex items-center justify-center transition-all duration-300"
+          : "relative w-full h-full min-h-[350px] aspect-[3/4] sm:aspect-[4/3] lg:aspect-auto bg-zinc-950 rounded-3xl overflow-hidden border border-zinc-800 shadow-xl flex items-center justify-center transition-all duration-300"
       }
     >
       {/* Video Element */}

@@ -69,7 +69,7 @@ export default function ExerciseSelectionPage() {
             ))}
           </div>
 
-          <div className="flex flex-col space-y-1">
+          <div className="flex flex-col space-y-1 md:grid md:grid-cols-2 lg:grid-cols-3 md:gap-4 md:space-y-0">
             {filteredExercises.map((ex) => {
               // If filter is 'all', skip the featured exercise in the list to avoid duplication
               if (filter === "all" && ex.id === featuredExercise.id) {

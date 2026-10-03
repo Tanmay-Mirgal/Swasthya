@@ -40,7 +40,7 @@ export default function ExerciseCard({
       "flex items-center gap-4 transition-all duration-200",
       isFeatured 
         ? "p-4 bg-white border border-slate-200 rounded-2xl shadow-sm hover:border-slate-300 hover:shadow-md" 
-        : "py-3 px-2 rounded-xl hover:bg-slate-50 border border-transparent hover:border-slate-100 group",
+        : "py-3 px-2 rounded-xl hover:bg-slate-50 border border-transparent hover:border-slate-100 group md:p-4 md:bg-white md:border-slate-200 md:shadow-2xs md:hover:border-slate-300 md:hover:shadow-xs",
       !isAvailable && "opacity-50 grayscale"
     )}>
       

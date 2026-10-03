@@ -115,7 +115,7 @@ export default function HomePage() {
         {/* Top Profile / Greeting Area */}
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-xl font-medium tracking-tight text-slate-900">
+            <h1 className="text-xl font-medium tracking-tight text-slate-900 md:text-2xl">
               {getGreeting()}, {user?.firstName || "Patient"}
             </h1>
             <p className="text-sm text-slate-500 mt-1">
@@ -132,9 +132,12 @@ export default function HomePage() {
             </div>
           </Link>
         </div>
+
+        {/* Content Area: Single-column on mobile, 2-column layout on desktop */}
+        <div className="flex flex-col space-y-8 lg:space-y-0 lg:grid lg:grid-cols-12 lg:gap-8 items-start">
         
         {/* Relationship / Therapist Section */}
-        <section>
+        <section className="w-full lg:col-span-4 lg:col-start-9 lg:row-start-1">
           {assignment && assignment.status === "active" ? (
             // STATE C: Therapist accepted
             <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col gap-4">
@@ -214,7 +217,7 @@ export default function HomePage() {
 
         {/* STATE D: Active exercise plan */}
         {assignment && assignment.status === "active" && (
-          <section>
+          <section className="w-full lg:col-span-8 lg:col-start-1 lg:row-start-1">
             <h2 className="text-xs font-semibold uppercase tracking-wider text-slate-500 mb-3">
               Your Exercises
             </h2>
@@ -255,30 +258,32 @@ export default function HomePage() {
                  <h2 className="text-[10px] font-semibold uppercase tracking-wider text-slate-500 mb-2 px-1">
                    More in Your Plan
                  </h2>
-                 {enrichedAssignments.slice(1).map((ea: any) => (
-                   <Link 
-                     key={ea._id}
-                     href={`/exercise/${ea.exercise.id}/setup`} 
-                     className="flex items-center justify-between py-3 px-3 bg-white border border-slate-100 rounded-xl mb-2 group shadow-sm hover:border-slate-200 transition-colors"
-                   >
-                     <div>
-                       <h3 className="text-sm font-medium text-slate-900 group-hover:text-blue-600 transition-colors">
-                         {ea.exercise.name}
-                       </h3>
-                       <p className="text-xs text-slate-500 mt-0.5">
-                         {ea.targetReps} reps • {ea.type === "assigned" ? "Assigned" : "Suggested"}
-                       </p>
-                     </div>
-                     <ChevronRight className="w-4 h-4 text-slate-300 group-hover:text-blue-600 transition-colors" />
-                   </Link>
-                 ))}
+                 <div className="flex flex-col md:grid md:grid-cols-2 md:gap-3">
+                   {enrichedAssignments.slice(1).map((ea: any) => (
+                     <Link 
+                       key={ea._id}
+                       href={`/exercise/${ea.exercise.id}/setup`} 
+                       className="flex items-center justify-between py-3 px-3 bg-white border border-slate-100 rounded-xl mb-2 md:mb-0 group shadow-sm hover:border-slate-200 transition-colors"
+                     >
+                       <div>
+                         <h3 className="text-sm font-medium text-slate-900 group-hover:text-blue-600 transition-colors">
+                           {ea.exercise.name}
+                         </h3>
+                         <p className="text-xs text-slate-500 mt-0.5">
+                           {ea.targetReps} reps • {ea.type === "assigned" ? "Assigned" : "Suggested"}
+                         </p>
+                       </div>
+                       <ChevronRight className="w-4 h-4 text-slate-300 group-hover:text-blue-600 transition-colors" />
+                     </Link>
+                   ))}
+                 </div>
                </div>
             )}
           </section>
         )}
 
         {/* STATE E: Completed activity */}
-        <section>
+        <section className="w-full lg:col-span-8 lg:col-start-1">
           <div className="flex items-center gap-1.5 mb-3">
             <CalendarDays className="w-4 h-4 text-slate-400" />
             <h2 className="text-xs font-semibold uppercase tracking-wider text-slate-500">
@@ -286,7 +291,7 @@ export default function HomePage() {
             </h2>
           </div>
           
-          <div className="flex items-center justify-between py-4 px-2 border-y border-slate-200">
+          <div className="flex items-center justify-between py-4 px-2 border-y border-slate-200 bg-white/60 rounded-xl">
             <div className="flex flex-col">
               <span className="text-2xl font-semibold text-slate-900">{stats.totalSessions}</span>
               <span className="text-xs text-slate-500 mt-0.5">Sessions</span>
@@ -304,13 +309,13 @@ export default function HomePage() {
           </div>
         </section>
 
-        <section>
+        <section className="w-full lg:col-span-8 lg:col-start-1">
           <h2 className="text-xs font-semibold uppercase tracking-wider text-slate-500 mb-3">
             Recent Activity
           </h2>
           
           {latestSession ? (
-            <div className="flex items-center gap-4 py-1">
+            <div className="flex items-center gap-4 py-1 bg-white/60 p-3 rounded-xl border border-slate-100">
               <div className="w-10 h-10 rounded-full bg-emerald-50 flex items-center justify-center shrink-0">
                 <CheckCircle2 className="w-5 h-5 text-emerald-600" />
               </div>
@@ -333,6 +338,7 @@ export default function HomePage() {
           )}
         </section>
 
+        </div> {/* Close Content Grid */}
       </div>
     </AppShell>
   );

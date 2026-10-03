@@ -78,7 +78,7 @@ export default function DiscoverTherapistsPage() {
               <p className="text-sm text-slate-500 mt-2">Please check back later or update your profile.</p>
             </div>
           ) : (
-            <div className="flex flex-col space-y-4">
+            <div className="flex flex-col space-y-4 md:grid md:grid-cols-2 lg:grid-cols-3 md:gap-6 md:space-y-0">
               {therapists.map((therapist: any) => {
                  // Simulate "relevant to" logic based on simple inclusion for display
                  const isHighlyRelevant = concerns.some((c: string) => 

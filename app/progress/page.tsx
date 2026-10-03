@@ -87,8 +87,10 @@ export default function ProgressPage() {
   return (
     <AppShell>
       <div className="flex flex-col space-y-10 pt-4 pb-12 px-2">
-        {/* Progress Summary & Chart */}
-        <section>
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+          <div className="lg:col-span-7 flex flex-col space-y-8">
+            {/* Progress Summary & Chart */}
+            <section>
           <div className="mb-8">
             <h1 className="text-4xl font-bold tracking-tight text-slate-900">
               {stats.totalSessions}
@@ -164,64 +166,71 @@ export default function ProgressPage() {
             </div>
           </div>
         </section>
-
-        {/* History Timeline */}
-        <section>
-          <div className="flex flex-col gap-6">
-            {Object.entries(groupedSessions).map(([date, dateSessions]) => (
-              <div key={date}>
-                <div className="sticky top-0 bg-slate-50/90 backdrop-blur-md py-2 z-10 mb-2 -mx-2 px-2">
-                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
-                    {date}
-                  </span>
-                </div>
-                <div className="flex flex-col gap-1">
-                  {dateSessions.map((s) => {
-                    // Form Quality Calculation
-                    const formPercentage = s.completedReps > 0
-                      ? Math.round((s.goodFormCount / s.completedReps) * 100)
-                      : 0;
-
-                    return (
-                      <div
-                        key={s.id}
-                        className="flex items-center gap-4 py-3 border-b border-slate-100 last:border-0 group cursor-default"
-                      >
-                        <div className="w-10 h-10 rounded-full bg-slate-50 flex items-center justify-center shrink-0 transition-colors group-hover:bg-slate-100">
-                          <Activity className="w-4 h-4 text-slate-400 group-hover:text-slate-600 transition-colors" />
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-semibold text-slate-900 truncate">
-                            {s.exerciseName}
-                          </p>
-                          <div className="flex items-center gap-2 mt-1 text-[11px] font-medium text-slate-500">
-                            <span>
-                              {s.completedReps}/{s.targetReps} reps
-                            </span>
-                            <span className="opacity-30">•</span>
-                            <span className={cn(
-                              formPercentage >= 80 ? "text-emerald-600" : ""
-                            )}>
-                              {formPercentage}% form
-                            </span>
-                            <span className="opacity-30">•</span>
-                            <span>{s.rom}&deg;</span>
-                          </div>
-                        </div>
-                        <div className="text-[10px] font-semibold text-slate-400 shrink-0">
-                          {new Date(s.date).toLocaleTimeString(undefined, {
-                            hour: "numeric",
-                            minute: "2-digit",
-                          })}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            ))}
           </div>
-        </section>
+
+          {/* Right Column: History Timeline on desktop */}
+          <div className="lg:col-span-5 flex flex-col space-y-4">
+            <section>
+              <h2 className="text-xs font-semibold uppercase tracking-wider text-slate-500 mb-3 hidden lg:block">
+                Session History
+              </h2>
+              <div className="flex flex-col gap-6">
+                {Object.entries(groupedSessions).map(([date, dateSessions]) => (
+                  <div key={date}>
+                    <div className="sticky top-0 bg-slate-50/90 backdrop-blur-md py-2 z-10 mb-2 -mx-2 px-2">
+                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                        {date}
+                      </span>
+                    </div>
+                    <div className="flex flex-col gap-1">
+                      {dateSessions.map((s) => {
+                        // Form Quality Calculation
+                        const formPercentage = s.completedReps > 0
+                          ? Math.round((s.goodFormCount / s.completedReps) * 100)
+                          : 0;
+
+                        return (
+                          <div
+                            key={s.id}
+                            className="flex items-center gap-4 py-3 border-b border-slate-100 last:border-0 group cursor-default"
+                          >
+                            <div className="w-10 h-10 rounded-full bg-slate-50 flex items-center justify-center shrink-0 transition-colors group-hover:bg-slate-100">
+                              <Activity className="w-4 h-4 text-slate-400 group-hover:text-slate-600 transition-colors" />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-semibold text-slate-900 truncate">
+                                {s.exerciseName}
+                              </p>
+                              <div className="flex items-center gap-2 mt-1 text-[11px] font-medium text-slate-500">
+                                <span>
+                                  {s.completedReps}/{s.targetReps} reps
+                                </span>
+                                <span className="opacity-30">•</span>
+                                <span className={cn(
+                                  formPercentage >= 80 ? "text-emerald-600" : ""
+                                )}>
+                                  {formPercentage}% form
+                                </span>
+                                <span className="opacity-30">•</span>
+                                <span>{s.rom}&deg;</span>
+                              </div>
+                            </div>
+                            <div className="text-[10px] font-semibold text-slate-400 shrink-0">
+                              {new Date(s.date).toLocaleTimeString(undefined, {
+                                hour: "numeric",
+                                minute: "2-digit",
+                              })}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </section>
+          </div>
+        </div>
       </div>
     </AppShell>
   );

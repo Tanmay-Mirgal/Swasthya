@@ -35,6 +35,7 @@ interface PoseDetectorProps {
   bodySegment?: "lower" | "upper" | "neck";
   children?: ReactNode;
   forceFullScreen?: boolean;
+  onFullScreenChange?: (isFullScreen: boolean) => void;
   incorrectLandmarkIndices?: number[];
   lowConfidenceLandmarkIndices?: number[];
 }
@@ -47,6 +48,7 @@ export default function PoseDetector({
   bodySegment = "lower",
   children,
   forceFullScreen = false,
+  onFullScreenChange,
   incorrectLandmarkIndices = [],
   lowConfidenceLandmarkIndices = [],
 }: PoseDetectorProps) {
@@ -358,6 +360,7 @@ export default function PoseDetector({
       errorMessage={errorMessage}
       onRetryCamera={startCamera}
       forceFullScreen={forceFullScreen}
+      onFullScreenChange={onFullScreenChange}
       incorrectLandmarkIndices={incorrectLandmarkIndices}
       lowConfidenceLandmarkIndices={lowConfidenceLandmarkIndices}
     >
