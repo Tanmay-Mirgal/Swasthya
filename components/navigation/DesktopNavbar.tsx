@@ -37,21 +37,21 @@ export default function DesktopNavbar() {
       exact: true,
     },
     {
+      label: "Appointments",
+      href: "/appointments",
+      icon: Stethoscope,
+      exact: false,
+    },
+    {
       label: "Exercises",
       href: "/exercise",
       icon: Dumbbell,
       exact: false,
     },
     {
-      label: "Progress",
-      href: "/progress",
-      icon: BarChart2,
-      exact: false,
-    },
-    {
-      label: "Find Therapists",
-      href: "/discover",
-      icon: Users,
+      label: "Profile",
+      href: "/profile",
+      icon: UserCircle,
       exact: false,
     },
   ];

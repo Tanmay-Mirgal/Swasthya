@@ -21,9 +21,14 @@ export default function BottomNav() {
 
   const patientNavItems = [
     {
-      label: "Home",
+      label: "Dashboard",
       href: "/",
-      icon: Home,
+      icon: Activity,
+    },
+    {
+      label: "Appointments",
+      href: "/appointments",
+      icon: Stethoscope,
     },
     {
       label: "Exercises",
@@ -31,9 +36,9 @@ export default function BottomNav() {
       icon: Dumbbell,
     },
     {
-      label: "Progress",
-      href: "/progress",
-      icon: BarChart2,
+      label: "Profile",
+      href: "/profile",
+      icon: UserCircle,
     },
   ];
 
