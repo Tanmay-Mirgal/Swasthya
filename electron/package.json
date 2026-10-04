@@ -1,0 +1,44 @@
+{
+  "name": "rehablens-desktop",
+  "version": "1.0.0",
+  "description": "RehabLens Desktop Application",
+  "main": "main.js",
+  "author": "RehabLens Team",
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron .",
+    "pack": "electron-builder --dir",
+    "build": "electron-builder --win",
+    "dist": "electron-builder --win",
+    "dist:portable": "electron-builder --win portable"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.7"
+  },
+  "devDependencies": {
+    "electron": "^33.2.1",
+    "electron-builder": "^25.1.8"
+  },
+  "build": {
+    "appId": "dev.tanmaymirgal.swasthya",
+    "productName": "Swasthya",
+    "copyright": "Copyright © 2026 Swasthya",
+    "directories": {
+      "output": "dist"
+    },
+    "win": {
+      "target": [
+        "nsis",
+        "portable"
+      ],
+      "icon": "icon.png"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Swasthya"
+    }
+  }
+}
