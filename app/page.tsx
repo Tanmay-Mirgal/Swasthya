@@ -5,7 +5,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import AppShell from "@/components/navigation/AppShell";
+import AppShell from "@/components/layout/AppShell";
 import { getAggregateStats, getLatestSession } from "@/lib/session/sessionStore";
 import { SessionRecord } from "@/lib/exercises/types";
 import { getExerciseById } from "@/lib/exercises/registry";

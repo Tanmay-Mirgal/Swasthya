@@ -1,8 +1,7 @@
 "use client";
 
 import React from "react";
-import { ArrowLeft, ShieldCheck, UserCheck, FileText } from "lucide-react";
-import { Button } from "@/components/ui/Button";
+import { ArrowLeft, FileText, ChevronLeft } from "lucide-react";
 
 interface ConsultationHeaderProps {
   peerName?: string;
@@ -24,52 +23,44 @@ export default function ConsultationHeader({
   onOpenPrescriptionModal,
 }: ConsultationHeaderProps) {
   return (
-    <div className="absolute top-0 left-0 right-0 p-4 md:p-6 z-10 flex items-center justify-between bg-linear-to-b from-slate-950/80 to-transparent pointer-events-none">
+    <div className="absolute top-0 left-0 right-0 z-10 flex items-center justify-between px-5 pt-5 pb-12 bg-linear-to-b from-[#0B0C10]/80 via-[#0B0C10]/40 to-transparent pointer-events-none">
       <div className="flex items-center gap-4 pointer-events-auto">
-        <Button
+        <button
           onClick={onBack}
-          variant="ghost"
-          className="text-white hover:bg-white/10 rounded-full w-10 h-10 p-0 shadow-sm border border-white/10 backdrop-blur-md"
+          className="text-white/80 hover:text-white hover:bg-white/10 rounded-lg p-2 transition-colors flex items-center justify-center -ml-2"
         >
-          <ArrowLeft className="w-5 h-5" />
-        </Button>
+          <ChevronLeft className="w-6 h-6" />
+        </button>
         <div>
-          <h1 className="text-lg md:text-xl font-semibold text-white drop-shadow-md flex items-center gap-2">
-            {peerName}
-            {activeRole === "patient" ? (
-              <ShieldCheck className="w-4 h-4 text-emerald-400" />
-            ) : (
-              <UserCheck className="w-4 h-4 text-emerald-400" />
-            )}
+          <h1 className="text-[17px] font-semibold text-white tracking-tight leading-tight">
+            {peerName || (activeRole === "patient" ? "Doctor" : "Patient")}
           </h1>
-          <div className="flex items-center gap-2 text-xs md:text-sm text-slate-300 drop-shadow-sm font-medium">
+          <div className="flex items-center gap-1.5 mt-0.5">
             <div
-              className={`w-2 h-2 rounded-full ${
-                onlineUsers > 1 ? "bg-emerald-500" : "bg-amber-500"
+              className={`w-1.5 h-1.5 rounded-full ${
+                onlineUsers > 1 ? "bg-emerald-500" : "bg-amber-500 opacity-60"
               }`}
             />
-            <span>{onlineUsers > 1 ? "Online" : "Waiting for peer..."}</span>
-            <span className="opacity-50">•</span>
-            <span>
+            <span className="text-[13px] font-medium text-slate-300">
               {isCompleted
                 ? "Completed"
-                : callActive
-                ? "Call Connected"
-                : "Scheduled"}
+                : onlineUsers > 1
+                ? "Connected"
+                : "Waiting..."}
             </span>
           </div>
         </div>
       </div>
 
-      {/* Desktop Top Right Controls */}
-      <div className="hidden md:flex items-center gap-3 pointer-events-auto">
+      <div className="flex items-center gap-3 pointer-events-auto">
         {activeRole === "doctor" && !isCompleted && onOpenPrescriptionModal && (
-          <Button
+          <button
             onClick={onOpenPrescriptionModal}
-            className="bg-emerald-600 hover:bg-emerald-500 text-white font-semibold rounded-full px-5 py-2 shadow-lg border border-emerald-500/50 transition-all"
+            className="hidden md:flex items-center gap-2 bg-[#1A1C23]/90 hover:bg-[#252830] text-white px-4 py-2 rounded-lg text-[13px] font-medium border border-white/10 transition-colors shadow-sm backdrop-blur-md"
           >
-            <FileText className="w-4 h-4 mr-2" /> Write Prescription
-          </Button>
+            <FileText className="w-4 h-4 text-slate-300" />
+            Write Prescription
+          </button>
         )}
       </div>
     </div>

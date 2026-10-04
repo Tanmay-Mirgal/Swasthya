@@ -1,8 +1,7 @@
 "use client";
 
 import React from "react";
-import { Mic, MicOff, Video, VideoOff, PhoneOff, MessageSquare } from "lucide-react";
-import { Button } from "@/components/ui/Button";
+import { Mic, MicOff, Video, VideoOff, Phone, MessageSquare } from "lucide-react";
 
 interface VideoControlsProps {
   callActive: boolean;
@@ -25,72 +24,55 @@ export default function VideoControls({
   onEndCall,
   onOpenChat,
 }: VideoControlsProps) {
-  return (
-    <div className="h-20 md:h-24 bg-slate-950 border-t border-slate-800 flex items-center justify-between px-4 md:px-8 shrink-0 z-20 relative">
-      <div className="flex-1 flex items-center justify-start">
-        {/* Connection Status indicator */}
-        <div className="hidden md:flex items-center gap-2 text-xs text-slate-400 font-medium bg-slate-900 px-3 py-1.5 rounded-full border border-slate-800">
-          <div
-            className={`w-2 h-2 rounded-full ${
-              connectionStatus === "connected"
-                ? "bg-emerald-500"
-                : "bg-red-500 animate-pulse"
-            }`}
-          />
-          {connectionStatus === "connected"
-            ? "Socket Connected"
-            : "Reconnecting..."}
-        </div>
-      </div>
+  if (!callActive) return null;
 
-      <div className="flex-1 flex items-center justify-center gap-3 md:gap-5">
-        <Button
+  return (
+    <div className="absolute bottom-6 md:bottom-8 left-0 right-0 z-20 flex justify-center pointer-events-none px-4">
+      <div className="flex items-center gap-3 md:gap-4 bg-[#1A1C23]/90 backdrop-blur-xl px-4 py-3 md:px-5 md:py-3.5 rounded-2xl border border-white/10 shadow-[0_8px_30px_rgb(0,0,0,0.4)] pointer-events-auto">
+        <button
           onClick={onToggleMute}
-          disabled={!callActive}
-          variant="outline"
-          className={`w-12 h-12 md:w-14 md:h-14 rounded-full border-0 shadow-lg flex items-center justify-center transition-all ${
+          title={isMuted ? "Unmute microphone" : "Mute microphone"}
+          className={`w-11 h-11 md:w-12 md:h-12 rounded-xl flex items-center justify-center transition-all ${
             isMuted
-              ? "bg-slate-200 text-slate-900 hover:bg-slate-300"
-              : "bg-slate-800 text-white hover:bg-slate-700"
+              ? "bg-red-500/20 text-red-500 hover:bg-red-500/30"
+              : "bg-white/10 text-white hover:bg-white/20"
           }`}
         >
           {isMuted ? <MicOff className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
-        </Button>
-        <Button
+        </button>
+
+        <button
           onClick={onToggleVideo}
-          disabled={!callActive}
-          variant="outline"
-          className={`w-12 h-12 md:w-14 md:h-14 rounded-full border-0 shadow-lg flex items-center justify-center transition-all ${
+          title={isVideoDisabled ? "Turn on camera" : "Turn off camera"}
+          className={`w-11 h-11 md:w-12 md:h-12 rounded-xl flex items-center justify-center transition-all ${
             isVideoDisabled
-              ? "bg-slate-200 text-slate-900 hover:bg-slate-300"
-              : "bg-slate-800 text-white hover:bg-slate-700"
+              ? "bg-red-500/20 text-red-500 hover:bg-red-500/30"
+              : "bg-white/10 text-white hover:bg-white/20"
           }`}
         >
-          {isVideoDisabled ? (
-            <VideoOff className="w-5 h-5" />
-          ) : (
-            <Video className="w-5 h-5" />
-          )}
-        </Button>
-        {callActive && (
-          <Button
-            onClick={onEndCall}
-            className="w-14 h-14 md:w-16 md:h-16 rounded-full bg-red-600 hover:bg-red-500 text-white shadow-xl shadow-red-900/30 flex items-center justify-center"
-          >
-            <PhoneOff className="w-6 h-6" />
-          </Button>
-        )}
-      </div>
+          {isVideoDisabled ? <VideoOff className="w-5 h-5" /> : <Video className="w-5 h-5" />}
+        </button>
 
-      <div className="flex-1 flex items-center justify-end gap-3">
+        <div className="w-[1px] h-8 bg-white/10 mx-1 hidden md:block" />
+
+        <button
+          onClick={onEndCall}
+          title="End call"
+          className="w-16 h-11 md:w-20 md:h-12 rounded-xl bg-red-600 hover:bg-red-500 text-white flex items-center justify-center transition-all"
+        >
+          <Phone className="w-5 h-5 transform rotate-[135deg]" />
+        </button>
+
+        <div className="w-[1px] h-8 bg-white/10 mx-1 block md:hidden" />
+
         {/* Mobile Chat Toggle */}
-        <Button
+        <button
           onClick={onOpenChat}
-          variant="outline"
-          className="md:hidden w-12 h-12 rounded-full bg-slate-800 border-0 text-white hover:bg-slate-700 relative shadow-lg"
+          title="Open conversation"
+          className="md:hidden w-11 h-11 rounded-xl bg-white/10 text-white hover:bg-white/20 flex items-center justify-center transition-all"
         >
           <MessageSquare className="w-5 h-5" />
-        </Button>
+        </button>
       </div>
     </div>
   );

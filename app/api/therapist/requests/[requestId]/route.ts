@@ -1,9 +1,9 @@
 import { NextResponse } from "next/server";
 import { createClerkClient } from "@clerk/backend";
 import connectToDatabase from "@/lib/mongodb";
-import AppointmentRequest from "@/lib/models/AppointmentRequest";
-import TherapistAssignment from "@/lib/models/TherapistAssignment";
-import User from "@/lib/models/User";
+import AppointmentRequest from "@/models/AppointmentRequest";
+import TherapistAssignment from "@/models/TherapistAssignment";
+import User from "@/models/User";
 
 const clerkClient = createClerkClient({ secretKey: process.env.CLERK_SECRET_KEY });
 

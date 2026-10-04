@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
 import { createClerkClient } from "@clerk/backend";
 import connectToDatabase from "@/lib/mongodb";
-import User from "@/lib/models/User";
-import PatientProfile from "@/lib/models/PatientProfile";
+import User from "@/models/User";
+import PatientProfile from "@/models/PatientProfile";
 
 const clerkClient = createClerkClient({ secretKey: process.env.CLERK_SECRET_KEY });
 
@@ -44,7 +44,7 @@ export async function POST(req: Request) {
 
     // Rule-based Exercise Suggestions
     if (concerns && concerns.length > 0) {
-       const ExerciseAssignment = (await import("@/lib/models/ExerciseAssignment")).default;
+       const ExerciseAssignment = (await import("@/models/ExerciseAssignment")).default;
        
        const suggestions: any[] = [];
        

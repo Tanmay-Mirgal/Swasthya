@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import connectToDatabase from "@/lib/mongodb";
-import ChatMessage from "@/lib/models/ChatMessage";
-import Consultation from "@/lib/models/Consultation";
+import ChatMessage from "@/models/ChatMessage";
+import Consultation from "@/models/Consultation";
 
 export const dynamic = "force-dynamic";
 

@@ -1,13 +1,13 @@
 import { NextResponse } from "next/server";
 import connectToDatabase from "@/lib/mongodb";
-import Consultation from "@/lib/models/Consultation";
-import TherapistProfile from "@/lib/models/TherapistProfile";
-import PatientProfile from "@/lib/models/PatientProfile";
-import Prescription from "@/lib/models/Prescription";
-import ChatMessage from "@/lib/models/ChatMessage";
-import { ensureSeedDoctors } from "@/lib/doctors/doctorService";
+import Consultation from "@/models/Consultation";
+import TherapistProfile from "@/models/TherapistProfile";
+import PatientProfile from "@/models/PatientProfile";
+import Prescription from "@/models/Prescription";
+import ChatMessage from "@/models/ChatMessage";
+import { ensureSeedDoctors } from "@/services/doctors/doctorService";
 
-import User from "@/lib/models/User";
+import User from "@/models/User";
 
 export const dynamic = "force-dynamic";
 

@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
 import connectToDatabase from "@/lib/mongodb";
-import PatientProfile from "@/lib/models/PatientProfile";
-import ExerciseAssignment from "@/lib/models/ExerciseAssignment";
-import ExerciseSession from "@/lib/models/ExerciseSession";
+import PatientProfile from "@/models/PatientProfile";
+import ExerciseAssignment from "@/models/ExerciseAssignment";
+import ExerciseSession from "@/models/ExerciseSession";
 import { getClinicalRecommendations } from "@/lib/recommendations/recommendationEngine";
 
 export const dynamic = "force-dynamic";

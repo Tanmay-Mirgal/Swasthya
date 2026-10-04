@@ -1,10 +1,10 @@
 import { NextResponse } from "next/server";
 import { createClerkClient } from "@clerk/backend";
 import connectToDatabase from "@/lib/mongodb";
-import PatientProfile from "@/lib/models/PatientProfile";
-import TherapistAssignment from "@/lib/models/TherapistAssignment";
-import TherapistProfile from "@/lib/models/TherapistProfile";
-import ExerciseAssignment from "@/lib/models/ExerciseAssignment";
+import PatientProfile from "@/models/PatientProfile";
+import TherapistAssignment from "@/models/TherapistAssignment";
+import TherapistProfile from "@/models/TherapistProfile";
+import ExerciseAssignment from "@/models/ExerciseAssignment";
 
 const clerkClient = createClerkClient({ secretKey: process.env.CLERK_SECRET_KEY });
 
@@ -30,7 +30,7 @@ export async function GET(req: Request) {
 
     const profile = await PatientProfile.findOne({ clerkUserId }).lean();
     if (!profile) {
-      const User = (await import("@/lib/models/User")).default;
+      const User = (await import("@/models/User")).default;
       const user = await User.findOne({ clerkUserId }).lean();
       const therapist = await TherapistProfile.findOne({ clerkUserId }).lean();
       if (user?.role === "therapist" || therapist) {
@@ -50,7 +50,7 @@ export async function GET(req: Request) {
       therapist = await TherapistProfile.findOne({ clerkUserId: assignment.therapistId }).lean();
     }
 
-    const appointmentRequests = await (await import("@/lib/models/AppointmentRequest")).default.find({ patientId: clerkUserId }).sort({ createdAt: -1 }).lean();
+    const appointmentRequests = await (await import("@/models/AppointmentRequest")).default.find({ patientId: clerkUserId }).sort({ createdAt: -1 }).lean();
     const pendingRequest = appointmentRequests.find((r: any) => r.status === "pending");
     let requestedTherapist = null;
     
@@ -60,7 +60,7 @@ export async function GET(req: Request) {
 
     const exerciseAssignments = await ExerciseAssignment.find({ patientId: clerkUserId, status: "active" }).lean();
 
-    const ExerciseSession = (await import("@/lib/models/ExerciseSession")).default;
+    const ExerciseSession = (await import("@/models/ExerciseSession")).default;
     const dbSessions = await ExerciseSession.find({ patientId: clerkUserId }).sort({ date: -1 }).limit(20).lean();
     
     const totalSessions = dbSessions.length;
@@ -85,7 +85,7 @@ export async function GET(req: Request) {
       recentSessionExerciseIds,
     });
 
-    const Consultation = (await import("@/lib/models/Consultation")).default;
+    const Consultation = (await import("@/models/Consultation")).default;
     const activeConsultation = await Consultation.findOne({
       patientId: clerkUserId,
     }).sort({ updatedAt: -1 }).lean();

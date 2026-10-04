@@ -2,7 +2,7 @@
 
 import { use, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import AppShell from "@/components/navigation/AppShell";
+import AppShell from "@/components/layout/AppShell";
 import { Loader2 } from "lucide-react";
 
 export default function ChatRedirectPage({ params }: { params: Promise<{ id: string }> }) {

@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useRef, use } from "react";
 import { useRouter } from "next/navigation";
-import AppShell from "@/components/navigation/AppShell";
+import AppShell from "@/components/layout/AppShell";
 import { Loader2, AlertCircle } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { useAuth, useUser } from "@clerk/react";
@@ -617,23 +617,8 @@ export default function ConsultationPage({
     <AppShell hideNav hideHeader>
       <div className="flex h-dvh bg-slate-950 text-slate-100 overflow-hidden font-sans">
         {/* === MAIN VIDEO AREA === */}
-        <div className="flex-1 flex flex-col relative transition-all duration-300">
-          <ConsultationHeader
-            peerName={peerName}
-            activeRole={activeRole}
-            onlineUsers={onlineUsers}
-            isCompleted={isCompleted}
-            callActive={callActive}
-            onBack={() => router.back()}
-            onOpenPrescriptionModal={() => setShowPrescriptionModal(true)}
-          />
-
-          <IncomingCallModal
-            incomingCall={incomingCall && !callActive ? incomingCall : null}
-            onAccept={acceptIncomingCall}
-            onReject={rejectIncomingCall}
-          />
-
+        <div className="flex-1 relative bg-[#0B0C10] overflow-hidden flex flex-col">
+          {/* We keep it relative, VideoCallArea will be absolute inset-0 or just flex-1 */}
           <VideoCallArea
             callActive={callActive}
             callConnecting={callConnecting}
@@ -648,6 +633,22 @@ export default function ConsultationPage({
             isMuted={isMuted}
             isVideoDisabled={isVideoDisabled}
             onStartCall={startVideoCall}
+          />
+
+          <ConsultationHeader
+            peerName={peerName}
+            activeRole={activeRole}
+            onlineUsers={onlineUsers}
+            isCompleted={isCompleted}
+            callActive={callActive}
+            onBack={() => router.back()}
+            onOpenPrescriptionModal={() => setShowPrescriptionModal(true)}
+          />
+
+          <IncomingCallModal
+            incomingCall={incomingCall && !callActive ? incomingCall : null}
+            onAccept={acceptIncomingCall}
+            onReject={rejectIncomingCall}
           />
 
           <VideoControls

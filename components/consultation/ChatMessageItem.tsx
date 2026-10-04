@@ -1,10 +1,9 @@
 "use client";
 
 import React from "react";
-import Link from "next/link";
-import { FileText, Pill, Dumbbell, Lightbulb } from "lucide-react";
-import { Button } from "@/components/ui/Button";
+import { FileText, ClipboardList, Dumbbell, Info } from "lucide-react";
 import { Message } from "@/types/consultation";
+import Link from "next/link";
 
 interface ChatMessageItemProps {
   msg: Message;
@@ -20,122 +19,113 @@ export default function ChatMessageItem({
   patientName,
 }: ChatMessageItemProps) {
   const isSelf = msg.senderRole === activeRole;
+  
+  const timeString = new Date(msg.createdAt).toLocaleTimeString([], {
+    hour: "numeric",
+    minute: "2-digit",
+  });
 
   if (msg.type === "prescription" && msg.prescriptionData) {
     const rx = msg.prescriptionData;
     return (
-      <div className="my-6 bg-white rounded-2xl border border-emerald-200 shadow-sm overflow-hidden">
-        <div className="bg-emerald-600 px-4 py-3 flex items-center gap-3 text-white">
-          <FileText className="w-5 h-5" />
-          <div>
-            <h4 className="font-bold text-sm">Official Prescription</h4>
-            <p className="text-[10px] text-emerald-100 font-medium">
-              Issued by {rx.doctorName || doctorName || "Doctor"}
-            </p>
+      <div className="my-4 px-1">
+        <div className="bg-white border border-slate-200 shadow-sm rounded-xl overflow-hidden">
+          <div className="border-b border-slate-100 bg-[#F8FAFC] px-4 py-3 flex items-start gap-3">
+            <div className="w-8 h-8 rounded-md bg-slate-800 text-white flex items-center justify-center shrink-0 mt-0.5">
+              <FileText className="w-4 h-4" />
+            </div>
+            <div>
+              <h4 className="font-semibold text-slate-800 text-[14px]">Clinical Prescription</h4>
+              <p className="text-[12px] text-slate-500 font-medium mt-0.5">
+                Issued by {rx.doctorName || doctorName || "Doctor"} • {timeString}
+              </p>
+            </div>
           </div>
-        </div>
-        <div className="p-4 space-y-4">
-          {rx.medicines && rx.medicines.length > 0 && (
-            <div>
-              <h5 className="text-xs font-bold text-slate-800 uppercase tracking-wider mb-2 flex items-center gap-1.5">
-                <Pill className="w-3 h-3 text-emerald-600" /> Medications
-              </h5>
-              <div className="space-y-2">
-                {rx.medicines.map((m, i) => (
-                  <div
-                    key={i}
-                    className="bg-slate-50 p-2 rounded-lg text-xs border border-slate-100"
-                  >
-                    <p className="font-bold text-slate-800">{m.name}</p>
-                    <p className="text-slate-500 text-[11px] mt-0.5">
-                      {m.dosage} • {m.frequency} • {m.duration}
-                    </p>
-                  </div>
-                ))}
+          
+          <div className="p-4 space-y-4">
+            {rx.medicines && rx.medicines.length > 0 && (
+              <div>
+                <h5 className="text-[11px] font-semibold text-slate-500 uppercase tracking-widest mb-2 flex items-center gap-1.5">
+                  <ClipboardList className="w-3 h-3" /> Medicines
+                </h5>
+                <div className="space-y-1.5">
+                  {rx.medicines.map((m, i) => (
+                    <div key={i} className="text-[13px] leading-tight">
+                      <span className="font-medium text-slate-800">{m.name}</span>
+                      <span className="text-slate-500 ml-1.5">
+                        — {m.dosage}, {m.frequency}
+                      </span>
+                    </div>
+                  ))}
+                </div>
               </div>
-            </div>
-          )}
+            )}
 
-          {rx.exercises && rx.exercises.length > 0 && (
-            <div>
-              <h5 className="text-xs font-bold text-slate-800 uppercase tracking-wider mb-2 flex items-center gap-1.5">
-                <Dumbbell className="w-3 h-3 text-emerald-600" /> Recovery
-                Exercises
-              </h5>
-              <ul className="space-y-1.5">
-                {rx.exercises.map((ex, i) => (
-                  <li
-                    key={i}
-                    className="text-xs text-slate-700 flex items-start gap-2"
-                  >
-                    <span className="text-emerald-500 mt-0.5">•</span>
-                    <span>
-                      <strong className="text-slate-800">{ex.name}</strong> -{" "}
-                      {ex.sets} sets × {ex.reps} reps
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
+            {rx.exercises && rx.exercises.length > 0 && (
+              <div>
+                <h5 className="text-[11px] font-semibold text-slate-500 uppercase tracking-widest mb-2 flex items-center gap-1.5 mt-4">
+                  <Dumbbell className="w-3 h-3" /> Exercises
+                </h5>
+                <div className="space-y-1.5">
+                  {rx.exercises.map((ex, i) => (
+                    <div key={i} className="text-[13px] leading-tight flex items-start gap-2">
+                      <span className="text-slate-400 mt-0.5">•</span>
+                      <div>
+                        <span className="font-medium text-slate-800">{ex.name}</span>
+                        <span className="text-slate-500 ml-1.5">
+                          — {ex.sets} sets × {ex.reps} reps
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
 
-          {rx.healthyTips && rx.healthyTips.length > 0 && (
-            <div>
-              <h5 className="text-xs font-bold text-slate-800 uppercase tracking-wider mb-2 flex items-center gap-1.5">
-                <Lightbulb className="w-3 h-3 text-amber-500" /> Clinical
-                Advice
-              </h5>
-              <ul className="text-xs text-slate-600 space-y-1">
-                {rx.healthyTips.map((tip: string, i: number) => (
-                  <li key={i} className="pl-2 border-l-2 border-amber-200">
-                    {tip}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-
-          <div className="pt-3 border-t border-slate-100">
-            <Button
-              asChild
-              className="w-full bg-slate-900 hover:bg-slate-800 text-white rounded-xl h-9 text-xs"
-            >
-              <Link href="/">View on Dashboard</Link>
-            </Button>
+            {rx.doctorNotes && (
+              <div className="pt-3 border-t border-slate-100">
+                <h5 className="text-[11px] font-semibold text-slate-500 uppercase tracking-widest mb-1.5 flex items-center gap-1.5">
+                  <Info className="w-3 h-3" /> Doctor&apos;s Notes
+                </h5>
+                <p className="text-[13px] text-slate-700 leading-relaxed italic">
+                  &quot;{rx.doctorNotes}&quot;
+                </p>
+              </div>
+            )}
+          </div>
+          
+          <div className="border-t border-slate-100 px-4 py-2.5 bg-[#F8FAFC]">
+            <Link href="/" className="text-[12px] font-medium text-blue-600 hover:text-blue-700 transition-colors">
+              View full details →
+            </Link>
           </div>
         </div>
       </div>
     );
   }
 
+  // Regular Chat Message
   return (
-    <div
-      className={`flex flex-col ${isSelf ? "items-end" : "items-start"}`}
-    >
-      <div className="flex items-center gap-1.5 mb-1 px-1">
-        <span className="text-[10px] font-semibold text-slate-400">
-          {isSelf
-            ? "You"
-            : msg.senderRole === "doctor"
-            ? doctorName
-            : patientName}
+    <div className={`flex flex-col ${isSelf ? "items-end" : "items-start"} w-full mb-3`}>
+      <div className="flex flex-col max-w-[85%]">
+        {!isSelf && (
+          <span className="text-[11px] font-medium text-slate-500 mb-1 ml-1">
+            {msg.senderRole === "doctor" ? doctorName : patientName}
+          </span>
+        )}
+        <div
+          className={`px-3.5 py-2.5 text-[14px] leading-relaxed shadow-sm ${
+            isSelf
+              ? "bg-slate-800 text-white rounded-2xl rounded-tr-sm"
+              : "bg-white text-slate-800 border border-slate-200 rounded-2xl rounded-tl-sm"
+          }`}
+        >
+          {msg.content}
+        </div>
+        <span className={`text-[10px] text-slate-400 mt-1 font-medium ${isSelf ? "text-right mr-1" : "ml-1"}`}>
+          {timeString}
         </span>
       </div>
-      <div
-        className={`max-w-[85%] px-4 py-2.5 text-sm leading-relaxed shadow-sm ${
-          isSelf
-            ? "bg-emerald-600 text-white rounded-2xl rounded-tr-sm"
-            : "bg-white text-slate-800 border border-slate-200 rounded-2xl rounded-tl-sm"
-        }`}
-      >
-        {msg.content}
-      </div>
-      <span className="text-[9px] text-slate-400 mt-1 px-1">
-        {new Date(msg.createdAt).toLocaleTimeString([], {
-          hour: "2-digit",
-          minute: "2-digit",
-        })}
-      </span>
     </div>
   );
 }

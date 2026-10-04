@@ -1,10 +1,10 @@
 import { NextResponse } from "next/server";
 import { createClerkClient } from "@clerk/backend";
 import connectToDatabase from "@/lib/mongodb";
-import PatientProfile from "@/lib/models/PatientProfile";
-import TherapistAssignment from "@/lib/models/TherapistAssignment";
-import ExerciseAssignment from "@/lib/models/ExerciseAssignment";
-import User from "@/lib/models/User";
+import PatientProfile from "@/models/PatientProfile";
+import TherapistAssignment from "@/models/TherapistAssignment";
+import ExerciseAssignment from "@/models/ExerciseAssignment";
+import User from "@/models/User";
 
 const clerkClient = createClerkClient({ secretKey: process.env.CLERK_SECRET_KEY });
 
@@ -30,7 +30,7 @@ export async function GET(req: Request) {
 
     // Verify role (either role is therapist or TherapistProfile exists)
     const user = await User.findOne({ clerkUserId });
-    const TherapistProfile = (await import("@/lib/models/TherapistProfile")).default;
+    const TherapistProfile = (await import("@/models/TherapistProfile")).default;
     const therapistProfile = await TherapistProfile.findOne({ clerkUserId }).lean();
 
     if ((!user || user.role !== "therapist") && !therapistProfile) {
@@ -63,7 +63,7 @@ export async function GET(req: Request) {
       }
     }
 
-    const AppointmentRequest = (await import("@/lib/models/AppointmentRequest")).default;
+    const AppointmentRequest = (await import("@/models/AppointmentRequest")).default;
     const requestRecords = await AppointmentRequest.find({ therapistId: clerkUserId, status: "pending" }).lean();
     
     const pendingRequests = [];
@@ -86,7 +86,7 @@ export async function GET(req: Request) {
       }
     }
 
-    const Consultation = (await import("@/lib/models/Consultation")).default;
+    const Consultation = (await import("@/models/Consultation")).default;
     const rawConsultations = await Consultation.find({ doctorId: clerkUserId }).sort({ updatedAt: -1 }).lean();
     
     // Enrich consultations with patient details

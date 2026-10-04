@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import connectToDatabase from "@/lib/mongodb";
-import ExerciseSession from "@/lib/models/ExerciseSession";
+import ExerciseSession from "@/models/ExerciseSession";
 
 export const dynamic = "force-dynamic";
 

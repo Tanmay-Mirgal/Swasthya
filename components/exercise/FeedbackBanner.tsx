@@ -7,7 +7,7 @@ import {
   Volume2, VolumeX, Sparkles, Loader2
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/Card";
-import VoiceService from "@/lib/voice/voiceService";
+import VoiceService from "@/services/voice/voiceService";
 
 // Issue codes that warrant high-priority speech (safety-critical)
 const SAFETY_ISSUE_CODES = new Set([
