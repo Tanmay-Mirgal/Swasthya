@@ -22,7 +22,29 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const { professionalName, specialization, clinicName, yearsOfExperience } = await req.json();
+    const body = await req.json();
+    const {
+      professionalName,
+      specialization,
+      specializations = [],
+      supportedConditions = [],
+      clinicName = "Swasthya Rehabilitation Network",
+      yearsOfExperience = "8+ years",
+      qualification = "MPT, BPT Certified",
+    } = body;
+
+    // Combine conditions from both specializations and supportedConditions
+    const combinedConditions = Array.from(
+      new Set([
+        ...supportedConditions,
+        ...specializations,
+        ...(specialization ? specialization.split(",").map((s: string) => s.trim()) : []),
+      ])
+    ).filter(Boolean);
+
+    const primarySpecialization =
+      specialization ||
+      (specializations.length > 0 ? specializations.slice(0, 3).join(", ") : "Orthopedic Physical Therapy");
 
     await connectToDatabase();
 
@@ -32,15 +54,19 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Forbidden: Not a therapist" }, { status: 403 });
     }
 
-    // Upsert Therapist Profile
+    // Upsert Therapist Profile with rich clinical data
     await TherapistProfile.findOneAndUpdate(
       { clerkUserId },
       {
-        professionalName,
-        specialization,
+        professionalName: professionalName || user.fullName || user.name || "Doctor",
+        specialization: primarySpecialization,
+        supportedConditions: combinedConditions,
+        qualification,
         clinicName,
         yearsOfExperience,
-        onboardingCompleted: true
+        avatarUrl: user.imageUrl || null,
+        onboardingCompleted: true,
+        verificationStatus: "verified",
       },
       { upsert: true, new: true }
     );

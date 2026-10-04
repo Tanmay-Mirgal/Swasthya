@@ -30,6 +30,16 @@ export async function GET(req: Request) {
 
     const profile = await PatientProfile.findOne({ clerkUserId }).lean();
     if (!profile) {
+      const User = (await import("@/lib/models/User")).default;
+      const user = await User.findOne({ clerkUserId }).lean();
+      const therapist = await TherapistProfile.findOne({ clerkUserId }).lean();
+      if (user?.role === "therapist" || therapist) {
+        return NextResponse.json({
+          success: false,
+          isTherapist: true,
+          redirect: "/therapist",
+        });
+      }
       return NextResponse.json({ error: "Patient profile not found" }, { status: 404 });
     }
 
@@ -50,16 +60,62 @@ export async function GET(req: Request) {
 
     const exerciseAssignments = await ExerciseAssignment.find({ patientId: clerkUserId, status: "active" }).lean();
 
+    const ExerciseSession = (await import("@/lib/models/ExerciseSession")).default;
+    const dbSessions = await ExerciseSession.find({ patientId: clerkUserId }).sort({ date: -1 }).limit(20).lean();
+    
+    const totalSessions = dbSessions.length;
+    const totalReps = dbSessions.reduce((acc: number, s: any) => acc + (s.completedReps || 0), 0);
+    const avgRom =
+      totalSessions > 0
+        ? Math.round(dbSessions.reduce((acc: number, s: any) => acc + (s.rom || 0), 0) / totalSessions)
+        : 0;
+    const latestDbSession = dbSessions.length > 0 ? dbSessions[0] : null;
+
+    // Execute Clinical Recommendation Engine
+    const { getClinicalRecommendations } = await import("@/lib/recommendations/recommendationEngine");
+    const activePrescriptions = exerciseAssignments.map((a: any) => ({
+      exerciseId: a.exerciseId,
+      targetSets: a.targetSets,
+      targetReps: a.targetReps,
+    }));
+    const recentSessionExerciseIds = dbSessions.map((s: any) => s.exerciseId).filter(Boolean);
+    const recommendationData = getClinicalRecommendations({
+      concerns: profile?.concerns || [],
+      activePrescriptions,
+      recentSessionExerciseIds,
+    });
+
+    const Consultation = (await import("@/lib/models/Consultation")).default;
+    const activeConsultation = await Consultation.findOne({
+      patientId: clerkUserId,
+    }).sort({ updatedAt: -1 }).lean();
+
+    let consultationDoctor = null;
+    if (activeConsultation) {
+      consultationDoctor = await TherapistProfile.findOne({ clerkUserId: activeConsultation.doctorId }).lean();
+    }
+
     return NextResponse.json({
       success: true,
       data: {
         profile,
         assignment,
-        therapist,
+        therapist: therapist || consultationDoctor,
+        activeConsultation,
+        consultationDoctor,
         appointmentRequests,
         pendingRequest,
         requestedTherapist,
         exerciseAssignments,
+        recommendation: recommendationData.primary,
+        rankedRecommendations: recommendationData.ranked,
+        sessions: dbSessions,
+        stats: {
+          totalSessions,
+          totalReps,
+          avgRom,
+        },
+        latestSession: latestDbSession,
       }
     });
   } catch (error) {

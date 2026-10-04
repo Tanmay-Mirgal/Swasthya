@@ -17,6 +17,8 @@ const nextConfig: NextConfig = {
     cpus: 4,
   },
 
+  devIndicators: false,
+
   typescript: {
     ignoreBuildErrors: true,
   },

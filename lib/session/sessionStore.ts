@@ -24,6 +24,33 @@ export function saveSession(session: Omit<SessionRecord, "id" | "date">): Sessio
   return newRecord;
 }
 
+export async function syncSessionToDatabase(session: SessionRecord, token: string): Promise<boolean> {
+  try {
+    const res = await fetch("/api/patient/session", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        exerciseId: session.exerciseId,
+        exerciseName: session.exerciseName,
+        durationSeconds: session.durationSeconds,
+        completedReps: session.completedReps,
+        targetReps: session.targetReps,
+        rom: session.rom,
+        targetRom: session.targetRom,
+        targetMet: session.targetMet,
+        date: session.date,
+      }),
+    });
+    return res.ok;
+  } catch (err) {
+    console.error("Failed to sync session to database:", err);
+    return false;
+  }
+}
+
 export function getSessionHistory(): SessionRecord[] {
   if (typeof window === "undefined") return [];
 

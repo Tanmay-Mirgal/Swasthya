@@ -48,4 +48,6 @@ export interface SessionRecord {
   goodFormCount: number;
   warningCount: number;
   durationSeconds: number;
+  targetRom?: number;
+  targetMet?: boolean;
 }

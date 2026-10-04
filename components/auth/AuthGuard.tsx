@@ -4,7 +4,7 @@ import { useAuth, useUser } from "@clerk/react";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect } from "react";
 
-const publicRoutes = ["/", "/sign-in", "/sign-up", "/login", "/signup", "/onboarding"];
+const publicRoutes = ["/", "/sign-in", "/sign-up", "/login", "/signup", "/onboarding", "/splash"];
 
 export default function AuthGuard({ children }: { children: React.ReactNode }) {
   const { isLoaded, isSignedIn } = useAuth();

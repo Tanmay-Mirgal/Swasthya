@@ -28,13 +28,15 @@ export async function GET(req: Request) {
 
     await connectToDatabase();
 
-    // Verify role
+    // Verify role (either role is therapist or TherapistProfile exists)
     const user = await User.findOne({ clerkUserId });
-    if (!user || user.role !== "therapist") {
+    const TherapistProfile = (await import("@/lib/models/TherapistProfile")).default;
+    const therapistProfile = await TherapistProfile.findOne({ clerkUserId }).lean();
+
+    if ((!user || user.role !== "therapist") && !therapistProfile) {
       return NextResponse.json({ error: "Forbidden: Not a therapist" }, { status: 403 });
     }
 
-    // Get patients assigned to this therapist
     // Get patients assigned to this therapist
     const assignments = await TherapistAssignment.find({ therapistId: clerkUserId, status: "active" }).lean();
     
@@ -48,8 +50,10 @@ export async function GET(req: Request) {
         patients.push({
           assignment,
           user: {
+             clerkUserId: assignment.patientId,
              firstName: patientUser.firstName,
              lastName: patientUser.lastName,
+             fullName: patientUser.fullName || `${patientUser.firstName || "Patient"} ${patientUser.lastName || ""}`.trim(),
              email: patientUser.email,
              imageUrl: patientUser.imageUrl,
           },
@@ -71,8 +75,10 @@ export async function GET(req: Request) {
         pendingRequests.push({
           request: req,
           user: {
+             clerkUserId: req.patientId,
              firstName: patientUser.firstName,
              lastName: patientUser.lastName,
+             fullName: patientUser.fullName || `${patientUser.firstName || "Patient"} ${patientUser.lastName || ""}`.trim(),
              imageUrl: patientUser.imageUrl,
           },
           profile: patientProfile,
@@ -80,11 +86,67 @@ export async function GET(req: Request) {
       }
     }
 
+    const Consultation = (await import("@/lib/models/Consultation")).default;
+    const rawConsultations = await Consultation.find({ doctorId: clerkUserId }).sort({ updatedAt: -1 }).lean();
+    
+    // Enrich consultations with patient details
+    const consultations = await Promise.all(
+      rawConsultations.map(async (c: any) => {
+        const patientUser = await User.findOne({ clerkUserId: c.patientId }).lean();
+        const patientProf = await PatientProfile.findOne({ clerkUserId: c.patientId }).lean();
+        return {
+          ...c,
+          patientName: patientUser?.fullName || `${patientUser?.firstName || "Patient"} ${patientUser?.lastName || ""}`.trim(),
+          patientImage: patientUser?.imageUrl || null,
+          patientConcerns: patientProf?.concerns || [c.issue || "Orthopedic Recovery"],
+        };
+      })
+    );
+
+    // Also include any patient from active consultations
+    for (const c of rawConsultations) {
+      const alreadyIncluded = patients.some((p: any) => p.assignment?.patientId === c.patientId || p.user?.clerkUserId === c.patientId);
+      if (!alreadyIncluded) {
+        const patientUser = await User.findOne({ clerkUserId: c.patientId }).lean();
+        const patientProfile = await PatientProfile.findOne({ clerkUserId: c.patientId }).lean();
+        const exerciseAssignments = await ExerciseAssignment.find({ patientId: c.patientId }).lean();
+
+        patients.push({
+          assignment: { patientId: c.patientId, status: c.status },
+          consultation: c,
+          user: {
+            clerkUserId: c.patientId,
+            firstName: patientUser?.firstName || "Patient",
+            lastName: patientUser?.lastName || "",
+            fullName: patientUser?.fullName || `${patientUser?.firstName || "Patient"} ${patientUser?.lastName || ""}`.trim(),
+            email: patientUser?.email || "",
+            imageUrl: patientUser?.imageUrl || "",
+          },
+          profile: patientProfile || { concerns: [c.issue] },
+          exerciseAssignments,
+        });
+      }
+    }
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const todayAppointments = consultations.filter((c: any) => new Date(c.createdAt) >= today);
+    const completedConsultations = consultations.filter((c: any) => c.status === "COMPLETED");
+
     return NextResponse.json({
       success: true,
       data: {
         patients,
-        pendingRequests
+        consultations,
+        pendingRequests,
+        profile: therapistProfile,
+        stats: {
+          totalPatients: patients.length,
+          todayAppointments: todayAppointments.length,
+          completedSessions: completedConsultations.length,
+          consultationFee: therapistProfile?.consultationFee || 499,
+          totalRevenue: completedConsultations.length * (therapistProfile?.consultationFee || 499),
+        },
       }
     });
   } catch (error) {

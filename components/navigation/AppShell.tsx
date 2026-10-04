@@ -44,13 +44,14 @@ export default function AppShell({
   };
 
   return (
-    <div className="min-h-screen min-h-dvh bg-slate-50 flex flex-col items-center justify-start text-slate-900 antialiased">
+    <div className="w-full max-w-full min-h-screen min-h-dvh bg-[#F8FAFC] flex flex-col items-center justify-start text-slate-900 antialiased overflow-x-hidden">
       {/* Desktop Platform Top Navbar (Hidden on mobile) */}
       {!hideNav && <DesktopNavbar />}
 
-      {/* App Container Shell: Exact 440px on mobile, expands on desktop */}
+      {/* App Container Shell: 100% on mobile, max 440px on tablet, expands on desktop */}
       <div className={cn(
-        "w-full max-w-[440px] min-h-screen min-h-dvh bg-slate-50 sm:border-x md:border-x-0 sm:border-slate-200 flex flex-col relative z-10 pb-20 md:pb-8",
+        "w-full max-w-full sm:max-w-[440px] min-h-screen min-h-dvh bg-[#F8FAFC] sm:border-x md:border-x-0 sm:border-slate-200 flex flex-col relative z-10 overflow-x-hidden",
+        hideNav ? "pb-0 md:pb-0" : "pb-24 md:pb-8",
         getMaxWidthClass()
       )}>
         
@@ -103,7 +104,7 @@ export default function AppShell({
         )}
 
         {/* Screen Main Content */}
-        <main className="flex-1 flex flex-col p-4 md:px-8 md:py-6">
+        <main className="w-full max-w-full min-w-0 flex-1 flex flex-col p-3 sm:p-4 md:px-8 md:py-6 overflow-x-hidden">
           {/* Desktop Back button if needed */}
           {showBackNav && (
             <div className="hidden md:flex items-center mb-6">

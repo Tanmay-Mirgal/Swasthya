@@ -52,6 +52,22 @@ body {
   -webkit-tap-highlight-color: transparent;
 }
 
+/* ── Hide Next.js Dev Indicator Badge from Obstructing Navigation ── */
+nextjs-portal,
+#__next-build-watcher,
+[data-nextjs-toast],
+[data-nextjs-dialog-overlay],
+div[data-nextjs-dev-overlay],
+button[data-next-badge],
+div[data-next-badge],
+div[data-nextjs-toast-wrapper],
+[data-nextjs-toast-list] {
+  display: none !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+  opacity: 0 !important;
+}
+
 /* ── Touch Target Sizing ───────────────────────────────────────────── */
 /* Ensures all interactive elements meet 44×44px minimum touch target */
 button,

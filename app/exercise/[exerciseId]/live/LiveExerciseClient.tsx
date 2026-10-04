@@ -2,7 +2,7 @@
 /* eslint-disable react-hooks/purity */
 "use client";
 
-import { useState, useCallback, useRef, use } from "react";
+import { useState, useEffect, useCallback, useRef, use } from "react";
 import { useRouter } from "next/navigation";
 import AppShell from "@/components/navigation/AppShell";
 import PoseDetector, { FrameUpdateData } from "@/components/pose/PoseDetector";
@@ -11,7 +11,7 @@ import LiveMetrics from "@/components/exercise/LiveMetrics";
 import FeedbackBanner from "@/components/exercise/FeedbackBanner";
 import { getExerciseById } from "@/lib/exercises/registry";
 import { saveSession } from "@/lib/session/sessionStore";
-import { FeedbackMessage } from "@/lib/exercises/types";
+import { FeedbackMessage, SessionRecord } from "@/lib/exercises/types";
 import PoseGuidePanel from "@/components/exercise/PoseGuidePanel";
 import { useExerciseEngine } from "@/hooks/useExerciseEngine";
 import { Card, CardContent } from "@/components/ui/Card";
@@ -69,21 +69,21 @@ export default function DynamicLiveExercisePage({ params }: PageProps) {
     const durationSeconds = Math.round((Date.now() - startTimeRef.current) / 1000);
     const completedReps = finalData?.repState.completedReps || 0;
     const targetReps = finalData?.repState.targetReps || exercise.targetReps;
-    const rom = Math.round(finalData?.romTracker.maxRom || 0);
+    const rom = Math.round(finalData?.romTracker?.rom || 0);
 
-    const record = {
-      id: crypto.randomUUID(),
+    const record: Omit<SessionRecord, "id" | "date"> = {
       exerciseId: exercise.id,
       exerciseName: exercise.name,
-      date: new Date().toISOString(),
       durationSeconds,
       completedReps,
       targetReps,
-      maxRom: rom,
-      goodFormCount: completedReps,
+      minAngle: Math.round(finalData?.romTracker?.minAngle || 0),
+      maxAngle: Math.round(finalData?.romTracker?.maxAngle || 160),
       rom,
+      averageTempo: finalData?.repState?.tempoTracker?.averageTempo || 2.5,
+      goodFormCount: completedReps,
+      warningCount: finalData?.repState?.warningCount || 0,
       targetRom: 80,
-      feedbackNotes: [],
       targetMet: completedReps >= targetReps,
     };
 
@@ -94,8 +94,8 @@ export default function DynamicLiveExercisePage({ params }: PageProps) {
   const completedReps = frameData?.repState.completedReps ?? 0;
   const targetReps = frameData?.repState.targetReps ?? exercise.targetReps;
   const jointAngle = Math.round(frameData?.jointAngle ?? 0);
-  const rom = Math.round(frameData?.romTracker.maxRom ?? 0);
-  const tempo = frameData?.repState.tempo ?? 0;
+  const rom = Math.round(frameData?.romTracker?.rom ?? 0);
+  const tempo = frameData?.repState?.tempoTracker?.lastRepDuration ?? 0;
 
   const defaultFeedback: FeedbackMessage = {
     type: "info",
@@ -197,7 +197,7 @@ export default function DynamicLiveExercisePage({ params }: PageProps) {
               <div className="hidden lg:flex items-center justify-between gap-3 pt-1">
                 <Button
                   variant="outline"
-                  size="default"
+                  size="md"
                   onClick={() => setIsFullScreenMode((prev) => !prev)}
                   className="rounded-xl text-xs font-semibold"
                 >
@@ -206,8 +206,8 @@ export default function DynamicLiveExercisePage({ params }: PageProps) {
                 </Button>
 
                 <Button
-                  variant="default"
-                  size="default"
+                  variant="primary"
+                  size="md"
                   onClick={() => finishSession(frameData)}
                   className="bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-semibold shadow-xs"
                 >
@@ -282,11 +282,10 @@ export default function DynamicLiveExercisePage({ params }: PageProps) {
         {/* Exercise Guide Modal Panel */}
         <PoseGuidePanel
           isOpen={isGuideOpen}
-          onClose={() => setIsGuideOpen(false)}
+          onOpenChange={setIsGuideOpen}
+          exerciseId={exercise.id}
           exerciseName={exercise.name}
-          category={exercise.category}
-          description={exercise.description}
-          targetReps={exercise.targetReps}
+          instructions={exercise.instructions}
         />
       </div>
     </AppShell>

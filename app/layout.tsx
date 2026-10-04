@@ -15,14 +15,19 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "RehabLens — AI Physical Therapy & Pose Guidance",
+  title: "Swasthya — AI Physical Therapy & Pose Guidance",
   description:
     "Real-time AI pose detection, step-by-step guidance, and biomechanical form analysis for physical rehabilitation.",
+  icons: {
+    icon: "/swasthya-logo-icon.png",
+    shortcut: "/swasthya-logo-icon.png",
+    apple: "/swasthya-logo-square.png",
+  },
   // Mobile web app meta
   appleWebApp: {
     capable: true,
     statusBarStyle: "black-translucent",
-    title: "RehabLens",
+    title: "Swasthya",
   },
 };
 
@@ -35,7 +40,7 @@ export const viewport: Viewport = {
   maximumScale: 1,
   userScalable: false,
   // Android status bar color — matches app's light theme
-  themeColor: "#ffffff",
+  themeColor: "#F8FAFC",
   // Support notch / gesture bar safe areas
   viewportFit: "cover",
 };
@@ -50,7 +55,7 @@ export default function RootLayout({
       lang="en"
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col bg-slate-50 text-slate-900 selection:bg-blue-500/30 selection:text-blue-900">
+      <body className="min-h-full flex flex-col bg-[#F8FAFC] text-slate-900 selection:bg-emerald-500/20 selection:text-emerald-900">
         <ClerkClientProvider publishableKey={process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY || ""}>
           <AuthGuard>
             {children}

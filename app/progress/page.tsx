@@ -2,6 +2,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import { useUser } from "@clerk/react";
 import AppShell from "@/components/navigation/AppShell";
 import { getSessionHistory, getAggregateStats } from "@/lib/session/sessionStore";
 import { SessionRecord } from "@/lib/exercises/types";
@@ -11,13 +13,19 @@ import { Button } from "@/components/ui/Button";
 import { cn } from "@/lib/utils";
 
 export default function ProgressPage() {
+  const router = useRouter();
+  const { user } = useUser();
   const [sessions, setSessions] = useState<SessionRecord[]>([]);
   const [stats, setStats] = useState({ totalSessions: 0, totalReps: 0, avgRom: 0 });
 
   useEffect(() => {
+    if (user?.publicMetadata?.role === "therapist") {
+      router.replace("/therapist");
+      return;
+    }
     setSessions(getSessionHistory());
     setStats(getAggregateStats());
-  }, []);
+  }, [user, router]);
 
   const groupSessionsByDate = (history: SessionRecord[]) => {
     const groups: Record<string, SessionRecord[]> = {};

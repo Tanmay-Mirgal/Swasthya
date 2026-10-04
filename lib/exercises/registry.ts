@@ -37,6 +37,32 @@ export const EXERCISE_REGISTRY: Record<string, ExtendedExerciseConfig> = {
     bodySegment: "upper",
     isAvailable: false,
   },
+  "straight-leg-raise": {
+    id: "straight-leg-raise",
+    name: "Straight Leg Raise",
+    category: "Lower Body",
+    difficulty: "Beginner",
+    targetReps: 10,
+    primaryJoint: "hip",
+    movement: "flexion",
+    description: "Strengthen quadriceps and hip flexors without putting stress on knee joint.",
+    instructions: ["Lie flat on back or sit supported", "Tighten quad and raise leg 12 inches", "Hold 3 seconds and lower slowly"],
+    bodySegment: "lower",
+    isAvailable: true,
+  },
+  "quad-stretch": {
+    id: "quad-stretch",
+    name: "Quad Stretch",
+    category: "Flexibility & Mobility",
+    difficulty: "Beginner",
+    targetReps: 3,
+    primaryJoint: "knee",
+    movement: "flexion",
+    description: "Elongates anterior thigh muscles, relieves patellar tension and improves flexibility.",
+    instructions: ["Hold steady support", "Gently bend knee pulling heel toward glute", "Hold 30 seconds smoothly"],
+    bodySegment: "lower",
+    isAvailable: true,
+  },
 };
 
 export function getExerciseById(id: string): ExtendedExerciseConfig | null {

@@ -32,7 +32,7 @@ export default function SignupPage() {
             Create an account
           </h1>
           <p className="text-sm text-slate-500">
-            Join RehabLens and start your rehabilitation journey.
+            Join Swasthya and start your rehabilitation journey.
           </p>
         </div>
 
