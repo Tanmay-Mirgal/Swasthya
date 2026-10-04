@@ -80,9 +80,11 @@ a {
   -webkit-tap-highlight-color: transparent;
 }
 
-/* Inline links don't need full 44px height */
+/* Inline links and switches don't need full 44px height */
 p a,
-span a {
+span a,
+button[role="switch"],
+[role="switch"] {
   min-height: unset;
   min-width: unset;
 }

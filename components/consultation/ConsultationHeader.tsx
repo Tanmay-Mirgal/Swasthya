@@ -1,7 +1,7 @@
 "use client";
 
 import React from "react";
-import { ArrowLeft, FileText, ChevronLeft } from "lucide-react";
+import { FileText, ChevronLeft } from "lucide-react";
 
 interface ConsultationHeaderProps {
   peerName?: string;
@@ -18,12 +18,11 @@ export default function ConsultationHeader({
   activeRole,
   onlineUsers,
   isCompleted,
-  callActive,
   onBack,
   onOpenPrescriptionModal,
 }: ConsultationHeaderProps) {
   return (
-    <div className="absolute top-0 left-0 right-0 z-10 flex items-center justify-between px-5 pt-5 pb-12 bg-linear-to-b from-[#0B0C10]/80 via-[#0B0C10]/40 to-transparent pointer-events-none">
+    <div className="absolute top-0 left-0 right-0 z-10 flex items-center justify-between px-5 pt-5 pb-12 bg-gradient-to-b from-[#0B0C10]/80 via-[#0B0C10]/40 to-transparent pointer-events-none">
       <div className="flex items-center gap-4 pointer-events-auto">
         <button
           onClick={onBack}

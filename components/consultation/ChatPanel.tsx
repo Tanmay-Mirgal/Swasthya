@@ -1,7 +1,7 @@
 "use client";
 
-import React, { useEffect } from "react";
-import { X, Send, Menu } from "lucide-react";
+import React from "react";
+import { X, Send } from "lucide-react";
 import ChatMessageItem from "./ChatMessageItem";
 import { Message } from "@/types/consultation";
 
@@ -37,7 +37,7 @@ export default function ChatPanel({
   return (
     <>
       <div
-        className={`fixed inset-y-0 right-0 z-40 w-full md:w-[380px] lg:w-[400px] bg-[#F9FAFB] border-l border-slate-200 flex flex-col transition-transform duration-300 ease-out md:relative md:translate-x-0 ${
+        className={`fixed inset-y-0 right-0 z-40 w-full md:w-[380px] lg:w-[400px] h-full bg-[#F9FAFB] border-l border-slate-200 flex flex-col transition-transform duration-300 ease-out md:relative md:translate-x-0 ${
           isOpen ? "translate-x-0 shadow-2xl md:shadow-none" : "translate-x-full"
         }`}
       >

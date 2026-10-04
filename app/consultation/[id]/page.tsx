@@ -2,7 +2,6 @@
 
 import { useEffect, useState, useRef, use } from "react";
 import { useRouter } from "next/navigation";
-import AppShell from "@/components/layout/AppShell";
 import { Loader2, AlertCircle } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { useAuth, useUser } from "@clerk/react";
@@ -587,25 +586,21 @@ export default function ConsultationPage({
 
   if (loading) {
     return (
-      <AppShell hideNav hideHeader>
-        <div className="flex h-screen items-center justify-center bg-slate-50">
-          <Loader2 className="w-8 h-8 animate-spin text-emerald-600" />
-        </div>
-      </AppShell>
+      <div className="fixed inset-0 w-screen h-screen bg-[#0B0C10] flex flex-col items-center justify-center">
+        <Loader2 className="w-8 h-8 animate-spin text-emerald-500" />
+      </div>
     );
   }
 
   if (error) {
     return (
-      <AppShell hideNav hideHeader>
-        <div className="flex flex-col h-screen items-center justify-center bg-slate-50 gap-4">
-          <AlertCircle className="w-10 h-10 text-red-500" />
-          <p className="text-slate-800 font-medium">{error}</p>
-          <Button onClick={() => router.push("/")} className="bg-emerald-600">
-            Return Home
-          </Button>
-        </div>
-      </AppShell>
+      <div className="fixed inset-0 w-screen h-screen bg-[#0B0C10] flex flex-col items-center justify-center p-6 text-center gap-4">
+        <AlertCircle className="w-10 h-10 text-rose-500" />
+        <p className="text-slate-200 font-medium">{error}</p>
+        <Button onClick={() => router.push("/")} className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold px-6 py-2.5 rounded-xl">
+          Return Home
+        </Button>
+      </div>
     );
   }
 
@@ -614,88 +609,86 @@ export default function ConsultationPage({
     activeRole === "patient" ? doctor?.professionalName : patient?.name;
 
   return (
-    <AppShell hideNav hideHeader>
-      <div className="flex h-dvh bg-slate-950 text-slate-100 overflow-hidden font-sans">
-        {/* === MAIN VIDEO AREA === */}
-        <div className="flex-1 relative bg-[#0B0C10] overflow-hidden flex flex-col">
-          {/* We keep it relative, VideoCallArea will be absolute inset-0 or just flex-1 */}
-          <VideoCallArea
-            callActive={callActive}
-            callConnecting={callConnecting}
-            hasRemoteStream={hasRemoteStream}
-            isCompleted={isCompleted}
-            peerName={peerName}
-            onlineUsers={onlineUsers}
-            callDuration={callDuration}
-            formatTime={formatTime}
-            localVideoRef={localVideoRef}
-            remoteVideoRef={remoteVideoRef}
-            isMuted={isMuted}
-            isVideoDisabled={isVideoDisabled}
-            onStartCall={startVideoCall}
-          />
-
-          <ConsultationHeader
-            peerName={peerName}
-            activeRole={activeRole}
-            onlineUsers={onlineUsers}
-            isCompleted={isCompleted}
-            callActive={callActive}
-            onBack={() => router.back()}
-            onOpenPrescriptionModal={() => setShowPrescriptionModal(true)}
-          />
-
-          <IncomingCallModal
-            incomingCall={incomingCall && !callActive ? incomingCall : null}
-            onAccept={acceptIncomingCall}
-            onReject={rejectIncomingCall}
-          />
-
-          <VideoControls
-            callActive={callActive}
-            connectionStatus={connectionStatus}
-            isMuted={isMuted}
-            isVideoDisabled={isVideoDisabled}
-            onToggleMute={toggleMute}
-            onToggleVideo={toggleVideo}
-            onEndCall={endVideoCall}
-            onOpenChat={() => setIsChatOpen(true)}
-          />
-        </div>
-
-        {/* === SIDE CHAT PANEL === */}
-        <ChatPanel
-          isOpen={isChatOpen}
-          onClose={() => setIsChatOpen(false)}
-          messages={messages}
-          activeRole={activeRole}
-          doctorName={doctor?.professionalName}
-          patientName={patient?.name}
-          peerTyping={peerTyping}
-          inputText={inputText}
-          onInputChange={handleInputChange}
-          onSendMessage={handleSendMessage}
-          messagesEndRef={messagesEndRef}
+    <div className="fixed inset-0 w-screen h-screen bg-[#0B0C10] text-slate-100 overflow-hidden font-sans flex select-none">
+      {/* === MAIN VIDEO AREA === */}
+      <div className="flex-1 h-full relative bg-[#0B0C10] overflow-hidden flex flex-col">
+        {/* We keep it relative, VideoCallArea will be absolute inset-0 or just flex-1 */}
+        <VideoCallArea
+          callActive={callActive}
+          callConnecting={callConnecting}
+          hasRemoteStream={hasRemoteStream}
+          isCompleted={isCompleted}
+          peerName={peerName}
+          onlineUsers={onlineUsers}
+          callDuration={callDuration}
+          formatTime={formatTime}
+          localVideoRef={localVideoRef}
+          remoteVideoRef={remoteVideoRef}
+          isMuted={isMuted}
+          isVideoDisabled={isVideoDisabled}
+          onStartCall={startVideoCall}
         />
 
-        {/* === DOCTOR PRESCRIPTION MODAL === */}
-        {activeRole === "doctor" && (
-          <PrescriptionModal
-            isOpen={showPrescriptionModal}
-            onClose={() => setShowPrescriptionModal(false)}
-            medicines={medicines}
-            setMedicines={setMedicines}
-            prescribedExercises={prescribedExercises}
-            setPrescribedExercises={setPrescribedExercises}
-            healthyTips={healthyTips}
-            setHealthyTips={setHealthyTips}
-            doctorNotes={doctorNotes}
-            setDoctorNotes={setDoctorNotes}
-            onSubmit={handleSubmitPrescription}
-            submitting={submittingPrescription}
-          />
-        )}
+        <ConsultationHeader
+          peerName={peerName}
+          activeRole={activeRole}
+          onlineUsers={onlineUsers}
+          isCompleted={isCompleted}
+          callActive={callActive}
+          onBack={() => router.back()}
+          onOpenPrescriptionModal={() => setShowPrescriptionModal(true)}
+        />
+
+        <IncomingCallModal
+          incomingCall={incomingCall && !callActive ? incomingCall : null}
+          onAccept={acceptIncomingCall}
+          onReject={rejectIncomingCall}
+        />
+
+        <VideoControls
+          callActive={callActive}
+          connectionStatus={connectionStatus}
+          isMuted={isMuted}
+          isVideoDisabled={isVideoDisabled}
+          onToggleMute={toggleMute}
+          onToggleVideo={toggleVideo}
+          onEndCall={endVideoCall}
+          onOpenChat={() => setIsChatOpen(true)}
+        />
       </div>
-    </AppShell>
+
+      {/* === SIDE CHAT PANEL === */}
+      <ChatPanel
+        isOpen={isChatOpen}
+        onClose={() => setIsChatOpen(false)}
+        messages={messages}
+        activeRole={activeRole}
+        doctorName={doctor?.professionalName}
+        patientName={patient?.name}
+        peerTyping={peerTyping}
+        inputText={inputText}
+        onInputChange={handleInputChange}
+        onSendMessage={handleSendMessage}
+        messagesEndRef={messagesEndRef}
+      />
+
+      {/* === DOCTOR PRESCRIPTION MODAL === */}
+      {activeRole === "doctor" && (
+        <PrescriptionModal
+          isOpen={showPrescriptionModal}
+          onClose={() => setShowPrescriptionModal(false)}
+          medicines={medicines}
+          setMedicines={setMedicines}
+          prescribedExercises={prescribedExercises}
+          setPrescribedExercises={setPrescribedExercises}
+          healthyTips={healthyTips}
+          setHealthyTips={setHealthyTips}
+          doctorNotes={doctorNotes}
+          setDoctorNotes={setDoctorNotes}
+          onSubmit={handleSubmitPrescription}
+          submitting={submittingPrescription}
+        />
+      )}
+    </div>
   );
 }
