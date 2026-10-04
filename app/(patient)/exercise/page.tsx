@@ -1,25 +1,26 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 
 import { useEffect, useState } from "react";
 import AppShell from "@/components/layout/AppShell";
-import ExerciseCard from "@/components/exercise/ExerciseCard";
+import RecommendedHero from "@/components/exercise/RecommendedHero";
+import ExerciseRow from "@/components/exercise/ExerciseRow";
+import ExerciseFilterTabs, { ExerciseFilterType } from "@/components/exercise/ExerciseFilterTabs";
 import { getAllExercises, ExtendedExerciseConfig } from "@/lib/exercises/registry";
-import { Search, Sparkles, Filter, Activity, CheckCircle2 } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { Search, X } from "lucide-react";
 import { useAuth } from "@clerk/react";
 
 export default function ExerciseSelectionPage() {
   const exercises = getAllExercises();
-  type FilterType = "all" | "upper" | "lower" | "neck";
   
-  const [filter, setFilter] = useState<FilterType>("all");
+  const [filter, setFilter] = useState<ExerciseFilterType>("all");
   const [searchQuery, setSearchQuery] = useState("");
   const { getToken, isSignedIn } = useAuth();
 
   // Dynamic clinical recommendation state
   const [recommendation, setRecommendation] = useState<any>(null);
   const [patientConcerns, setPatientConcerns] = useState<string[]>([]);
-  const [isLoadingRecs, setIsLoadingRecs] = useState(false);
+  const [, setIsLoadingRecs] = useState(false);
 
   useEffect(() => {
     async function loadRecommendations() {
@@ -45,7 +46,7 @@ export default function ExerciseSelectionPage() {
       }
     }
     loadRecommendations();
-  }, [isSignedIn]);
+  }, [isSignedIn, getToken]);
 
   const filteredExercises = exercises.filter((ex) => {
     const matchesFilter = filter === "all" || ex.bodySegment === filter;
@@ -57,7 +58,7 @@ export default function ExerciseSelectionPage() {
     return matchesFilter && matchesSearch;
   });
 
-  const filters: { id: FilterType; label: string; count: number }[] = [
+  const filters: { id: ExerciseFilterType; label: string; count: number }[] = [
     { id: "all", label: "All", count: exercises.length },
     {
       id: "upper",
@@ -82,149 +83,103 @@ export default function ExerciseSelectionPage() {
     exercises.find((ex) => ex.isAvailable) ||
     exercises[0];
 
+  const isBrowsingAll = filter === "all" && searchQuery === "";
+
   return (
     <AppShell title="Exercises" hideHeader>
-      <div className="flex flex-col space-y-6 pt-3 pb-12 px-2 sm:px-0 bg-[#F8FAFC]">
+      <div className="max-w-4xl mx-auto w-full space-y-7 pb-12 pt-2 px-1 sm:px-0">
         
-        {/* ── 1. HEADER SECTION ────────────────────────────────────────── */}
-        <section className="pt-1">
-          <div className="flex items-center justify-between">
-            <div>
-              <span className="text-[11px] font-bold uppercase tracking-wider text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200/60">
-                Clinical Library
-              </span>
-              <h1 className="text-2xl font-bold tracking-tight text-slate-900 mt-1.5">
-                Choose an Exercise
-              </h1>
-            </div>
-            <div className="size-10 rounded-2xl bg-white border border-slate-200 shadow-2xs flex items-center justify-center text-emerald-700">
-              <Activity className="size-5" />
-            </div>
+        {/* ── 1. PAGE HEADER & SEARCH ──────────────────────────────────── */}
+        <header className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4 pt-1">
+          <div>
+            <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight text-slate-900">
+              Exercises
+            </h1>
+            <p className="text-sm text-slate-500 mt-1 max-w-md">
+              Targeted movement routines for your rehabilitation and recovery plan.
+            </p>
           </div>
-          <p className="text-xs sm:text-sm text-slate-500 mt-1.5 leading-relaxed max-w-sm">
-            AI computer vision tracks joint kinematics and guides recovery in real time.
-          </p>
-        </section>
 
-        {/* ── 2. SEARCH INPUT ──────────────────────────────────────────── */}
-        <div className="relative w-full">
-          <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 size-4 text-slate-400 pointer-events-none" />
-          <input
-            type="text"
-            placeholder="Search exercises, joints, or routines..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full h-11 pl-10 pr-4 rounded-xl bg-white border border-slate-200/90 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all shadow-2xs"
-          />
-          {searchQuery && (
-            <button
-              onClick={() => setSearchQuery("")}
-              className="absolute right-3.5 top-1/2 -translate-y-1/2 text-xs font-semibold text-slate-400 hover:text-slate-700 cursor-pointer"
-            >
-              Clear
-            </button>
-          )}
-        </div>
-
-        {/* ── 3. RECOMMENDED HERO ROUTINE (Dynamically driven by Clinical AI) ── */}
-        {filter === "all" && searchQuery === "" && (
-          <section>
-            <div className="flex items-center justify-between mb-2.5 px-1">
-              <h2 className="text-xs font-bold uppercase tracking-wider text-slate-500">
-                Recommended For You
-              </h2>
-              {patientConcerns.length > 0 && (
-                <span className="text-[11px] font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200/50">
-                  Target: {patientConcerns[0]}
-                </span>
-              )}
-            </div>
-
-            <ExerciseCard
-              exercise={featuredExercise}
-              isFeatured={true}
-              matchedConcern={recommendation?.matchedConcern}
-              matchType={recommendation?.matchType}
-              clinicalRationale={recommendation?.clinicalRationale}
-              confidencePercent={recommendation?.confidencePercent}
-              targetSets={recommendation?.targetSets}
-              targetReps={recommendation?.targetReps}
+          {/* Clean discovery search bar */}
+          <div className="w-full sm:w-72 relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-slate-400 pointer-events-none" />
+            <input
+              type="text"
+              aria-label="Search exercises"
+              placeholder="Search exercise or joint..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full h-10 pl-9 pr-8 rounded-lg bg-white border border-slate-200 text-xs sm:text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-slate-400 focus:ring-2 focus:ring-slate-100 transition-all shadow-2xs"
             />
-          </section>
+            {searchQuery && (
+              <button
+                type="button"
+                aria-label="Clear search"
+                onClick={() => setSearchQuery("")}
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5 cursor-pointer"
+              >
+                <X className="size-3.5" />
+              </button>
+            )}
+          </div>
+        </header>
+
+        {/* ── 2. HERO: CLINICAL GUIDANCE RECOMMENDATION ────────────────── */}
+        {isBrowsingAll && (
+          <RecommendedHero
+            exercise={featuredExercise}
+            matchedConcern={patientConcerns[0] || recommendation?.matchedConcern}
+            matchType={recommendation?.matchType}
+            clinicalRationale={recommendation?.clinicalRationale}
+            targetSets={recommendation?.targetSets}
+            targetReps={recommendation?.targetReps}
+          />
         )}
 
-        {/* ── 4. CATEGORY FILTER PILLS (Touch-friendly Smooth Scrollable Tabs) ── */}
-        <section className="space-y-4">
-          <div className="w-full overflow-hidden">
-            <div className="flex items-center gap-2 overflow-x-auto pb-2 pt-0.5 scrollbar-none -mx-4 px-4 sm:-mx-2 sm:px-2 overscroll-x-contain touch-pan-x">
-              {filters.map((f) => {
-                const isSelected = filter === f.id;
-                return (
-                  <button
-                    key={f.id}
-                    onClick={() => setFilter(f.id)}
-                    className={cn(
-                      "shrink-0 px-3.5 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap transition-all duration-200 flex items-center gap-1.5 cursor-pointer active:scale-95 shadow-2xs",
-                      isSelected
-                        ? "bg-emerald-600 text-white shadow-xs"
-                        : "bg-white text-slate-600 border border-slate-200 hover:bg-slate-50 hover:text-slate-900"
-                    )}
-                  >
-                    <span>{f.label}</span>
-                    <span
-                      className={cn(
-                        "text-[10px] px-1.5 py-0.2 rounded-full font-bold",
-                        isSelected
-                          ? "bg-white/25 text-white"
-                          : "bg-slate-100 text-slate-500"
-                      )}
-                    >
-                      {f.count}
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
+        {/* ── 3. CURATED EXERCISE DIRECTORY ───────────────────────────── */}
+        <section aria-label="Exercise Directory" className="space-y-4">
+          {/* Header row with directory title & category filter tabs */}
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <h2 className="text-xs font-semibold uppercase tracking-wider text-slate-400">
+              {searchQuery ? "Search Results" : "All Exercises"}
+            </h2>
+
+            <ExerciseFilterTabs
+              filters={filters}
+              activeFilter={filter}
+              onSelectFilter={setFilter}
+            />
           </div>
 
-          {/* ── 5. EXERCISE CARDS LIST ─────────────────────────────────── */}
-          <div className="flex flex-col space-y-3">
+          {/* Scannable Exercise List */}
+          <div className="bg-white rounded-2xl border border-slate-200/80 shadow-[0_1px_3px_rgba(15,23,42,0.03)] divide-y divide-slate-100 overflow-hidden">
             {filteredExercises.map((ex) => {
-              // If on 'all' without search, skip the featured card from the list below
-              if (filter === "all" && searchQuery === "" && ex.id === featuredExercise.id) {
+              // Exclude featured hero exercise only when on 'all' view with no active search
+              if (isBrowsingAll && ex.id === featuredExercise.id) {
                 return null;
               }
 
-              return (
-                <ExerciseCard
-                  key={ex.id}
-                  exercise={ex}
-                  isFeatured={false}
-                  isAvailable={ex.isAvailable}
-                />
-              );
+              return <ExerciseRow key={ex.id} exercise={ex} />;
             })}
 
             {/* Empty Search / Filter State */}
             {filteredExercises.length === 0 && (
-              <div className="py-12 bg-white rounded-2xl border border-slate-200/80 p-6 flex flex-col items-center justify-center text-center shadow-xs">
-                <div className="size-12 rounded-2xl bg-emerald-50 border border-emerald-100 flex items-center justify-center mb-3 text-emerald-600">
-                  <Search className="size-6" />
-                </div>
-                <h3 className="text-base font-bold text-slate-900 mb-1">
-                  No routines found
-                </h3>
-                <p className="text-xs text-slate-500 max-w-xs mb-3">
-                  No exercise matching &quot;{searchQuery}&quot; in this category.
+              <div className="py-12 px-6 flex flex-col items-center justify-center text-center">
+                <p className="text-sm font-medium text-slate-800">
+                  No exercises found
+                </p>
+                <p className="text-xs text-slate-500 max-w-xs mt-1">
+                  We couldn&apos;t find an exercise matching &ldquo;{searchQuery}&rdquo;.
                 </p>
                 <button
+                  type="button"
                   onClick={() => {
                     setFilter("all");
                     setSearchQuery("");
                   }}
-                  className="text-xs font-semibold text-emerald-700 hover:text-emerald-800 underline underline-offset-4 cursor-pointer"
+                  className="mt-3 text-xs font-semibold text-slate-700 hover:text-slate-900 underline underline-offset-4 cursor-pointer"
                 >
-                  Reset filters
+                  Reset filters and show all
                 </button>
               </div>
             )}
