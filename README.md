@@ -18,7 +18,7 @@ The project is currently actively under development. The core infrastructure for
 
 ### Implemented Features (as of current milestone)
 
-- **Exercise Setup & Live Tracking:** 
+- **Exercise Setup & Live Tracking:**
   - Dynamic routing for exercises (`/exercise/[exerciseId]/live` and `setup`).
   - Currently supported exercises:
     - Seated Knee Extension
@@ -40,6 +40,7 @@ The project is currently actively under development. The core infrastructure for
 ## 🛠️ Development & Building
 
 ### Prerequisites
+
 - Node.js (v18+)
 - Java 21 (Required for Android Capacitor Gradle build)
 - Android Studio / Android SDK
@@ -62,20 +63,23 @@ npm run cap:build
 ```
 
 Then, you can open it in Android Studio:
+
 ```bash
 npm run cap:open
 ```
 
 Or build the APK via Gradle manually:
+
 ```bash
 cd android
 ./gradlew assembleDebug
 ```
+
 *(The generated APK will be available in `android/app/build/outputs/apk/debug/app-debug.apk`)*
 
 ## 📁 Project Structure Highlights
 
 - `/app` - Next.js App Router containing pages for exercises, progress, session, and API routes.
 - `/components` - Reusable React components divided by domain (exercise, navigation, pose, session).
-- `/android` - Generated Android project handled by Capacitor.
+- `/android` - Generated project handled by Capacitor.
 - `capacitor.config.ts` - Configuration for the mobile runtime (e.g., API allowances, splash screens, dark mode).
