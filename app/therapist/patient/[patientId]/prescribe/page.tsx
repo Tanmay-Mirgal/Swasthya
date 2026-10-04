@@ -173,3 +173,4 @@ export default function PrescribeExercisePage({ params }: { params: Promise<{ pa
     </AppShell>
   );
 }
+

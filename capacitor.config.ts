@@ -5,8 +5,8 @@ const config: CapacitorConfig = {
   appId: "com.tanmay.rehablens",
   appName: "RehabLens",
 
-  // Points Capacitor to the Next.js static export output directory
-  webDir: "out",
+  // Points Capacitor to the public folder (empty shell) for Live Wrapper
+  webDir: "public",
 
   // Android-specific configuration
   android: {
@@ -17,16 +17,20 @@ const config: CapacitorConfig = {
     webContentsDebuggingEnabled: true,
   },
 
-  // Server configuration for live dev (only used with `npx cap run android --livereload`)
+  // Server configuration for live wrapper
   server: {
+    // Replace this URL with your deployed Vercel URL!
+    // For local testing on an emulator, use your machine's local IP, e.g., "http://192.168.1.x:3000"
+    url: "https://rehablens-nine.vercel.app",
+    androidScheme: "com.tanmay.rehablens",
     // Allow CORS for external API calls (Groq API)
     allowNavigation: [
       "api.groq.com",
       "cdn.jsdelivr.net",
       "storage.googleapis.com",
     ],
-    // Keep URLs as-is when navigating within WebView
-    cleartext: false,
+    // Keep URLs as-is when navigating within WebView. Allow cleartext for local testing over http.
+    cleartext: true,
   },
 
   plugins: {

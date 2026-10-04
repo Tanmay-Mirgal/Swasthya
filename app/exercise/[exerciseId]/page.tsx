@@ -8,3 +8,4 @@ export default async function ExercisePage({
   const { exerciseId } = await params;
   redirect(`/exercise/${exerciseId}/setup`);
 }
+

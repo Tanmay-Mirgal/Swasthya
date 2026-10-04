@@ -164,3 +164,4 @@ export default function PatientDetailPage({ params }: { params: Promise<{ patien
     </AppShell>
   );
 }
+

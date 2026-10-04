@@ -24,6 +24,17 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
 
+            <!-- Intent filter to handle Clerk SSO deep links -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <!-- Matches com.tanmay.rehablens://oauth-callback -->
+                <data android:scheme="com.tanmay.rehablens" android:host="oauth-callback" />
+                <!-- Matches com.tanmay.rehablens://localhost (if androidScheme is used) -->
+                <data android:scheme="com.tanmay.rehablens" android:host="localhost" />
+            </intent-filter>
+
         </activity>
 
         <provider

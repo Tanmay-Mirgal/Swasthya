@@ -1416,3 +1416,4 @@ export default function ConsultationPage({
     </AppShell>
   );
 }
+

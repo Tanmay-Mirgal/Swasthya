@@ -8,15 +8,17 @@
     "start": "next start",
     "lint": "eslint",
     "socket": "node socket-server.js",
-    "cap:build": "CAPACITOR_BUILD=true next build && npx cap sync android",
+    "cap:build": "npx cap sync android",
     "cap:sync": "npx cap sync android",
     "cap:open": "npx cap open android",
     "cap:run": "npx cap run android",
-    "apk": "powershell -ExecutionPolicy Bypass -File ./build-apk.ps1"
+    "apk": "powershell -ExecutionPolicy Bypass -File ./build-apk.ps1",
+    "apk:mac": "bash ./build-apk.sh"
   },
   "dependencies": {
     "@capacitor-community/text-to-speech": "^8.0.2",
     "@capacitor/android": "^8.5.2",
+    "@capacitor/app": "^8.1.2",
     "@capacitor/core": "^8.5.2",
     "@clerk/backend": "^3.22.0",
     "@clerk/clerk-react": "^5.61.10",

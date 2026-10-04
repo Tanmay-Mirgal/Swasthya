@@ -24,3 +24,4 @@ export default function ChatRedirectPage({ params }: { params: Promise<{ id: str
     </AppShell>
   );
 }
+
