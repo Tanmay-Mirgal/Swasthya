@@ -33,15 +33,15 @@ export const metadata: Metadata = {
 
 // Separate viewport export (required in Next.js 14+)
 export const viewport: Viewport = {
-  // Proper mobile viewport — prevents scaling issues on Android
+  // Responsive viewport configuration
   width: "device-width",
   initialScale: 1,
   minimumScale: 1,
   maximumScale: 1,
   userScalable: false,
-  // Android status bar color — matches app's light theme
+  // Browser theme color — matches app's light theme
   themeColor: "#F8FAFC",
-  // Support notch / gesture bar safe areas
+  // Support safe areas
   viewportFit: "cover",
 };
 

@@ -7,14 +7,6 @@ import User from "@/lib/models/User";
 
 const clerkClient = createClerkClient({ secretKey: process.env.CLERK_SECRET_KEY });
 
-export function generateStaticParams() {
-  return [{ requestId: "export" }];
-}
-
-export async function GET() {
-  return NextResponse.json({ ok: true });
-}
-
 export async function POST(
   req: Request,
   { params }: { params: Promise<{ requestId: string }> }
