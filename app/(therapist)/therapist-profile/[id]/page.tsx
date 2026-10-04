@@ -1,4 +1,3 @@
-/* eslint-disable react-hooks/exhaustive-deps */
 "use client";
 
 import { useEffect, useState, use } from "react";
@@ -10,22 +9,43 @@ import {
   Loader2,
   Star,
   ShieldCheck,
-  Video,
   Clock,
-  Building2,
-  Languages,
   CheckCircle2,
-  Sparkles,
-  Award,
-  Users,
   MessageSquare,
-  Lock,
   Calendar,
-  Share2,
+  Languages,
+  AlertCircle,
 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { useAuth } from "@clerk/react";
 import DoctorAvatar from "@/components/ui/DoctorAvatar";
+
+const TIME_SLOTS = [
+  "09:30 AM",
+  "11:00 AM",
+  "02:00 PM",
+  "03:30 PM",
+  "04:30 PM",
+  "06:00 PM",
+];
+
+interface TherapistPublicProfile {
+  _id?: string;
+  clerkUserId?: string;
+  professionalName: string;
+  title?: string;
+  specialization?: string;
+  qualification?: string;
+  clinicName?: string;
+  avatarUrl?: string;
+  rating?: number;
+  reviewCount?: number;
+  yearsOfExperience?: string;
+  consultationFee?: number;
+  bio?: string;
+  supportedConditions?: string[];
+  languages?: string[];
+}
 
 export default function TherapistProfilePage({
   params,
@@ -35,24 +55,41 @@ export default function TherapistProfilePage({
   const resolvedParams = use(params);
   const therapistId = resolvedParams.id;
   const router = useRouter();
-
   const { getToken } = useAuth();
-  const [therapist, setTherapist] = useState<any>(null);
+
+  const [therapist, setTherapist] = useState<TherapistPublicProfile | null>(null);
   const [loading, setLoading] = useState(true);
-  const [startingConsultation, setStartingConsultation] = useState(false);
-  const [copied, setCopied] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  // Booking Modal State
+  const [showBookingModal, setShowBookingModal] = useState(false);
+  const [selectedDate, setSelectedDate] = useState<string>(() => {
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    return tomorrow.toISOString().split("T")[0];
+  });
+  const [selectedTime, setSelectedTime] = useState<string>("04:30 PM");
+  const [patientNote, setPatientNote] = useState<string>("");
+  const [bookingLoading, setBookingLoading] = useState(false);
+  const [bookingSuccess, setBookingSuccess] = useState(false);
+  const [bookingError, setBookingError] = useState<string | null>(null);
 
   useEffect(() => {
     const fetchTherapist = async () => {
-      const token = await getToken();
       try {
+        const token = await getToken();
         const res = await fetch(`/api/therapist/public-profile/${therapistId}/`, {
           headers: token ? { Authorization: `Bearer ${token}` } : {},
         });
         const json = await res.json();
-        if (json.success) setTherapist(json.data);
+        if (json.success && json.data) {
+          setTherapist(json.data);
+        } else {
+          setError(json.error || "Practitioner profile not found.");
+        }
       } catch (err) {
         console.error("Error fetching therapist:", err);
+        setError("Unable to load practitioner profile.");
       } finally {
         setLoading(false);
       }
@@ -60,62 +97,69 @@ export default function TherapistProfilePage({
     fetchTherapist();
   }, [therapistId, getToken]);
 
-  const handleStartConsultation = async () => {
-    setStartingConsultation(true);
+  const handleBookAppointment = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setBookingLoading(true);
+    setBookingError(null);
+
     try {
       const token = await getToken();
-      const res = await fetch("/api/consultation/start/", {
+      if (!token) {
+        setBookingError("Please sign in to book an appointment.");
+        setBookingLoading(false);
+        return;
+      }
+
+      const res = await fetch("/api/patient/appointment-request", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
-          doctorId: therapistId,
-          issue: therapist?.specialization || "Knee Rehabilitation",
+          therapistId,
+          requestedDate: selectedDate,
+          requestedTime: selectedTime,
+          patientNote: patientNote.trim() || therapist?.specialization || "Rehabilitation Consultation",
         }),
       });
 
       const json = await res.json();
-      if (json.success && json.data?.consultation?._id) {
-        router.push(`/consultation/${json.data.consultation._id}`);
+      if (json.success) {
+        setBookingSuccess(true);
+        setTimeout(() => {
+          setShowBookingModal(false);
+          router.push("/appointments");
+        }, 1500);
       } else {
-        alert(json.error || "Unable to start consultation right now.");
+        setBookingError(json.error || "Failed to schedule appointment request.");
       }
-    } catch (err) {
-      console.error("Error launching consultation:", err);
+    } catch {
+      setBookingError("Network error. Please try again.");
     } finally {
-      setStartingConsultation(false);
-    }
-  };
-
-  const handleShare = () => {
-    if (navigator.clipboard) {
-      navigator.clipboard.writeText(window.location.href);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
+      setBookingLoading(false);
     }
   };
 
   if (loading) {
     return (
-      <AppShell hideHeader hideNav>
-        <div className="flex flex-col h-[70vh] items-center justify-center space-y-3">
-          <Loader2 className="size-8 animate-spin text-emerald-600" />
-          <p className="text-xs font-semibold text-slate-500">Loading doctor profile...</p>
+      <AppShell hideHeader>
+        <div className="flex flex-col items-center justify-center h-[50vh] space-y-3">
+          <Loader2 className="size-8 animate-spin text-slate-400" />
+          <p className="text-xs text-slate-400">Loading specialist profile...</p>
         </div>
       </AppShell>
     );
   }
 
-  if (!therapist) {
+  if (error || !therapist) {
     return (
-      <AppShell hideHeader hideNav>
-        <div className="p-8 text-center max-w-md mx-auto space-y-4">
-          <h2 className="text-lg font-bold text-slate-900">Doctor Profile Not Found</h2>
-          <p className="text-sm text-slate-500">The requested doctor is not currently listed.</p>
-          <Button asChild className="bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl">
-            <Link href="/discover">Return to Doctor Discovery</Link>
+      <AppShell hideHeader>
+        <div className="max-w-md mx-auto my-12 p-8 bg-white rounded-2xl border border-slate-200 text-center space-y-4">
+          <AlertCircle className="size-8 text-slate-400 mx-auto" />
+          <h2 className="text-base font-semibold text-slate-900">{error || "Specialist not found"}</h2>
+          <Button asChild className="bg-slate-900 text-white rounded-xl">
+            <Link href="/discover">Browse Specialists</Link>
           </Button>
         </div>
       </AppShell>
@@ -123,256 +167,284 @@ export default function TherapistProfilePage({
   }
 
   return (
-    <AppShell hideHeader hideNav>
-      <div className="w-full max-w-2xl mx-auto flex flex-col space-y-3 pb-28 pt-1 px-0.5 sm:px-1 overflow-x-hidden">
+    <AppShell hideHeader>
+      <div className="max-w-2xl mx-auto w-full space-y-6 pb-28 pt-2 px-3 sm:px-0">
         
-        {/* ── 1. Top App Header Bar ───────────────────────────────────── */}
-        <div className="sticky top-0 z-30 bg-[#F8FAFC]/95 backdrop-blur-md flex items-center justify-between py-2 px-1 w-full border-b border-slate-200/60">
-          <div className="flex items-center gap-2">
-            <Link
-              href="/discover"
-              className="size-9 rounded-xl bg-white border border-slate-200/80 flex items-center justify-center text-slate-700 hover:bg-slate-50 active:scale-95 transition-all shadow-2xs"
-            >
-              <ArrowLeft className="size-4.5" />
+        {/* Back Link */}
+        <div>
+          <Button asChild variant="ghost" className="text-xs text-slate-500 hover:text-slate-900 p-0 h-auto">
+            <Link href="/discover" className="flex items-center gap-1.5">
+              <ArrowLeft className="size-4" />
+              <span>Back to Specialists</span>
             </Link>
-            <span className="text-sm font-bold text-slate-900 truncate">
-              Doctor Details
-            </span>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <span className="text-[11px] font-semibold text-emerald-800 bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-200/80 flex items-center gap-1">
-              <ShieldCheck className="size-3.5 text-emerald-600" />
-              <span>Verified</span>
-            </span>
-
-            <button
-              onClick={handleShare}
-              className="size-9 rounded-xl bg-white border border-slate-200/80 flex items-center justify-center text-slate-600 hover:bg-slate-50 active:scale-95 transition-all shadow-2xs"
-              title="Share profile link"
-            >
-              <Share2 className="size-4" />
-            </button>
-          </div>
+          </Button>
         </div>
 
-        {copied && (
-          <div className="bg-slate-900 text-white text-xs py-1.5 px-3 rounded-xl text-center shadow-lg animate-in fade-in duration-200">
-            Profile link copied to clipboard!
-          </div>
-        )}
-
-        {/* ── 2. Doctor Primary Hero Card (Horizontal Mobile First) ───── */}
-        <div className="bg-white rounded-2xl border border-slate-200/80 p-3.5 sm:p-5 shadow-[0_2px_12px_rgba(15,23,42,0.04)] w-full overflow-hidden">
-          <div className="flex items-start gap-3 sm:gap-4 w-full">
-            {/* Avatar */}
+        {/* ── 1. DOCTOR IDENTITY CARD ──────────────────────────────────── */}
+        <div className="bg-white rounded-2xl border border-slate-200/90 p-6 sm:p-7 shadow-[0_1px_3px_rgba(15,23,42,0.03)] space-y-5">
+          <div className="flex items-start gap-4 sm:gap-5">
             <DoctorAvatar
               src={therapist.avatarUrl}
               name={therapist.professionalName}
               size="lg"
-              isOnline={therapist.isOnline ?? true}
-              className="size-16 sm:size-20 rounded-2xl shrink-0"
+              isOnline={false}
+              className="size-18 sm:size-20 rounded-2xl shrink-0"
             />
 
-            {/* Info */}
-            <div className="flex-1 min-w-0 space-y-0.5 sm:space-y-1">
-              <div className="flex items-center gap-1.5 flex-wrap">
-                <h1 className="text-base sm:text-xl font-bold tracking-tight text-slate-900 leading-snug truncate">
+            <div className="min-w-0 space-y-1 flex-1">
+              <div className="flex items-center gap-2 flex-wrap">
+                <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-slate-900 leading-tight">
                   {therapist.professionalName}
                 </h1>
-                <Award className="size-4 text-emerald-600 shrink-0" />
+                <ShieldCheck className="size-4 text-slate-400 shrink-0" />
+                <span className="text-[10px] font-semibold bg-slate-100 text-slate-700 px-2 py-0.5 rounded-md">
+                  Verified Specialist
+                </span>
               </div>
 
-              <p className="text-xs sm:text-sm font-semibold text-emerald-700 truncate">
-                {therapist.specialization}
+              <p className="text-xs sm:text-sm font-medium text-slate-700">
+                {therapist.title || "Clinical Physiotherapist"}
               </p>
 
-              <p className="text-[11px] sm:text-xs text-slate-500 truncate">
-                {therapist.qualification}
+              <p className="text-xs text-slate-500">
+                {therapist.specialization || "Orthopedic Rehabilitation"}
               </p>
 
-              <div className="flex items-center gap-1 text-[11px] text-slate-500 pt-0.5 truncate">
-                <Building2 className="size-3 text-slate-400 shrink-0" />
-                <span className="truncate">{therapist.clinicName || "Swasthya Partner Institute"}</span>
+              <div className="flex flex-wrap items-center gap-2 pt-1 text-xs text-slate-600">
+                <div className="flex items-center gap-1 font-semibold text-slate-900">
+                  <Star className="size-3.5 fill-amber-400 text-amber-400" />
+                  <span>{therapist.rating || 4.9}</span>
+                  <span className="text-slate-400 font-normal">({therapist.reviewCount || 86})</span>
+                </div>
+                <span className="text-slate-300">•</span>
+                <span className="text-slate-500">{therapist.yearsOfExperience || "8+ years"} exp</span>
+                <span className="text-slate-300">•</span>
+                <span className="text-slate-500">{therapist.clinicName || "Swasthya Partner Center"}</span>
               </div>
             </div>
           </div>
 
-          {/* 4 Clinical Stats Matrix (Optimized 4-column compact badges) */}
-          <div className="grid grid-cols-4 gap-1.5 sm:gap-2 mt-4 pt-3 border-t border-slate-100 text-center w-full">
-            <div className="bg-slate-50 rounded-xl p-1.5 sm:p-2">
-              <div className="flex items-center justify-center gap-0.5 text-slate-900 font-bold text-xs sm:text-sm">
-                <Star className="size-3 fill-amber-400 text-amber-400" />
-                <span>{therapist.rating || 4.9}</span>
-              </div>
-              <span className="text-[9px] sm:text-[10px] text-slate-400 font-medium block truncate">
-                {therapist.reviewCount || 84} Reviews
-              </span>
+          {/* Quick Metrics Line */}
+          <div className="grid grid-cols-3 gap-3 pt-4 border-t border-slate-100 text-center">
+            <div className="p-3 bg-slate-50 rounded-xl">
+              <span className="text-[11px] text-slate-400 block font-medium">Session Fee</span>
+              <span className="text-sm font-bold text-slate-900">₹{therapist.consultationFee || 499}</span>
             </div>
-
-            <div className="bg-slate-50 rounded-xl p-1.5 sm:p-2">
-              <div className="text-slate-900 font-bold text-xs sm:text-sm truncate">
-                {therapist.yearsOfExperience || "8+ yrs"}
-              </div>
-              <span className="text-[9px] sm:text-[10px] text-slate-400 font-medium block truncate">
-                Experience
-              </span>
+            <div className="p-3 bg-slate-50 rounded-xl">
+              <span className="text-[11px] text-slate-400 block font-medium">Duration</span>
+              <span className="text-sm font-bold text-slate-900">30 mins</span>
             </div>
-
-            <div className="bg-slate-50 rounded-xl p-1.5 sm:p-2">
-              <div className="text-emerald-700 font-bold text-xs sm:text-sm truncate">
-                ₹{therapist.consultationFee || 499}
-              </div>
-              <span className="text-[9px] sm:text-[10px] text-slate-400 font-medium block truncate">
-                Per Call
-              </span>
-            </div>
-
-            <div className="bg-slate-50 rounded-xl p-1.5 sm:p-2">
-              <div className="text-slate-900 font-bold text-xs sm:text-sm flex items-center justify-center gap-0.5">
-                <Languages className="size-3 text-slate-400" />
-                <span>{therapist.languages?.length || 2}</span>
-              </div>
-              <span className="text-[9px] sm:text-[10px] text-slate-400 font-medium block truncate">
-                Languages
-              </span>
+            <div className="p-3 bg-slate-50 rounded-xl">
+              <span className="text-[11px] text-slate-400 block font-medium">Format</span>
+              <span className="text-sm font-bold text-slate-900">Video & Guidance</span>
             </div>
           </div>
         </div>
 
-        {/* ── 3. Live Telehealth Status ───────────────────────────────── */}
-        <div className="bg-emerald-50/90 border border-emerald-200/80 rounded-2xl p-3 flex items-center justify-between shadow-2xs w-full">
-          <div className="flex items-center gap-2 min-w-0">
-            <span className="size-2 rounded-full bg-emerald-500 animate-ping shrink-0" />
-            <div className="min-w-0">
-              <p className="text-xs font-bold text-emerald-950 truncate">
-                {therapist.availability || "Available Today • Instant Video & Chat"}
-              </p>
-              <p className="text-[10px] text-emerald-700">
-                Average wait time: &lt; 2 minutes
-              </p>
-            </div>
-          </div>
-          <span className="text-[10px] font-bold text-emerald-800 bg-white border border-emerald-200/80 px-2 py-0.5 rounded-lg shrink-0">
-            Instant Join
-          </span>
-        </div>
-
-        {/* ── 4. Supported Conditions & Clinical Areas ────────────────── */}
-        <div className="bg-white rounded-2xl border border-slate-200/80 p-3.5 sm:p-4 space-y-2 shadow-[0_2px_12px_rgba(15,23,42,0.04)] w-full">
-          <h2 className="text-xs font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
-            <Sparkles className="size-3.5 text-emerald-600" />
-            <span>Specialties & Conditions Treated</span>
+        {/* ── 2. SPECIALTIES & CONDITIONS TREATED ──────────────────────── */}
+        <div className="bg-white rounded-2xl border border-slate-200/90 p-5 sm:p-6 space-y-3 shadow-xs">
+          <h2 className="text-xs font-semibold uppercase tracking-wider text-slate-400">
+            Specialties & Conditions
           </h2>
-          <div className="flex flex-wrap gap-1.5 pt-0.5">
+          <div className="flex flex-wrap gap-2">
             {(therapist.supportedConditions || [
               "Neck Pain",
               "Back Pain",
-              "Posture Correction",
-              "Knee Pain",
+              "Cervical Spondylosis",
               "Knee Rehabilitation",
-              "Sports Injury",
-              "Mobility Issues",
+              "Post-Op Recovery",
+              "Posture Correction",
             ]).map((cond: string) => (
               <span
                 key={cond}
-                className="bg-slate-50 border border-slate-200/80 text-slate-800 text-[11px] px-2.5 py-1 rounded-xl font-medium flex items-center gap-1 shadow-2xs"
+                className="bg-slate-50 text-slate-700 text-xs px-3 py-1.5 rounded-lg border border-slate-200/70 font-medium flex items-center gap-1.5"
               >
-                <CheckCircle2 className="size-3 text-emerald-600 shrink-0" />
+                <CheckCircle2 className="size-3 text-slate-400 shrink-0" />
                 <span>{cond}</span>
               </span>
             ))}
           </div>
         </div>
 
-        {/* ── 5. About the Doctor & Practice ───────────────────────────── */}
-        <div className="bg-white rounded-2xl border border-slate-200/80 p-3.5 sm:p-4 space-y-2 shadow-[0_2px_12px_rgba(15,23,42,0.04)] w-full">
-          <h2 className="text-xs font-bold uppercase tracking-wider text-slate-500">
+        {/* ── 3. CLINICAL BIO & BACKGROUND ────────────────────────────── */}
+        <div className="bg-white rounded-2xl border border-slate-200/90 p-5 sm:p-6 space-y-3 shadow-xs">
+          <h2 className="text-xs font-semibold uppercase tracking-wider text-slate-400">
             About the Practitioner
           </h2>
           <p className="text-xs sm:text-sm text-slate-600 leading-relaxed">
             {therapist.bio ||
-              `${therapist.professionalName} is a licensed physical therapy specialist focusing on precision musculoskeletal recovery, exercise rehabilitation, and posture correction.`}
+              `${therapist.professionalName} is an experienced physical therapist specializing in orthopedic rehabilitation, functional kinematic recovery, and posture correction. Sessions focus on clinical diagnosis, exercise form coaching, and progression tracking.`}
           </p>
 
-          <div className="pt-2 flex flex-wrap gap-3 text-[11px] text-slate-500 border-t border-slate-100">
-            <div className="flex items-center gap-1">
-              <Clock className="size-3 text-slate-400" />
-              <span>Session: ~25 mins</span>
-            </div>
-            <div className="flex items-center gap-1">
-              <Languages className="size-3 text-slate-400" />
+          <div className="pt-2 flex flex-wrap gap-4 text-xs text-slate-500 border-t border-slate-100">
+            <div className="flex items-center gap-1.5">
+              <Languages className="size-3.5 text-slate-400" />
               <span>Languages: {therapist.languages?.join(", ") || "English, Hindi"}</span>
             </div>
-          </div>
-        </div>
-
-        {/* ── 6. Clinical Trust & HIPAA Badges ────────────────────────── */}
-        <div className="bg-slate-50/80 rounded-2xl border border-slate-200/70 p-3 flex items-center justify-between gap-2 text-[11px] text-slate-500 w-full">
-          <div className="flex items-center gap-2">
-            <Lock className="size-3.5 text-emerald-600 shrink-0" />
-            <span>Encrypted video calls • Doctor-guided therapy only</span>
-          </div>
-          <span className="text-[10px] font-bold text-slate-600">HIPAA Compliant</span>
-        </div>
-
-      </div>
-
-      {/* ── 7. STICKY BOTTOM DOCK (Mobile App Standard) ────────────────── */}
-      <div
-        className="fixed bottom-0 left-0 right-0 z-50 bg-white/95 backdrop-blur-md border-t border-slate-200/80 shadow-[0_-4px_16px_rgba(15,23,42,0.06)]"
-        style={{
-          paddingBottom: "max(env(safe-area-inset-bottom, 0px), 8px)",
-        }}
-      >
-        <div className="max-w-2xl mx-auto px-3 py-2 flex items-center justify-between gap-3">
-          {/* Fee & Duration */}
-          <div>
-            <div className="flex items-baseline gap-1">
-              <span className="text-lg font-extrabold text-slate-900">
-                ₹{therapist.consultationFee || 499}
-              </span>
-              <span className="text-[10px] text-slate-400 font-medium">/ session</span>
+            <div className="flex items-center gap-1.5">
+              <Clock className="size-3.5 text-slate-400" />
+              <span>Response: Within clinical hours</span>
             </div>
-            <p className="text-[10px] text-emerald-700 font-semibold flex items-center gap-1">
-              <span className="size-1.5 rounded-full bg-emerald-500" />
-              <span>Available Now</span>
-            </p>
-          </div>
-
-          {/* Action CTA */}
-          <div className="flex items-center gap-2 flex-1 justify-end max-w-xs">
-            <Button
-              asChild
-              variant="outline"
-              className="h-11 px-3 text-xs font-semibold rounded-xl border-slate-200 text-slate-700 hover:bg-slate-50 shadow-2xs shrink-0"
-            >
-              <Link href={`/chat/${therapist.clerkUserId}`}>
-                <MessageSquare className="size-4" />
-              </Link>
-            </Button>
-
-            <Button
-              onClick={handleStartConsultation}
-              disabled={startingConsultation}
-              className="h-11 flex-1 text-xs sm:text-sm font-bold rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm flex items-center justify-center gap-1.5 active:scale-[0.98] transition-all cursor-pointer"
-            >
-              {startingConsultation ? (
-                <>
-                  <Loader2 className="size-4 animate-spin" />
-                  <span>Connecting...</span>
-                </>
-              ) : (
-                <>
-                  <Video className="size-4 shrink-0" />
-                  <span>Start Consultation</span>
-                </>
-              )}
-            </Button>
           </div>
         </div>
+
+        {/* ── 4. STICKY ACTION DOCK ────────────────────────────────────── */}
+        <div
+          className="fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur-md border-t border-slate-200/80 shadow-[0_-4px_16px_rgba(15,23,42,0.04)]"
+          style={{ paddingBottom: "max(env(safe-area-inset-bottom, 0px), 10px)" }}
+        >
+          <div className="max-w-2xl mx-auto px-4 py-3 flex items-center justify-between gap-3">
+            <div>
+              <div className="flex items-baseline gap-1">
+                <span className="text-base font-bold text-slate-900">
+                  ₹{therapist.consultationFee || 499}
+                </span>
+                <span className="text-[11px] text-slate-400">/ consultation</span>
+              </div>
+              <p className="text-[11px] text-slate-500">Scheduled video appointment</p>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <Button
+                asChild
+                variant="outline"
+                className="h-10 px-3.5 text-xs font-semibold rounded-xl border-slate-200 text-slate-700 hover:bg-slate-50"
+              >
+                <Link href={`/chat/${therapist.clerkUserId}`} className="flex items-center gap-1.5">
+                  <MessageSquare className="size-4 text-slate-500" />
+                  <span>Message</span>
+                </Link>
+              </Button>
+
+              <Button
+                onClick={() => setShowBookingModal(true)}
+                className="h-10 px-5 text-xs font-semibold rounded-xl bg-slate-900 hover:bg-slate-800 text-white shadow-xs"
+              >
+                <Calendar className="size-3.5 mr-1.5" />
+                <span>Book Appointment</span>
+              </Button>
+            </div>
+          </div>
+        </div>
+
+        {/* ── 5. BOOK APPOINTMENT MODAL ───────────────────────────────── */}
+        {showBookingModal && (
+          <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+            <div className="bg-white rounded-2xl p-6 max-w-md w-full space-y-5 text-slate-900 shadow-xl">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-base font-bold text-slate-900">
+                    Schedule Consultation
+                  </h3>
+                  <p className="text-xs text-slate-500">
+                    With {therapist.professionalName}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowBookingModal(false)}
+                  className="text-xs text-slate-400 hover:text-slate-700"
+                >
+                  ✕
+                </button>
+              </div>
+
+              {bookingSuccess ? (
+                <div className="p-6 bg-slate-50 rounded-xl text-center space-y-2">
+                  <CheckCircle2 className="size-8 text-emerald-600 mx-auto" />
+                  <p className="text-sm font-semibold text-slate-900">
+                    Appointment Request Submitted
+                  </p>
+                  <p className="text-xs text-slate-500">
+                    Your request was sent to {therapist.professionalName}. You will receive a confirmation once reviewed.
+                  </p>
+                </div>
+              ) : (
+                <form onSubmit={handleBookAppointment} className="space-y-4">
+                  {bookingError && (
+                    <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-xs text-red-700">
+                      {bookingError}
+                    </div>
+                  )}
+
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-semibold text-slate-700">
+                      Preferred Date
+                    </label>
+                    <input
+                      type="date"
+                      min={new Date().toISOString().split("T")[0]}
+                      value={selectedDate}
+                      onChange={(e) => setSelectedDate(e.target.value)}
+                      required
+                      className="w-full h-10 px-3 rounded-xl border border-slate-200 text-xs text-slate-900 focus:outline-none focus:border-slate-400 focus:ring-1 focus:ring-slate-200"
+                    />
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-semibold text-slate-700">
+                      Available Consultation Slot
+                    </label>
+                    <div className="grid grid-cols-3 gap-2">
+                      {TIME_SLOTS.map((slot) => (
+                        <button
+                          key={slot}
+                          type="button"
+                          onClick={() => setSelectedTime(slot)}
+                          className={`py-2 px-2 text-xs rounded-lg border text-center transition-colors ${
+                            selectedTime === slot
+                              ? "bg-slate-900 text-white border-slate-900 font-semibold"
+                              : "border-slate-200 text-slate-700 hover:bg-slate-50"
+                          }`}
+                        >
+                          {slot}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-semibold text-slate-700">
+                      Primary Recovery Focus / Clinical Note
+                    </label>
+                    <textarea
+                      rows={3}
+                      value={patientNote}
+                      onChange={(e) => setPatientNote(e.target.value)}
+                      placeholder="e.g. Neck stiffness after work, knee pain following surgery..."
+                      className="w-full p-3 rounded-xl border border-slate-200 text-xs text-slate-900 focus:outline-none focus:border-slate-400 focus:ring-1 focus:ring-slate-200"
+                    />
+                  </div>
+
+                  <div className="flex gap-2 pt-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => setShowBookingModal(false)}
+                      disabled={bookingLoading}
+                      className="flex-1 rounded-xl"
+                    >
+                      Cancel
+                    </Button>
+                    <Button
+                      type="submit"
+                      disabled={bookingLoading}
+                      className="flex-1 bg-slate-900 hover:bg-slate-800 text-white rounded-xl"
+                    >
+                      {bookingLoading ? (
+                        <Loader2 className="size-4 animate-spin mx-auto" />
+                      ) : (
+                        "Request Appointment"
+                      )}
+                    </Button>
+                  </div>
+                </form>
+              )}
+            </div>
+          </div>
+        )}
+
       </div>
     </AppShell>
   );
 }
-

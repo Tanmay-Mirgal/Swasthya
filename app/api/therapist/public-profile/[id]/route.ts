@@ -20,7 +20,26 @@ export async function GET(
     await connectToDatabase();
     await ensureSeedDoctors();
 
-    const profile: any = await TherapistProfile.findOne({ clerkUserId: id }).lean();
+    interface TherapistProfileData {
+      clerkUserId: string;
+      professionalName?: string;
+      title?: string;
+      qualification?: string;
+      specialization?: string;
+      supportedConditions?: string[];
+      yearsOfExperience?: string;
+      clinicName?: string;
+      consultationFee?: number;
+      rating?: number;
+      reviewCount?: number;
+      languages?: string[];
+      availability?: string;
+      avatarUrl?: string | null;
+      bio?: string;
+      isOnline?: boolean;
+    }
+
+    const profile = await TherapistProfile.findOne({ clerkUserId: id }).lean() as TherapistProfileData | null;
     if (!profile) {
       return NextResponse.json({ error: "Therapist not found" }, { status: 404 });
     }
@@ -38,7 +57,7 @@ export async function GET(
         if (clerkUser?.imageUrl) {
           avatarUrl = clerkUser.imageUrl;
         }
-      } catch (err) {
+      } catch {
         // Fallback gracefully
       }
     }

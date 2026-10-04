@@ -1,31 +1,82 @@
-/* eslint-disable react-hooks/exhaustive-deps */
+/* eslint-disable react-hooks/set-state-in-effect */
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import AppShell from "@/components/layout/AppShell";
 import {
-  Stethoscope,
-  Video,
-  MessageSquare,
-  Clock,
   Calendar,
-  CheckCircle2,
-  ChevronRight,
-  ShieldCheck,
-  Star,
+  Clock,
+  MessageSquare,
+  Search,
+  ArrowRight,
   Loader2,
   AlertCircle,
   FileText,
-  User,
-  Search,
-  Sparkles,
-  ArrowRight,
+  Video,
+  ShieldCheck,
 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { useAuth, useUser } from "@clerk/react";
 import DoctorAvatar from "@/components/ui/DoctorAvatar";
+import { AppointmentDoctor } from "@/types/appointment";
+import { PrescriptionData, PrescriptionExercise } from "@/types/consultation";
+
+interface AppointmentItem {
+  _id: string;
+  appointmentId: string;
+  consultationId?: string;
+  patientId: string;
+  therapistId: string;
+  status: string;
+  scheduledAt: string;
+  requestedTime?: string;
+  duration: number;
+  patientNote?: string;
+  doctor: AppointmentDoctor;
+  timeStatus: string;
+  canJoin: boolean;
+}
+
+interface PendingRequestItem {
+  _id: string;
+  patientId: string;
+  therapistId: string;
+  status: string;
+  requestedDate?: string;
+  requestedTime?: string;
+  scheduledAt?: string;
+  patientNote?: string;
+  doctor: AppointmentDoctor;
+}
+
+interface PastConsultationItem {
+  _id: string;
+  doctorId: string;
+  issue: string;
+  status: string;
+  scheduledAt?: string;
+  endedAt?: string;
+  createdAt: string;
+  doctorNotes?: string;
+  doctor: AppointmentDoctor;
+}
+
+interface AppointmentsData {
+  careTeam: AppointmentDoctor | null;
+  upcomingAppointments: AppointmentItem[];
+  pendingRequests: PendingRequestItem[];
+  pastConsultations: PastConsultationItem[];
+  activeConsultation: {
+    _id: string;
+    appointmentId?: string;
+    issue: string;
+    scheduledAt?: string;
+    doctor?: AppointmentDoctor;
+  } | null;
+  latestPrescription?: PrescriptionData;
+}
 
 export default function PatientAppointmentsPage() {
   const { getToken } = useAuth();
@@ -34,392 +85,464 @@ export default function PatientAppointmentsPage() {
 
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [data, setData] = useState<any>(null);
+  const [data, setData] = useState<AppointmentsData | null>(null);
+
+  const fetchAppointments = useCallback(async () => {
+    try {
+      setError(null);
+      const token = await getToken();
+      if (!token) return;
+
+      const res = await fetch("/api/patient/appointments", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      const json = await res.json();
+
+      if (json.success && json.data) {
+        setData(json.data);
+      } else {
+        setError(json.error || "Failed to load appointments.");
+      }
+    } catch {
+      setError("An error occurred while loading your appointments.");
+    } finally {
+      setIsLoading(false);
+    }
+  }, [getToken]);
 
   useEffect(() => {
-    // If user is a therapist, redirect to therapist appointments
     if (user?.publicMetadata?.role === "therapist") {
       router.replace("/therapist?tab=appointments");
       return;
     }
 
-    fetchAppointments();
-  }, [user]);
-
-  const fetchAppointments = async () => {
-    try {
-      setIsLoading(true);
-      const token = await getToken();
-      if (!token) return;
-
-      const res = await fetch("/api/patient/appointments", {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
-
-      const json = await res.json();
-      if (json.success) {
-        setData(json.data);
-      } else {
-        setError(json.error || "Failed to load appointments");
-      }
-    } catch (err: any) {
-      setError("An error occurred while loading your appointments.");
-    } finally {
-      setIsLoading(false);
-    }
-  };
+    void fetchAppointments();
+  }, [user, router, fetchAppointments]);
 
   const {
-    connectedTherapist,
-    pendingRequest,
+    careTeam,
+    upcomingAppointments = [],
+    pendingRequests = [],
+    pastConsultations = [],
     activeConsultation,
-    consultations = [],
     latestPrescription,
   } = data || {};
 
+  const nextAppointment = upcomingAppointments.length > 0 ? upcomingAppointments[0] : null;
+
   return (
     <AppShell hideHeader>
-      <div className="w-full max-w-2xl mx-auto flex flex-col space-y-4 pb-28 sm:pb-16 pt-1 px-0.5 sm:px-1 overflow-x-hidden">
+      <div className="max-w-3xl mx-auto w-full space-y-8 pb-16 pt-2 px-3 sm:px-0">
         
-        {/* ── 1. Top Header ──────────────────────────────────────────── */}
-        <div className="flex items-center justify-between gap-2 px-1 pt-1 w-full">
+        {/* ── 1. EDITORIAL PAGE HEADER ───────────────────────────────── */}
+        <header className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4 pt-1">
           <div>
-            <div className="flex items-center gap-1.5">
-              <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200/60">
-                Clinical Care
-              </span>
-            </div>
-            <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-slate-900 mt-0.5">
-              My Doctor & Appointments
+            <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight text-slate-900">
+              Appointments
             </h1>
-            <p className="text-xs text-slate-500 font-medium">
-              Track your connected specialist and clinical consultations
+            <p className="text-sm text-slate-500 mt-1 max-w-md">
+              Manage your clinical consultations, scheduled sessions, and care team communications.
             </p>
           </div>
 
           <Button
             asChild
             variant="outline"
-            className="h-9 text-xs font-semibold rounded-xl border-slate-200 text-slate-700 hover:bg-slate-50 shadow-2xs shrink-0"
+            className="h-10 text-xs font-medium rounded-xl border-slate-200 text-slate-700 hover:bg-slate-50 shadow-2xs shrink-0 self-start sm:self-auto"
           >
             <Link href="/discover" className="flex items-center gap-1.5">
-              <Search className="size-3.5" />
-              <span>Find Doctor</span>
+              <Search className="size-3.5 text-slate-400" />
+              <span>Find Specialist</span>
             </Link>
           </Button>
-        </div>
+        </header>
 
         {isLoading ? (
-          <div className="flex flex-col h-[50vh] items-center justify-center space-y-3">
-            <Loader2 className="size-8 animate-spin text-emerald-600" />
-            <p className="text-xs font-semibold text-slate-500">Loading your doctor & appointments...</p>
+          <div className="flex flex-col h-[40vh] items-center justify-center space-y-3">
+            <Loader2 className="size-7 animate-spin text-slate-400" />
+            <p className="text-xs text-slate-400 font-medium">Loading your appointments...</p>
           </div>
         ) : error ? (
-          <div className="p-6 rounded-2xl bg-white border border-red-200 text-center space-y-3">
-            <AlertCircle className="size-8 text-red-500 mx-auto" />
+          <div className="p-6 rounded-2xl bg-white border border-slate-200 text-center space-y-3 shadow-2xs">
+            <AlertCircle className="size-7 text-slate-400 mx-auto" />
             <p className="text-sm font-semibold text-slate-900">{error}</p>
-            <Button onClick={fetchAppointments} variant="outline" className="text-xs h-9">
-              Try Again
+            <Button
+              onClick={() => {
+                setIsLoading(true);
+                void fetchAppointments();
+              }}
+              variant="outline"
+              className="text-xs h-9 rounded-xl"
+            >
+              Retry
             </Button>
           </div>
         ) : (
           <>
-            {/* ── 2. KONSE DOCTOR SE APPOINTMENT LE RAHE HAIN ──────────── */}
-            <div className="space-y-2 w-full">
-              <div className="flex items-center justify-between px-1">
-                <h2 className="text-xs sm:text-sm font-bold text-slate-900 uppercase tracking-wider">
-                  Your Connected Doctor
-                </h2>
-                {connectedTherapist && (
-                  <span className="text-[10px] font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200/60">
-                    Active Specialist
-                  </span>
-                )}
-              </div>
-
-              {connectedTherapist ? (
-                <div className="bg-white rounded-2xl border border-emerald-200/80 p-4 sm:p-5 shadow-[0_2px_12px_rgba(15,23,42,0.04)] relative overflow-hidden w-full">
-                  <div className="flex items-start gap-3.5 w-full">
-                    <DoctorAvatar
-                      src={connectedTherapist.avatarUrl}
-                      name={connectedTherapist.professionalName}
-                      size="md"
-                      isOnline={connectedTherapist.isOnline ?? true}
-                      className="size-14 sm:size-16 shrink-0"
-                    />
-
-                    <div className="flex-1 min-w-0 space-y-1">
-                      <div className="flex items-center gap-1.5 flex-wrap">
-                        <h3 className="text-sm sm:text-base font-bold text-slate-900 leading-snug truncate">
-                          {connectedTherapist.professionalName}
-                        </h3>
-                        <ShieldCheck className="size-4 text-emerald-600 shrink-0" />
-                        <span className="text-[10px] font-bold bg-emerald-50 text-emerald-800 border border-emerald-200 px-1.5 py-0.2 rounded">
-                          Verified
-                        </span>
-                      </div>
-
-                      <p className="text-xs font-semibold text-emerald-700 truncate">
-                        {connectedTherapist.specialization || "Orthopedic Physical Therapy"}
-                      </p>
-
-                      <p className="text-[11px] text-slate-500 truncate">
-                        {connectedTherapist.qualification || "MPT, Certified Specialist"} • {connectedTherapist.yearsOfExperience || "8+ years"} exp
-                      </p>
-
-                      <div className="flex flex-wrap items-center gap-2 text-[11px] text-slate-600 pt-0.5">
-                        <div className="flex items-center gap-1 font-bold text-slate-900">
-                          <Star className="size-3 fill-amber-400 text-amber-400" />
-                          <span>{connectedTherapist.rating || 4.9}</span>
-                        </div>
-                        <span className="text-slate-300">•</span>
-                        <span className="text-slate-500 truncate max-w-[120px] sm:max-w-none">
-                          {connectedTherapist.clinicName || "Swasthya Partner Center"}
-                        </span>
-                      </div>
+            {/* ── 2. LIVE CONSULTATION CALLOUT (ONLY WHEN WINDOW IS OPEN) ── */}
+            {activeConsultation && (
+              <section aria-label="Live Consultation Room">
+                <div className="bg-slate-900 text-white rounded-2xl p-5 sm:p-6 shadow-sm flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2">
+                      <span className="size-2 rounded-full bg-emerald-400 animate-pulse" />
+                      <span className="text-[11px] font-semibold uppercase tracking-wider text-emerald-300">
+                        Consultation Room Open
+                      </span>
                     </div>
-                  </div>
-
-                  {/* Doctor actions: Chat, Video, Profile */}
-                  <div className="grid grid-cols-3 gap-2 pt-3.5 mt-3 border-t border-slate-100 w-full">
-                    <Button
-                      asChild
-                      variant="outline"
-                      className="h-9 text-xs font-semibold rounded-xl border-slate-200 text-slate-700 hover:bg-slate-50"
-                    >
-                      <Link href={`/chat/${connectedTherapist.clerkUserId}`} className="flex items-center justify-center gap-1.5 truncate">
-                        <MessageSquare className="size-3.5 text-slate-500 shrink-0" />
-                        <span className="truncate">Message</span>
-                      </Link>
-                    </Button>
-
-                    <Button
-                      asChild
-                      variant="outline"
-                      className="h-9 text-xs font-semibold rounded-xl border-slate-200 text-slate-700 hover:bg-slate-50"
-                    >
-                      <Link href={`/therapist-profile/${connectedTherapist.clerkUserId}`} className="truncate text-center">
-                        Profile
-                      </Link>
-                    </Button>
-
-                    {activeConsultation ? (
-                      <Button
-                        asChild
-                        className="h-9 text-xs font-bold rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs"
-                      >
-                        <Link href={`/consultation/${activeConsultation._id}`} className="flex items-center justify-center gap-1 truncate">
-                          <Video className="size-3.5 shrink-0" />
-                          <span className="truncate">Join Call</span>
-                        </Link>
-                      </Button>
-                    ) : (
-                      <Button
-                        asChild
-                        className="h-9 text-xs font-bold rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs"
-                      >
-                        <Link href={`/therapist-profile/${connectedTherapist.clerkUserId}`} className="flex items-center justify-center gap-1 truncate">
-                          <Video className="size-3.5 shrink-0" />
-                          <span className="truncate">Book Call</span>
-                        </Link>
-                      </Button>
-                    )}
-                  </div>
-                </div>
-              ) : pendingRequest ? (
-                /* Pending Request state */
-                <div className="bg-amber-50/70 border border-amber-200/80 rounded-2xl p-4 space-y-2.5 w-full">
-                  <div className="flex items-center gap-2">
-                    <div className="size-8 rounded-full bg-amber-100 flex items-center justify-center text-amber-700 shrink-0">
-                      <Clock className="size-4" />
-                    </div>
-                    <div>
-                      <h3 className="text-xs font-bold text-amber-900">Appointment Request Under Review</h3>
-                      <p className="text-[11px] text-amber-700">
-                        Sent to <strong>{pendingRequest.therapist?.professionalName || "Doctor"}</strong>
-                      </p>
-                    </div>
-                  </div>
-                  <p className="text-xs text-slate-600 leading-relaxed">
-                    The therapist has been notified and will confirm your consultation shortly.
-                  </p>
-                </div>
-              ) : (
-                /* No doctor connected state */
-                <div className="bg-white rounded-2xl border border-slate-200 p-5 text-center space-y-3 shadow-2xs w-full">
-                  <div className="size-12 rounded-full bg-emerald-50 text-emerald-600 flex items-center justify-center mx-auto">
-                    <Stethoscope className="size-6" />
-                  </div>
-                  <div>
-                    <h3 className="text-sm font-bold text-slate-900">No Doctor Assigned Yet</h3>
-                    <p className="text-xs text-slate-500 mt-1 max-w-sm mx-auto">
-                      Connect with a certified physiotherapist matched to your condition for live video guidance and personalized recovery plans.
+                    <h2 className="text-base sm:text-lg font-semibold">
+                      Session with {activeConsultation.doctor?.professionalName || "Physiotherapist"}
+                    </h2>
+                    <p className="text-xs text-slate-300">
+                      Focus: {activeConsultation.issue}
                     </p>
                   </div>
-                  <Button asChild className="h-10 text-xs font-bold rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white px-5 shadow-xs">
-                    <Link href="/discover" className="inline-flex items-center gap-2">
-                      <Sparkles className="size-3.5" />
-                      <span>Browse Available Doctors</span>
-                      <ArrowRight className="size-3.5" />
-                    </Link>
+
+                  <Link
+                    href={`/consultation/${activeConsultation._id}`}
+                    className="inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl bg-emerald-700 hover:bg-emerald-600 text-white text-xs font-semibold shadow-xs transition-colors shrink-0"
+                  >
+                    <Video className="size-3.5" />
+                    <span>Enter Consultation Room</span>
+                    <ArrowRight className="size-3.5" />
+                  </Link>
+                </div>
+              </section>
+            )}
+
+            {/* ── 3. CARE TEAM / PHYSIOTHERAPIST ───────────────────────── */}
+            <section aria-labelledby="care-team-heading" className="space-y-3">
+              <h2
+                id="care-team-heading"
+                className="text-xs font-semibold uppercase tracking-wider text-slate-400 px-0.5"
+              >
+                Your Physiotherapist
+              </h2>
+
+              {careTeam ? (
+                <div className="bg-white rounded-2xl border border-slate-200/90 p-5 sm:p-6 shadow-[0_1px_3px_rgba(15,23,42,0.03)]">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                    <div className="flex items-start gap-4">
+                      <DoctorAvatar
+                        src={careTeam.avatarUrl}
+                        name={careTeam.professionalName}
+                        size="md"
+                        isOnline={false}
+                        className="size-14 sm:size-16 rounded-xl shrink-0"
+                      />
+
+                      <div className="min-w-0 space-y-1">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <h3 className="text-base font-semibold text-slate-900 leading-snug">
+                            {careTeam.professionalName}
+                          </h3>
+                          <ShieldCheck className="size-4 text-slate-400 shrink-0" />
+                        </div>
+
+                        <p className="text-xs text-slate-600 font-medium">
+                          {careTeam.specialization || "Orthopedic Physical Therapy"}
+                        </p>
+
+                        <p className="text-[11px] text-slate-400">
+                          {careTeam.qualification || "MPT, Certified Specialist"} • {careTeam.clinicName || "Swasthya Partner Center"}
+                        </p>
+
+                        {nextAppointment && (
+                          <p className="text-xs text-slate-700 font-medium pt-1 flex items-center gap-1.5">
+                            <Clock className="size-3.5 text-slate-400" />
+                            <span>
+                              Next consultation:{" "}
+                              <strong>
+                                {new Date(nextAppointment.scheduledAt).toLocaleDateString(undefined, {
+                                  weekday: "short",
+                                  month: "short",
+                                  day: "numeric",
+                                })}
+                                {nextAppointment.requestedTime ? ` · ${nextAppointment.requestedTime}` : ""}
+                              </strong>
+                            </span>
+                          </p>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Actions: Direct Chat & View Profile */}
+                    <div className="flex items-center gap-2 self-start sm:self-center shrink-0 pt-2 sm:pt-0">
+                      <Button
+                        asChild
+                        variant="outline"
+                        className="h-9 px-3.5 text-xs font-semibold rounded-xl border-slate-200 text-slate-700 hover:bg-slate-50"
+                      >
+                        <Link href={`/chat/${careTeam.clerkUserId}`} className="flex items-center gap-1.5">
+                          <MessageSquare className="size-3.5 text-slate-500" />
+                          <span>Message</span>
+                        </Link>
+                      </Button>
+
+                      <Button
+                        asChild
+                        variant="outline"
+                        className="h-9 px-3.5 text-xs font-semibold rounded-xl border-slate-200 text-slate-700 hover:bg-slate-50"
+                      >
+                        <Link href={`/therapist-profile/${careTeam.clerkUserId}`}>
+                          Profile
+                        </Link>
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="bg-white rounded-2xl border border-slate-200/80 p-6 text-center space-y-3 shadow-xs">
+                  <p className="text-sm font-semibold text-slate-900">No Specialist Assigned Yet</p>
+                  <p className="text-xs text-slate-500 max-w-sm mx-auto">
+                    Connect with a certified physiotherapist matched to your condition for live video guidance and tailored exercise plans.
+                  </p>
+                  <Button asChild className="h-9 text-xs font-medium bg-slate-900 hover:bg-slate-800 text-white rounded-xl px-4">
+                    <Link href="/discover">Browse Specialists</Link>
                   </Button>
                 </div>
               )}
-            </div>
+            </section>
 
-            {/* ── 3. ACTIVE CONSULTATION CALL CARD (If available) ─────── */}
-            {activeConsultation && (
-              <div className="bg-gradient-to-r from-emerald-600 to-teal-700 text-white rounded-2xl p-4 shadow-md space-y-3 w-full">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <span className="size-2 rounded-full bg-white animate-ping" />
-                    <span className="text-xs font-bold uppercase tracking-wide">
-                      {activeConsultation.status === "COMPLETED" ? "Prescription Active" : "Consultation Room Ready"}
-                    </span>
-                  </div>
-                  <span className="text-[11px] bg-white/20 px-2 py-0.5 rounded-full font-semibold">
-                    Room #{activeConsultation._id.slice(-6)}
-                  </span>
-                </div>
-
-                <div className="flex items-center justify-between pt-1">
-                  <div>
-                    <p className="text-sm font-bold">
-                      {activeConsultation.doctor?.professionalName || connectedTherapist?.professionalName || "Consultation with Specialist"}
-                    </p>
-                    <p className="text-xs text-emerald-100">
-                      Focus: {activeConsultation.issue || "Rehabilitation & Pose Correction"}
-                    </p>
-                  </div>
-
-                  <Button asChild className="bg-white hover:bg-emerald-50 text-emerald-900 font-bold text-xs h-9 px-3.5 rounded-xl shadow-xs shrink-0">
-                    <Link href={`/consultation/${activeConsultation._id}`} className="flex items-center gap-1">
-                      <Video className="size-3.5" />
-                      <span>Enter Room</span>
-                      <ChevronRight className="size-3.5 ml-0.5" />
-                    </Link>
-                  </Button>
-                </div>
-              </div>
-            )}
-
-            {/* ── 4. DOCTOR'S RECOVERY PLAN & PRESCRIPTION ─────────────── */}
-            {latestPrescription && (
-              <div className="bg-white rounded-2xl border border-slate-200/80 p-4 sm:p-5 shadow-2xs space-y-3 w-full">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <div className="size-8 rounded-lg bg-emerald-50 text-emerald-700 flex items-center justify-center">
-                      <FileText className="size-4" />
-                    </div>
-                    <div>
-                      <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500">
-                        Doctor's Prescription
-                      </h3>
-                      <p className="text-xs font-bold text-slate-900">
-                        By {latestPrescription.doctorName || "Dr. Physiotherapist"}
-                      </p>
-                    </div>
-                  </div>
-                  <span className="text-[10px] font-bold text-emerald-800 bg-emerald-50 border border-emerald-200/60 px-2 py-0.5 rounded-md">
-                    Valid & Active
-                  </span>
-                </div>
-
-                {latestPrescription.doctorNotes && (
-                  <div className="bg-slate-50 rounded-xl p-3 text-xs text-slate-700 border border-slate-100 leading-relaxed">
-                    <p className="font-semibold text-slate-900 mb-0.5">Doctor's Clinical Advice:</p>
-                    "{latestPrescription.doctorNotes}"
-                  </div>
-                )}
-
-                {latestPrescription.exercises && latestPrescription.exercises.length > 0 && (
-                  <div className="space-y-1.5 pt-1">
-                    <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
-                      Prescribed Exercises ({latestPrescription.exercises.length})
-                    </p>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                      {latestPrescription.exercises.map((ex: any, idx: number) => (
-                        <div key={idx} className="flex items-center justify-between p-2.5 rounded-xl border border-slate-100 bg-slate-50/70 text-xs">
-                          <span className="font-semibold text-slate-900">{ex.name}</span>
-                          <span className="text-[11px] text-slate-500">{ex.sets} sets × {ex.reps} reps</span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* ── 5. CONSULTATION HISTORY ─────────────────────────────── */}
-            <div className="space-y-2.5 w-full pt-1">
-              <div className="flex items-center justify-between px-1">
-                <h2 className="text-xs sm:text-sm font-bold text-slate-900 uppercase tracking-wider">
-                  Consultation History ({consultations.length})
+            {/* ── 4. UPCOMING APPOINTMENTS ──────────────────────────────── */}
+            <section aria-labelledby="upcoming-heading" className="space-y-3">
+              <div className="flex items-center justify-between px-0.5">
+                <h2
+                  id="upcoming-heading"
+                  className="text-xs font-semibold uppercase tracking-wider text-slate-400"
+                >
+                  Upcoming Consultations ({upcomingAppointments.length})
                 </h2>
               </div>
 
-              {consultations.length === 0 ? (
-                <div className="p-6 bg-white rounded-2xl border border-slate-200 text-center text-xs text-slate-400">
-                  No previous consultation records.
+              {upcomingAppointments.length === 0 ? (
+                <div className="bg-white rounded-2xl border border-slate-200/80 p-6 text-center text-xs text-slate-400 shadow-2xs">
+                  No upcoming consultations scheduled.
                 </div>
               ) : (
-                <div className="space-y-2">
-                  {consultations.map((c: any) => (
+                <div className="bg-white rounded-2xl border border-slate-200/80 shadow-[0_1px_3px_rgba(15,23,42,0.03)] divide-y divide-slate-100 overflow-hidden">
+                  {upcomingAppointments.map((app) => {
+                    const sched = new Date(app.scheduledAt);
+                    const formattedDate = sched.toLocaleDateString(undefined, {
+                      weekday: "short",
+                      month: "short",
+                      day: "numeric",
+                    });
+                    const formattedTime =
+                      app.requestedTime ||
+                      sched.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+
+                    return (
+                      <div
+                        key={app._id}
+                        className="p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4"
+                      >
+                        <div className="flex items-start gap-3.5">
+                          <div className="size-10 rounded-xl bg-slate-100 flex items-center justify-center text-slate-600 shrink-0">
+                            <Calendar className="size-5" />
+                          </div>
+
+                          <div className="min-w-0 space-y-0.5">
+                            <div className="flex items-center gap-2">
+                              <h3 className="text-sm sm:text-base font-semibold text-slate-900 leading-snug">
+                                {app.doctor?.professionalName || "Physiotherapist"}
+                              </h3>
+                              <span className="text-[10px] font-semibold text-slate-700 bg-slate-100 px-2 py-0.5 rounded-md">
+                                Confirmed
+                              </span>
+                            </div>
+
+                            <p className="text-xs text-slate-600">
+                              {formattedDate} · {formattedTime} ({app.duration} mins)
+                            </p>
+
+                            {app.patientNote && (
+                              <p className="text-[11px] text-slate-400 truncate max-w-md">
+                                Focus: {app.patientNote}
+                              </p>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* CTA: Only joinable inside valid consultation window */}
+                        <div className="flex items-center gap-2 self-start sm:self-center shrink-0">
+                          {app.canJoin && app.consultationId ? (
+                            <Button asChild className="h-9 text-xs font-semibold bg-emerald-800 hover:bg-emerald-900 text-white rounded-xl shadow-xs">
+                              <Link href={`/consultation/${app.consultationId}`} className="flex items-center gap-1.5">
+                                <Video className="size-3.5" />
+                                <span>Join Consultation</span>
+                              </Link>
+                            </Button>
+                          ) : (
+                            <span className="text-xs text-slate-400 font-medium">
+                              Opens 10m before start
+                            </span>
+                          )}
+
+                          {app.consultationId && (
+                            <Button asChild variant="outline" className="h-9 text-xs font-medium border-slate-200 text-slate-700 rounded-xl">
+                              <Link href={`/consultation/${app.consultationId}`}>Details</Link>
+                            </Button>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </section>
+
+            {/* ── 5. PENDING REQUESTS ──────────────────────────────────── */}
+            {pendingRequests.length > 0 && (
+              <section aria-labelledby="pending-heading" className="space-y-3">
+                <h2
+                  id="pending-heading"
+                  className="text-xs font-semibold uppercase tracking-wider text-slate-400 px-0.5"
+                >
+                  Pending Requests ({pendingRequests.length})
+                </h2>
+
+                <div className="bg-white rounded-2xl border border-slate-200/80 shadow-2xs divide-y divide-slate-100 overflow-hidden">
+                  {pendingRequests.map((req) => (
+                    <div key={req._id} className="p-4 sm:p-5 flex items-center justify-between gap-4">
+                      <div className="space-y-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <h3 className="text-sm font-semibold text-slate-900">
+                            {req.doctor?.professionalName || "Doctor"}
+                          </h3>
+                          <span className="text-[10px] font-semibold text-amber-800 bg-amber-50 border border-amber-200/60 px-2 py-0.5 rounded-md">
+                            Pending Doctor Review
+                          </span>
+                        </div>
+                        <p className="text-xs text-slate-500">
+                          Requested for{" "}
+                          {req.requestedDate
+                            ? new Date(req.requestedDate).toLocaleDateString(undefined, {
+                                month: "short",
+                                day: "numeric",
+                              })
+                            : "upcoming date"}{" "}
+                          at {req.requestedTime || "10:00 AM"}
+                        </p>
+                        {req.patientNote && (
+                          <p className="text-[11px] text-slate-400 truncate max-w-sm">
+                            Note: {req.patientNote}
+                          </p>
+                        )}
+                      </div>
+
+                      <span className="text-xs text-slate-400 shrink-0">
+                        Awaiting response
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </section>
+            )}
+
+            {/* ── 6. LATEST PRESCRIPTION (IF ACTIVE) ───────────────────── */}
+            {latestPrescription && (
+              <section aria-labelledby="rx-heading" className="space-y-3">
+                <h2
+                  id="rx-heading"
+                  className="text-xs font-semibold uppercase tracking-wider text-slate-400 px-0.5"
+                >
+                  Current Prescription
+                </h2>
+
+                <div className="bg-white rounded-2xl border border-slate-200/90 p-5 shadow-2xs space-y-3.5">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2.5">
+                      <div className="size-8 rounded-lg bg-slate-100 text-slate-700 flex items-center justify-center">
+                        <FileText className="size-4" />
+                      </div>
+                      <div>
+                        <p className="text-xs font-semibold text-slate-900">
+                          Prescription by {latestPrescription.doctorName || "Physiotherapist"}
+                        </p>
+                        <p className="text-[11px] text-slate-400">
+                          Active clinical recovery plan
+                        </p>
+                      </div>
+                    </div>
+                    <span className="text-[10px] font-semibold text-slate-700 bg-slate-100 px-2 py-0.5 rounded-md">
+                      Active
+                    </span>
+                  </div>
+
+                  {latestPrescription.doctorNotes && (
+                    <p className="text-xs text-slate-600 bg-slate-50 p-3 rounded-xl border border-slate-100 leading-relaxed">
+                      &ldquo;{latestPrescription.doctorNotes}&rdquo;
+                    </p>
+                  )}
+
+                  {latestPrescription.exercises && latestPrescription.exercises.length > 0 && (
+                    <div className="pt-1">
+                      <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400 mb-2">
+                        Prescribed Exercises ({latestPrescription.exercises.length})
+                      </p>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        {latestPrescription.exercises.map((ex: PrescriptionExercise, idx: number) => (
+                          <div key={idx} className="p-2.5 rounded-xl border border-slate-100 bg-slate-50/70 text-xs flex justify-between items-center">
+                            <span className="font-semibold text-slate-900">{ex.name}</span>
+                            <span className="text-[11px] text-slate-500">{ex.sets} sets × {ex.reps} reps</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </section>
+            )}
+
+            {/* ── 7. PAST CONSULTATIONS ─────────────────────────────────── */}
+            <section aria-labelledby="past-heading" className="space-y-3">
+              <h2
+                id="past-heading"
+                className="text-xs font-semibold uppercase tracking-wider text-slate-400 px-0.5"
+              >
+                Past Consultations ({pastConsultations.length})
+              </h2>
+
+              {pastConsultations.length === 0 ? (
+                <div className="bg-white rounded-2xl border border-slate-200/80 p-5 text-center text-xs text-slate-400 shadow-2xs">
+                  No completed consultation records yet.
+                </div>
+              ) : (
+                <div className="bg-white rounded-2xl border border-slate-200/80 shadow-2xs divide-y divide-slate-100 overflow-hidden">
+                  {pastConsultations.map((c) => (
                     <div
                       key={c._id}
-                      className="bg-white rounded-xl border border-slate-200/80 p-3 flex items-center justify-between gap-3 shadow-2xs hover:border-slate-300 transition-colors"
+                      className="p-4 flex items-center justify-between gap-4 hover:bg-slate-50/50 transition-colors"
                     >
-                      <div className="flex items-center gap-3 min-w-0">
-                        <div className="size-9 rounded-full bg-slate-100 text-slate-600 flex items-center justify-center shrink-0">
-                          <Stethoscope className="size-4" />
-                        </div>
-                        <div className="min-w-0">
-                          <p className="text-xs font-bold text-slate-900 truncate">
-                            {c.doctor?.professionalName || "Consultation with Specialist"}
-                          </p>
-                          <p className="text-[11px] text-slate-500 truncate">
-                            {new Date(c.createdAt).toLocaleDateString(undefined, {
-                              month: "short",
-                              day: "numeric",
-                              year: "numeric",
-                            })}{" "}
-                            • {c.issue || "General Care"}
-                          </p>
-                        </div>
+                      <div className="min-w-0 space-y-0.5">
+                        <p className="text-xs font-semibold text-slate-900 truncate">
+                          {c.doctor?.professionalName || "Consultation with Specialist"}
+                        </p>
+                        <p className="text-[11px] text-slate-500 truncate">
+                          {new Date(c.createdAt).toLocaleDateString(undefined, {
+                            month: "short",
+                            day: "numeric",
+                            year: "numeric",
+                          })}{" "}
+                          • Focus: {c.issue || "General Care"}
+                        </p>
                       </div>
 
                       <div className="flex items-center gap-2 shrink-0">
-                        <span
-                          className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                            c.status === "COMPLETED"
-                              ? "bg-emerald-50 text-emerald-800 border border-emerald-200/60"
-                              : "bg-blue-50 text-blue-800 border border-blue-200/60"
-                          }`}
-                        >
-                          {c.status}
+                        <span className="text-[10px] font-semibold text-slate-600 bg-slate-100 px-2 py-0.5 rounded-md">
+                          Completed
                         </span>
-                        <Button asChild variant="outline" className="h-8 text-xs px-2.5 rounded-lg border-slate-200">
-                          <Link href={`/consultation/${c._id}`}>View</Link>
+                        <Button asChild variant="outline" className="h-8 text-xs px-2.5 rounded-lg border-slate-200 text-slate-700">
+                          <Link href={`/consultation/${c._id}`}>View Summary</Link>
                         </Button>
                       </div>
                     </div>
                   ))}
                 </div>
               )}
-            </div>
-
-            {/* ── 6. Second Opinion / Browse Specialists Banner ──────── */}
-            <div className="bg-slate-50 rounded-2xl border border-slate-200 p-4 flex items-center justify-between gap-3 w-full">
-              <div>
-                <p className="text-xs font-bold text-slate-900">Need a different specialist?</p>
-                <p className="text-[11px] text-slate-500">Explore specialists for cervical spine, knees, and sports injuries</p>
-              </div>
-              <Button asChild variant="outline" className="h-8 text-xs font-semibold rounded-xl border-slate-200 bg-white shadow-2xs shrink-0">
-                <Link href="/discover">Browse Doctors</Link>
-              </Button>
-            </div>
+            </section>
           </>
         )}
       </div>

@@ -1,13 +1,14 @@
 import mongoose, { Schema, Document } from "mongoose";
 
 export interface IChatMessage extends Document {
-  consultationId: string;
+  consultationId?: string;
+  conversationId?: string;
   senderId: string;
   senderRole: "patient" | "doctor" | "system";
   receiverId?: string;
   content: string;
   type: "text" | "prescription" | "call_summary" | "exercise_card" | "system";
-  prescriptionData?: any;
+  prescriptionData?: Record<string, unknown>;
   read: boolean;
   createdAt: Date;
   updatedAt: Date;
@@ -17,7 +18,10 @@ const ChatMessageSchema = new Schema(
   {
     consultationId: {
       type: String,
-      required: true,
+      index: true,
+    },
+    conversationId: {
+      type: String,
       index: true,
     },
     senderId: {
@@ -55,6 +59,10 @@ const ChatMessageSchema = new Schema(
     timestamps: true,
   }
 );
+
+// Compound index for querying direct conversation messages between 2 users
+ChatMessageSchema.index({ senderId: 1, receiverId: 1, createdAt: 1 });
+ChatMessageSchema.index({ conversationId: 1, createdAt: 1 });
 
 const ChatMessage =
   mongoose.models.ChatMessage ||

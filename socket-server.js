@@ -75,7 +75,25 @@ io.on("connection", (socket) => {
     });
   });
 
-  // 4. WebRTC Signaling: Call Request / Offer
+  // 4. WebRTC Signaling: Scheduled Room Peer Offer
+  socket.on("peer_offer", ({ consultationId, offer }) => {
+    console.log(`[WebRTC] Peer offer relayed in ${consultationId}`);
+    socket.to(`consultation:${consultationId}`).emit("peer_offer", {
+      consultationId,
+      offer,
+    });
+  });
+
+  // 4b. WebRTC Signaling: Scheduled Room Peer Answer
+  socket.on("peer_answer", ({ consultationId, answer }) => {
+    console.log(`[WebRTC] Peer answer relayed in ${consultationId}`);
+    socket.to(`consultation:${consultationId}`).emit("peer_answer", {
+      consultationId,
+      answer,
+    });
+  });
+
+  // Legacy Call Request (for backwards compatibility if needed)
   socket.on("call_user", ({ consultationId, offer, callerName, callerRole }) => {
     console.log(`[WebRTC] Call initiated in ${consultationId} by ${callerRole}`);
     socket.to(`consultation:${consultationId}`).emit("incoming_call", {
@@ -87,7 +105,7 @@ io.on("connection", (socket) => {
     });
   });
 
-  // 5. WebRTC Signaling: Call Answer
+  // Legacy Call Answer
   socket.on("call_accepted", ({ consultationId, answer }) => {
     console.log(`[WebRTC] Call accepted in ${consultationId}`);
     socket.to(`consultation:${consultationId}`).emit("call_accepted", {

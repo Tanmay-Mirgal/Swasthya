@@ -1,3 +1,4 @@
+/* eslint-disable react-hooks/set-state-in-effect */
 /* eslint-disable react-hooks/exhaustive-deps */
 "use client";
 
@@ -25,7 +26,6 @@ import {
   Building2,
   Award,
   DollarSign,
-  PhoneCall,
   Save,
   CheckCircle2,
   Plus,
@@ -58,6 +58,86 @@ const SPECIALIZATION_SUGGESTIONS = [
   "Dry Needling",
 ];
 
+interface TherapistPatientItem {
+  assignment?: { patientId: string; status?: string };
+  consultation?: { _id: string; issue?: string; status?: string };
+  user?: {
+    clerkUserId: string;
+    firstName?: string;
+    lastName?: string;
+    fullName?: string;
+    email?: string;
+    imageUrl?: string;
+  };
+  profile?: {
+    concerns?: string[];
+  } | null;
+  exerciseAssignments?: unknown[];
+}
+
+interface TherapistConsultationItem {
+  _id: string;
+  patientId: string;
+  doctorId: string;
+  patientName: string;
+  patientImage: string | null;
+  patientConcerns?: string[];
+  status: string;
+  issue?: string;
+  fee?: number;
+  scheduledAt: string | Date;
+  createdAt: string | Date;
+  duration: number;
+  canJoin?: boolean;
+  timeStatus?: {
+    status: string;
+    label: string;
+  };
+}
+
+interface PendingRequestUser {
+  clerkUserId: string;
+  firstName?: string;
+  lastName?: string;
+  fullName?: string;
+  imageUrl?: string;
+}
+
+interface TherapistPendingRequestItem {
+  request: {
+    _id: string;
+    patientId: string;
+    requestedDate?: string;
+    requestedTime?: string;
+    patientNote?: string;
+    status: string;
+  };
+  user?: PendingRequestUser;
+  profile?: {
+    concerns?: string[];
+  } | null;
+}
+
+interface TherapistStats {
+  totalPatients: number;
+  todayAppointments: number;
+  completedSessions: number;
+  consultationFee: number;
+  totalRevenue: number;
+}
+
+interface TherapistProfileData {
+  professionalName?: string;
+  title?: string;
+  qualification?: string;
+  clinicName?: string;
+  consultationFee?: number;
+  yearsOfExperience?: string;
+  bio?: string;
+  supportedConditions?: string[];
+  avatarUrl?: string;
+}
+
 export default function TherapistPortalPage() {
   const { getToken } = useAuth();
   const { user } = useUser();
@@ -66,23 +146,17 @@ export default function TherapistPortalPage() {
 
   // Tab State: "dashboard" | "patients" | "appointments" | "profile"
   const tabParam = searchParams.get("tab") as "dashboard" | "patients" | "appointments" | "profile" | null;
-  const [activeTab, setActiveTab] = useState<"dashboard" | "patients" | "appointments" | "profile">(
-    tabParam || "dashboard"
-  );
-
-  useEffect(() => {
-    if (tabParam && ["dashboard", "patients", "appointments", "profile"].includes(tabParam)) {
-      setActiveTab(tabParam);
-    }
-  }, [tabParam]);
+  const currentTab = (tabParam && ["dashboard", "patients", "appointments", "profile"].includes(tabParam)) ? tabParam : "dashboard";
+  const [selectedTab, setSelectedTab] = useState<"dashboard" | "patients" | "appointments" | "profile" | null>(null);
+  const activeTab = selectedTab || currentTab;
 
   // Data States
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [patients, setPatients] = useState<any[]>([]);
-  const [consultations, setConsultations] = useState<any[]>([]);
-  const [pendingRequests, setPendingRequests] = useState<any[]>([]);
-  const [stats, setStats] = useState<any>({
+  const [patients, setPatients] = useState<TherapistPatientItem[]>([]);
+  const [consultations, setConsultations] = useState<TherapistConsultationItem[]>([]);
+  const [pendingRequests, setPendingRequests] = useState<TherapistPendingRequestItem[]>([]);
+  const [stats, setStats] = useState<TherapistStats>({
     totalPatients: 0,
     todayAppointments: 0,
     completedSessions: 0,
@@ -95,7 +169,7 @@ export default function TherapistPortalPage() {
   const [appointmentFilter, setAppointmentFilter] = useState<"all" | "today" | "completed">("all");
 
   // Profile Edit Form State
-  const [profile, setProfile] = useState<any>(null);
+  const [profile, setProfile] = useState<TherapistProfileData | null>(null);
   const [profName, setProfName] = useState("");
   const [profTitle, setProfTitle] = useState("");
   const [profQual, setProfQual] = useState("");
@@ -108,9 +182,33 @@ export default function TherapistPortalPage() {
   const [isSavingProfile, setIsSavingProfile] = useState(false);
   const [profileSuccessMsg, setProfileSuccessMsg] = useState("");
 
-  useEffect(() => {
-    fetchDashboardData();
-  }, []);
+  const syncProfileState = (data: TherapistProfileData) => {
+    setProfile(data);
+    setProfName(data.professionalName || user?.fullName || "Dr. Physiotherapist");
+    setProfTitle(data.title || "Senior Clinical Physiotherapist");
+    setProfQual(data.qualification || "MPT, BPT Certified");
+    setProfClinic(data.clinicName || "Swasthya Partner Clinic");
+    setProfFee(data.consultationFee || 499);
+    setProfExp(data.yearsOfExperience || "10+ years");
+    setProfBio(data.bio || "");
+    setProfConditions(data.supportedConditions || ["Neck Pain", "Back Pain"]);
+  };
+
+  const fetchProfileData = async () => {
+    try {
+      const token = await getToken();
+      if (!token) return;
+      const res = await fetch("/api/therapist/profile", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const json = await res.json();
+      if (json.success && json.data) {
+        syncProfileState(json.data);
+      }
+    } catch (e) {
+      console.warn("Could not load therapist profile:", e);
+    }
+  };
 
   const fetchDashboardData = async () => {
     try {
@@ -142,39 +240,16 @@ export default function TherapistPortalPage() {
         setError(data.error || "Failed to load dashboard data");
       }
     } catch (err) {
+      console.error("Failed to load dashboard data:", err);
       setError("Failed to load dashboard data");
     } finally {
       setIsLoading(false);
     }
   };
 
-  const fetchProfileData = async () => {
-    try {
-      const token = await getToken();
-      if (!token) return;
-      const res = await fetch("/api/therapist/profile", {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      const json = await res.json();
-      if (json.success && json.data) {
-        syncProfileState(json.data);
-      }
-    } catch (e) {
-      console.warn("Could not load therapist profile:", e);
-    }
-  };
-
-  const syncProfileState = (data: any) => {
-    setProfile(data);
-    setProfName(data.professionalName || user?.fullName || "Dr. Physiotherapist");
-    setProfTitle(data.title || "Senior Clinical Physiotherapist");
-    setProfQual(data.qualification || "MPT, BPT Certified");
-    setProfClinic(data.clinicName || "Swasthya Partner Clinic");
-    setProfFee(data.consultationFee || 499);
-    setProfExp(data.yearsOfExperience || "10+ years");
-    setProfBio(data.bio || "");
-    setProfConditions(data.supportedConditions || ["Neck Pain", "Back Pain"]);
-  };
+  useEffect(() => {
+    fetchDashboardData();
+  }, []);
 
   const handleRequestAction = async (requestId: string, action: "accept" | "decline") => {
     try {
@@ -259,7 +334,7 @@ export default function TherapistPortalPage() {
   };
 
   const switchTab = (tab: "dashboard" | "patients" | "appointments" | "profile") => {
-    setActiveTab(tab);
+    setSelectedTab(tab);
     router.replace(`/therapist?tab=${tab}`);
   };
 
@@ -290,18 +365,18 @@ export default function TherapistPortalPage() {
   }
 
   // Filtered lists
-  const filteredPatients = patients.filter((p: any) => {
+  const filteredPatients = patients.filter((p: TherapistPatientItem) => {
     const q = patientSearch.toLowerCase();
     const name = (p.user?.fullName || `${p.user?.firstName || ""} ${p.user?.lastName || ""}`).toLowerCase();
     const concerns = (p.profile?.concerns || []).join(" ").toLowerCase();
     return name.includes(q) || concerns.includes(q);
   });
 
-  const filteredAppointments = consultations.filter((c: any) => {
+  const filteredAppointments = consultations.filter((c: TherapistConsultationItem) => {
     if (appointmentFilter === "today") {
       const today = new Date();
       today.setHours(0, 0, 0, 0);
-      return new Date(c.createdAt) >= today;
+      return new Date(c.scheduledAt || c.createdAt) >= today;
     }
     if (appointmentFilter === "completed") {
       return c.status === "COMPLETED";
@@ -484,7 +559,7 @@ export default function TherapistPortalPage() {
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                  {pendingRequests.map((req: any) => {
+                  {pendingRequests.map((req: TherapistPendingRequestItem) => {
                     const name = req.user?.fullName || "Patient";
                     const concerns = req.profile?.concerns?.join(", ") || "General Rehabilitation";
 
@@ -506,7 +581,15 @@ export default function TherapistPortalPage() {
                           </div>
                           <div className="min-w-0">
                             <h3 className="text-sm font-bold text-slate-900 truncate">{name}</h3>
-                            <p className="text-xs text-emerald-700 font-semibold truncate">{concerns}</p>
+                            <p className="text-xs text-slate-600 truncate">{concerns}</p>
+                            <p className="text-[11px] text-slate-400 font-medium pt-0.5">
+                              Requested: {req.request?.requestedDate ? new Date(req.request.requestedDate).toLocaleDateString([], { month: "short", day: "numeric" }) : "Upcoming"} {req.request?.requestedTime ? `• ${req.request.requestedTime}` : ""}
+                            </p>
+                            {req.request?.patientNote && (
+                              <p className="text-[11px] text-slate-500 italic truncate max-w-xs">
+                                &ldquo;{req.request.patientNote}&rdquo;
+                              </p>
+                            )}
                           </div>
                         </div>
 
@@ -557,42 +640,70 @@ export default function TherapistPortalPage() {
                 </div>
               ) : (
                 <div className="space-y-2.5">
-                  {consultations.slice(0, 4).map((c: any) => (
-                    <div
-                      key={c._id}
-                      className="bg-white border border-slate-200/90 rounded-2xl p-4 shadow-2xs flex items-center justify-between gap-4"
-                    >
-                      <div className="flex items-center gap-3">
-                        <div className="size-10 rounded-2xl bg-emerald-50 text-emerald-800 border border-emerald-200 flex items-center justify-center font-bold text-xs shrink-0">
-                          {c.patientName?.slice(0, 2).toUpperCase() || "PT"}
-                        </div>
-                        <div>
-                          <div className="flex items-center gap-2">
-                            <h4 className="text-sm font-bold text-slate-900">{c.patientName}</h4>
-                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800">
-                              {c.status || "CONFIRMED"}
-                            </span>
+                  {consultations.slice(0, 4).map((c: TherapistConsultationItem) => {
+                    const isCompleted = c.status === "COMPLETED";
+                    const canEnter = Boolean(c.canJoin);
+
+                    return (
+                      <div
+                        key={c._id}
+                        className="bg-white border border-slate-200/90 rounded-2xl p-4 shadow-2xs flex items-center justify-between gap-4"
+                      >
+                        <div className="flex items-center gap-3">
+                          <div className="size-10 rounded-2xl bg-emerald-50 text-emerald-800 border border-emerald-200 flex items-center justify-center font-bold text-xs shrink-0">
+                            {c.patientName?.slice(0, 2).toUpperCase() || "PT"}
                           </div>
-                          <p className="text-xs text-slate-500 font-medium">
-                            Focus: {c.issue || "Orthopedic Recovery"} •{" "}
-                            {new Date(c.createdAt).toLocaleDateString([], {
-                              month: "short",
-                              day: "numeric",
-                              hour: "2-digit",
-                              minute: "2-digit",
-                            })}
-                          </p>
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <h4 className="text-sm font-bold text-slate-900">{c.patientName}</h4>
+                              <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                                isCompleted
+                                  ? "bg-slate-100 text-slate-700"
+                                  : canEnter
+                                  ? "bg-emerald-100 text-emerald-800 animate-pulse"
+                                  : "bg-blue-50 text-blue-700"
+                              }`}>
+                                {isCompleted ? "COMPLETED" : canEnter ? "READY TO ENTER" : "UPCOMING"}
+                              </span>
+                            </div>
+                            <p className="text-xs text-slate-500 font-medium">
+                              Focus: {c.issue || "Orthopedic Recovery"} •{" "}
+                              {new Date(c.scheduledAt || c.createdAt).toLocaleDateString([], {
+                                month: "short",
+                                day: "numeric",
+                                hour: "2-digit",
+                                minute: "2-digit",
+                              })}
+                            </p>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-2 shrink-0">
+                          {canEnter ? (
+                            <Button asChild className="h-9 px-3.5 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold">
+                              <Link href={`/consultation/${c._id}`}>
+                                <Video className="size-3.5 mr-1" />
+                                <span>Enter Consultation</span>
+                              </Link>
+                            </Button>
+                          ) : isCompleted ? (
+                            <Button asChild variant="outline" className="h-9 px-3.5 rounded-xl border-slate-200 text-slate-700 hover:bg-slate-50 text-xs font-semibold">
+                              <Link href={`/consultation/${c._id}`}>
+                                <ClipboardList className="size-3.5 mr-1" />
+                                <span>Summary</span>
+                              </Link>
+                            </Button>
+                          ) : (
+                            <Button asChild variant="outline" className="h-9 px-3.5 rounded-xl border-slate-200 text-slate-700 hover:bg-slate-50 text-xs font-semibold">
+                              <Link href={`/consultation/${c._id}`}>
+                                <span>View Details</span>
+                              </Link>
+                            </Button>
+                          )}
                         </div>
                       </div>
-
-                      <Button asChild className="h-9 px-3.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shrink-0">
-                        <Link href={`/consultation/${c._id}`}>
-                          <Video className="size-3.5 mr-1" />
-                          <span>Enter Workspace</span>
-                        </Link>
-                      </Button>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </section>
@@ -633,14 +744,14 @@ export default function TherapistPortalPage() {
               </div>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
-                {filteredPatients.map((p: any) => {
+                {filteredPatients.map((p: TherapistPatientItem) => {
                   const name = p.user?.fullName || `${p.user?.firstName || ""} ${p.user?.lastName || ""}`.trim() || "Patient";
                   const concerns = p.profile?.concerns || [p.consultation?.issue || "General Recovery"];
-                  const patientId = p.assignment?.patientId || p.user?.clerkUserId;
+                  const patientId = p.assignment?.patientId || p.user?.clerkUserId || "";
 
                   return (
                     <div
-                      key={patientId}
+                      key={patientId || name}
                       className="bg-white border border-slate-200/90 rounded-2xl p-4 shadow-2xs space-y-3 hover:border-emerald-300 transition-colors"
                     >
                       <div className="flex items-start justify-between gap-3">
@@ -684,21 +795,19 @@ export default function TherapistPortalPage() {
                         </span>
 
                         <div className="flex items-center gap-2">
-                          {p.consultation?._id ? (
-                            <Button asChild size="sm" className="h-8 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold">
-                              <Link href={`/consultation/${p.consultation._id}`}>
-                                <Video className="size-3 mr-1" />
-                                <span>Workspace</span>
-                              </Link>
-                            </Button>
-                          ) : (
-                            <Button asChild size="sm" variant="outline" className="h-8 rounded-xl border-slate-200 text-slate-700 text-xs">
-                              <Link href={`/therapist/patient/${patientId}`}>
-                                <span>View History</span>
-                                <ChevronRight className="size-3 ml-0.5" />
+                          {patientId && (
+                            <Button asChild size="sm" variant="outline" className="h-8 rounded-xl border-slate-200 text-slate-700 hover:bg-slate-50 text-xs font-semibold">
+                              <Link href={`/chat/${patientId}`}>
+                                <span>Message</span>
                               </Link>
                             </Button>
                           )}
+                          <Button asChild size="sm" variant="outline" className="h-8 rounded-xl border-slate-200 text-slate-700 text-xs">
+                            <Link href={`/therapist/patient/${patientId}`}>
+                              <span>Patient Record</span>
+                              <ChevronRight className="size-3 ml-0.5" />
+                            </Link>
+                          </Button>
                         </div>
                       </div>
                     </div>
@@ -757,47 +866,81 @@ export default function TherapistPortalPage() {
               </div>
             ) : (
               <div className="space-y-3">
-                {filteredAppointments.map((c: any) => (
-                  <div
-                    key={c._id}
-                    className="bg-white border border-slate-200/90 rounded-2xl p-4 sm:p-5 shadow-2xs flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4"
-                  >
-                    <div className="flex items-center gap-3.5">
-                      <div className="size-11 rounded-2xl bg-emerald-50 text-emerald-800 border border-emerald-200 flex items-center justify-center font-bold text-sm shrink-0">
-                        {c.patientName?.slice(0, 2).toUpperCase() || "PT"}
-                      </div>
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <h4 className="text-sm font-bold text-slate-900">{c.patientName}</h4>
-                          <span
-                            className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                              c.status === "COMPLETED"
-                                ? "bg-slate-100 text-slate-700"
-                                : "bg-emerald-100 text-emerald-800 animate-pulse"
-                            }`}
-                          >
-                            {c.status || "CONFIRMED"}
-                          </span>
-                        </div>
-                        <p className="text-xs text-emerald-700 font-semibold">
-                          Condition Focus: {c.issue || "Orthopedic Physical Therapy"}
-                        </p>
-                        <p className="text-[11px] text-slate-400 font-medium">
-                          Consultation Room ID: #{c._id.slice(-6)} • ₹{c.fee || 499}
-                        </p>
-                      </div>
-                    </div>
+                {filteredAppointments.map((c: TherapistConsultationItem) => {
+                  const isCompleted = c.status === "COMPLETED";
+                  const canEnter = Boolean(c.canJoin);
+                  const schedDate = new Date(c.scheduledAt || c.createdAt);
 
-                    <div className="flex items-center gap-2 self-end sm:self-auto">
-                      <Button asChild className="h-9 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-xs">
-                        <Link href={`/consultation/${c._id}`}>
-                          <Video className="size-3.5 mr-1.5" />
-                          <span>Join Video Workspace</span>
-                        </Link>
-                      </Button>
+                  return (
+                    <div
+                      key={c._id}
+                      className="bg-white border border-slate-200/90 rounded-2xl p-4 sm:p-5 shadow-2xs flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4"
+                    >
+                      <div className="flex items-center gap-3.5">
+                        <div className="size-11 rounded-2xl bg-emerald-50 text-emerald-800 border border-emerald-200 flex items-center justify-center font-bold text-sm shrink-0">
+                          {c.patientName?.slice(0, 2).toUpperCase() || "PT"}
+                        </div>
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <h4 className="text-sm font-bold text-slate-900">{c.patientName}</h4>
+                            <span
+                              className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                                isCompleted
+                                  ? "bg-slate-100 text-slate-700"
+                                  : canEnter
+                                  ? "bg-emerald-100 text-emerald-800 animate-pulse"
+                                  : "bg-blue-50 text-blue-700"
+                              }`}
+                            >
+                              {isCompleted ? "COMPLETED" : canEnter ? "READY TO ENTER" : "UPCOMING"}
+                            </span>
+                          </div>
+                          <p className="text-xs text-emerald-700 font-semibold">
+                            Condition Focus: {c.issue || "Orthopedic Physical Therapy"}
+                          </p>
+                          <p className="text-[11px] text-slate-500 font-medium">
+                            {schedDate.toLocaleDateString([], {
+                              weekday: "short",
+                              month: "short",
+                              day: "numeric",
+                            })}{" "}
+                            • {schedDate.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })} ({c.duration || 30} mins)
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2 self-end sm:self-auto">
+                        <Button asChild variant="outline" className="h-9 px-3 rounded-xl border-slate-200 text-slate-700 hover:bg-slate-50 text-xs font-semibold">
+                          <Link href={`/chat/${c.patientId}`}>
+                            <span>Message</span>
+                          </Link>
+                        </Button>
+
+                        {canEnter ? (
+                          <Button asChild className="h-9 px-4 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold shadow-xs">
+                            <Link href={`/consultation/${c._id}`}>
+                              <Video className="size-3.5 mr-1.5" />
+                              <span>Enter Consultation</span>
+                            </Link>
+                          </Button>
+                        ) : isCompleted ? (
+                          <Button asChild variant="outline" className="h-9 px-4 rounded-xl border-slate-200 text-slate-700 hover:bg-slate-50 text-xs font-semibold">
+                            <Link href={`/consultation/${c._id}`}>
+                              <ClipboardList className="size-3.5 mr-1.5" />
+                              <span>View Summary & Notes</span>
+                            </Link>
+                          </Button>
+                        ) : (
+                          <Button asChild variant="outline" className="h-9 px-4 rounded-xl border-slate-200 text-slate-700 hover:bg-slate-50 text-xs font-semibold">
+                            <Link href={`/consultation/${c._id}`}>
+                              <span>View Consultation Info</span>
+                            </Link>
+                          </Button>
+                        )}
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>

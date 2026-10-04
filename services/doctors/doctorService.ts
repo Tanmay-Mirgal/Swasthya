@@ -154,7 +154,7 @@ export async function ensureSeedDoctors(): Promise<void> {
  */
 export function matchDoctorsForPatient(
   concerns: string[],
-  doctors: any[]
+  doctors: Partial<ITherapistProfile>[]
 ): MatchedDoctor[] {
   const normalizedConcerns = concerns.map((c) => c.toLowerCase().trim());
 
@@ -165,7 +165,6 @@ export function matchDoctorsForPatient(
     const spec = (doc.specialization || "").toLowerCase();
     const bio = (doc.bio || "").toLowerCase();
 
-    let matchCount = 0;
     const matchedConditions: string[] = [];
 
     for (const concern of normalizedConcerns) {
@@ -175,11 +174,7 @@ export function matchDoctorsForPatient(
       const isSpecMatch = spec.includes(concern) || concern.split(" ").some((w: string) => w.length > 3 && spec.includes(w));
       const isBioMatch = bio.includes(concern);
 
-      if (isDirectMatch || isSpecMatch) {
-        matchCount += 3;
-        matchedConditions.push(concern);
-      } else if (isBioMatch) {
-        matchCount += 1;
+      if (isDirectMatch || isSpecMatch || isBioMatch) {
         matchedConditions.push(concern);
       }
     }
@@ -200,7 +195,7 @@ export function matchDoctorsForPatient(
     }
 
     return {
-      clerkUserId: doc.clerkUserId,
+      clerkUserId: doc.clerkUserId || "",
       professionalName: doc.professionalName || "Physiotherapy Specialist",
       title: doc.title || "Doctor / Physiotherapist",
       qualification: doc.qualification || "MPT, BPT Certified",

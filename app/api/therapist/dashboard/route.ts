@@ -1,12 +1,9 @@
 import { NextResponse } from "next/server";
-import { createClerkClient } from "@clerk/backend";
 import connectToDatabase from "@/lib/mongodb";
 import PatientProfile from "@/models/PatientProfile";
 import TherapistAssignment from "@/models/TherapistAssignment";
 import ExerciseAssignment from "@/models/ExerciseAssignment";
 import User from "@/models/User";
-
-const clerkClient = createClerkClient({ secretKey: process.env.CLERK_SECRET_KEY });
 
 export const dynamic = "force-dynamic";
 
@@ -89,29 +86,73 @@ export async function GET(req: Request) {
     const Consultation = (await import("@/models/Consultation")).default;
     const rawConsultations = await Consultation.find({ doctorId: clerkUserId }).sort({ updatedAt: -1 }).lean();
     
-    // Enrich consultations with patient details
+    const { canJoinConsultation, getAppointmentTimeStatus } = await import("@/types/appointment");
+    const now = new Date();
+
+    // Enrich consultations with patient details and lifecycle status
+    interface RawConsultationDoc {
+      _id: { toString(): string } | string;
+      patientId: string;
+      doctorId: string;
+      issue?: string;
+      status: string;
+      roomStatus?: string;
+      scheduledAt?: Date | string;
+      createdAt: Date | string;
+      duration?: number;
+    }
+
+    const typedRawConsultations = rawConsultations as unknown as RawConsultationDoc[];
+
     const consultations = await Promise.all(
-      rawConsultations.map(async (c: any) => {
+      typedRawConsultations.map(async (c) => {
         const patientUser = await User.findOne({ clerkUserId: c.patientId }).lean();
         const patientProf = await PatientProfile.findOne({ clerkUserId: c.patientId }).lean();
+        const sched = c.scheduledAt || c.createdAt;
+        const duration = c.duration || 30;
+        const canJoin = canJoinConsultation(c.status, sched, duration, now);
+        const timeStatus = getAppointmentTimeStatus(c.status, sched, duration, now);
+
         return {
           ...c,
+          _id: c._id.toString(),
           patientName: patientUser?.fullName || `${patientUser?.firstName || "Patient"} ${patientUser?.lastName || ""}`.trim(),
           patientImage: patientUser?.imageUrl || null,
           patientConcerns: patientProf?.concerns || [c.issue || "Orthopedic Recovery"],
+          scheduledAt: sched,
+          duration,
+          canJoin,
+          timeStatus,
         };
       })
     );
 
+    interface PatientEntry {
+      assignment?: { patientId: string; status?: string };
+      user?: {
+        clerkUserId: string;
+        firstName?: string;
+        lastName?: string;
+        fullName?: string;
+        email?: string;
+        imageUrl?: string;
+      };
+      profile?: { concerns?: string[] } | null;
+      exerciseAssignments?: unknown[];
+      consultation?: RawConsultationDoc;
+    }
+
+    const typedPatients = patients as PatientEntry[];
+
     // Also include any patient from active consultations
-    for (const c of rawConsultations) {
-      const alreadyIncluded = patients.some((p: any) => p.assignment?.patientId === c.patientId || p.user?.clerkUserId === c.patientId);
+    for (const c of typedRawConsultations) {
+      const alreadyIncluded = typedPatients.some((p) => p.assignment?.patientId === c.patientId || p.user?.clerkUserId === c.patientId);
       if (!alreadyIncluded) {
         const patientUser = await User.findOne({ clerkUserId: c.patientId }).lean();
         const patientProfile = await PatientProfile.findOne({ clerkUserId: c.patientId }).lean();
         const exerciseAssignments = await ExerciseAssignment.find({ patientId: c.patientId }).lean();
 
-        patients.push({
+        typedPatients.push({
           assignment: { patientId: c.patientId, status: c.status },
           consultation: c,
           user: {
@@ -122,7 +163,7 @@ export async function GET(req: Request) {
             email: patientUser?.email || "",
             imageUrl: patientUser?.imageUrl || "",
           },
-          profile: patientProfile || { concerns: [c.issue] },
+          profile: patientProfile || { concerns: [c.issue || "Orthopedic Recovery"] },
           exerciseAssignments,
         });
       }
@@ -130,8 +171,8 @@ export async function GET(req: Request) {
 
     const today = new Date();
     today.setHours(0, 0, 0, 0);
-    const todayAppointments = consultations.filter((c: any) => new Date(c.createdAt) >= today);
-    const completedConsultations = consultations.filter((c: any) => c.status === "COMPLETED");
+    const todayAppointments = consultations.filter((c) => new Date(c.scheduledAt || c.createdAt) >= today);
+    const completedConsultations = consultations.filter((c) => c.status === "COMPLETED");
 
     return NextResponse.json({
       success: true,

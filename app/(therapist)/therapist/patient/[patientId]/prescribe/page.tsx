@@ -26,31 +26,39 @@ export default function PrescribeExercisePage({ params }: { params: Promise<{ pa
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    fetchPatientName();
-  }, [patientId]);
+    let isMounted = true;
 
-  const fetchPatientName = async () => {
-    try {
-      const token = await getToken();
-      if (!token) return;
+    const loadPatientName = async () => {
+      try {
+        const token = await getToken();
+        if (!token || !isMounted) return;
 
-      const res = await fetch(`/api/therapist/patient/${patientId}`, {
-        headers: {
-          Authorization: `Bearer ${token}`
+        const res = await fetch(`/api/therapist/patient/${patientId}`, {
+          headers: {
+            Authorization: `Bearer ${token}`
+          }
+        });
+        const data = await res.json();
+        if (!isMounted) return;
+
+        if (data.success) {
+           setPatientName(`${data.data?.user?.firstName || ""} ${data.data?.user?.lastName || ""}`.trim() || "Patient");
+        } else {
+           setError(data.error || "Failed to load patient");
         }
-      });
-      const data = await res.json();
-      if (data.success) {
-         setPatientName(`${data.data.user?.firstName || ""} ${data.data.user?.lastName || ""}`.trim() || "Patient");
-      } else {
-         setError(data.error);
+      } catch {
+        if (isMounted) setError("Failed to load patient");
+      } finally {
+        if (isMounted) setIsLoading(false);
       }
-    } catch (err) {
-      setError("Failed to load patient");
-    } finally {
-      setIsLoading(false);
-    }
-  };
+    };
+
+    void loadPatientName();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [getToken, patientId]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -76,8 +84,7 @@ export default function PrescribeExercisePage({ params }: { params: Promise<{ pa
           throw new Error("Failed to save prescription");
        }
        router.push(`/therapist/patient/${patientId}`);
-    } catch (err) {
-       console.error(err);
+    } catch {
        setIsSubmitting(false);
     }
   };
@@ -173,4 +180,3 @@ export default function PrescribeExercisePage({ params }: { params: Promise<{ pa
     </AppShell>
   );
 }
-

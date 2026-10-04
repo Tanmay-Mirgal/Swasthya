@@ -3,10 +3,14 @@ import mongoose, { Schema, Document } from "mongoose";
 export interface IAppointmentRequest extends Document {
   patientId: string; // clerkUserId
   therapistId: string; // clerkUserId
-  status: "pending" | "accepted" | "declined" | "cancelled";
+  status: "pending" | "accepted" | "declined" | "cancelled" | "completed";
   requestedDate?: Date;
   requestedTime?: string;
+  scheduledAt?: Date;
+  duration: number; // in minutes
   patientNote?: string;
+  consultationId?: string;
+  cancellationReason?: string;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -25,8 +29,9 @@ const AppointmentRequestSchema = new Schema(
     },
     status: {
       type: String,
-      enum: ["pending", "accepted", "declined", "cancelled"],
+      enum: ["pending", "accepted", "declined", "cancelled", "completed"],
       default: "pending",
+      index: true,
     },
     requestedDate: {
       type: Date,
@@ -34,7 +39,22 @@ const AppointmentRequestSchema = new Schema(
     requestedTime: {
       type: String,
     },
+    scheduledAt: {
+      type: Date,
+      index: true,
+    },
+    duration: {
+      type: Number,
+      default: 30, // 30 mins
+    },
     patientNote: {
+      type: String,
+    },
+    consultationId: {
+      type: String,
+      index: true,
+    },
+    cancellationReason: {
       type: String,
     },
   },

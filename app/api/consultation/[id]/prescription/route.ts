@@ -28,9 +28,23 @@ export async function POST(
       return NextResponse.json({ error: "Consultation not found" }, { status: 404 });
     }
 
-    const doctorProfile: any = await TherapistProfile.findOne({
+interface PrescribedExerciseInput {
+  exerciseId: string;
+  name?: string;
+  sets?: number | string;
+  reps?: number | string;
+  frequency?: string;
+  instructions?: string;
+}
+
+interface DoctorProfileDoc {
+  professionalName?: string;
+  specialization?: string;
+}
+
+    const doctorProfile = await TherapistProfile.findOne({
       clerkUserId: consultation.doctorId,
-    }).lean();
+    }).lean() as DoctorProfileDoc | null;
 
     const doctorName = doctorProfile?.professionalName || "Dr. Aarti Sharma";
     const doctorSpecialization = doctorProfile?.specialization || "Knee Rehabilitation";
@@ -56,7 +70,7 @@ export async function POST(
 
     // 3. SYNCHRONIZE WITH USER'S RECOVERY PLAN:
     // Create/update active ExerciseAssignment for each prescribed exercise
-    const assignmentPromises = exercises.map(async (ex: any) => {
+    const assignmentPromises = (exercises as PrescribedExerciseInput[]).map(async (ex) => {
       return ExerciseAssignment.findOneAndUpdate(
         {
           patientId: consultation.patientId,

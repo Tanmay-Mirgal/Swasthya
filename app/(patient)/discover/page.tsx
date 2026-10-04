@@ -1,4 +1,3 @@
-/* eslint-disable react-hooks/exhaustive-deps */
 "use client";
 
 import { useEffect, useState } from "react";
@@ -11,14 +10,11 @@ import {
   Star,
   CheckCircle2,
   Sparkles,
-  Video,
-  ChevronRight,
   ShieldCheck,
-  Stethoscope,
   User as UserIcon,
   Search,
-  Filter,
   X,
+  MessageSquare,
 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { useAuth, useUser } from "@clerk/react";
@@ -35,14 +31,40 @@ const SPECIALTY_FILTERS = [
   "Rehabilitation",
 ];
 
+interface DiscoverTherapistItem {
+  _id?: string;
+  clerkUserId: string;
+  professionalName: string;
+  title?: string;
+  specialization?: string;
+  qualification?: string;
+  clinicName?: string;
+  avatarUrl?: string;
+  rating?: number;
+  reviewCount?: number;
+  yearsOfExperience?: string;
+  consultationFee?: number;
+  supportedConditions?: string[];
+  bio?: string;
+  isRecommended?: boolean;
+  recommendationReason?: string;
+  matchScore?: number;
+  isOnline?: boolean;
+}
+
+interface DiscoverData {
+  concerns: string[];
+  therapists: DiscoverTherapistItem[];
+}
+
 export default function DiscoverTherapistsPage() {
   const { getToken } = useAuth();
   const { user } = useUser();
   const router = useRouter();
 
-  const [data, setData] = useState<any>(null);
+  const [data, setData] = useState<DiscoverData | null>(null);
   const [loading, setLoading] = useState(true);
-  const [startingConsultationId, setStartingConsultationId] = useState<string | null>(null);
+
 
   // Search & Filter state
   const [searchQuery, setSearchQuery] = useState("");
@@ -71,40 +93,12 @@ export default function DiscoverTherapistsPage() {
     fetchData();
   }, [getToken, user, router]);
 
-  const handleStartConsultation = async (doctorId: string, primaryIssue?: string) => {
-    try {
-      setStartingConsultationId(doctorId);
-      const token = await getToken();
-      const res = await fetch("/api/consultation/start/", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
-        body: JSON.stringify({
-          doctorId,
-          issue: primaryIssue || concerns[0] || "General Recovery",
-        }),
-      });
 
-      const json = await res.json();
-      if (json.success && json.data?.consultation?._id) {
-        router.push(`/consultation/${json.data.consultation._id}`);
-      } else {
-        router.push(`/therapist-profile/${doctorId}`);
-      }
-    } catch (err) {
-      console.error("Error starting consultation:", err);
-      router.push(`/therapist-profile/${doctorId}`);
-    } finally {
-      setStartingConsultationId(null);
-    }
-  };
 
   const { concerns = [], therapists = [] } = data || {};
 
   // Filtered Therapists by search and specialty pill
-  const filteredTherapists = therapists.filter((doc: any) => {
+  const filteredTherapists = therapists.filter((doc: DiscoverTherapistItem) => {
     const q = searchQuery.toLowerCase().trim();
     const matchesSearch =
       !q ||
@@ -267,9 +261,7 @@ export default function DiscoverTherapistsPage() {
             </div>
           ) : (
             <div className="space-y-3 w-full">
-              {filteredTherapists.map((doc: any) => {
-                const isStarting = startingConsultationId === doc.clerkUserId;
-
+              {filteredTherapists.map((doc: DiscoverTherapistItem) => {
                 return (
                   <div
                     key={doc.clerkUserId}
@@ -369,37 +361,32 @@ export default function DiscoverTherapistsPage() {
                       </div>
                     )}
 
-                    {/* Live Availability Line */}
-                    <div className="flex items-center gap-1.5 text-[10px] text-emerald-800 font-semibold pt-2">
-                      <span className="size-1.5 rounded-full bg-emerald-500 animate-pulse shrink-0" />
-                      <span className="truncate">{doc.availability || "Available Today • Instant Video Call"}</span>
+                    {/* Availability Line */}
+                    <div className="flex items-center gap-1.5 text-[10px] text-slate-500 font-medium pt-2">
+                      <span className="size-1.5 rounded-full bg-slate-400 shrink-0" />
+                      <span className="truncate">Available for scheduled consultation</span>
                     </div>
 
-                    {/* Mobile Action Buttons (Side by Side 2 Columns) */}
+                    {/* Action Buttons */}
                     <div className="grid grid-cols-2 gap-2 pt-2.5 mt-2 border-t border-slate-100 w-full">
                       <Button
                         asChild
                         variant="outline"
-                        className="h-9 text-xs font-semibold rounded-xl border-slate-200 text-slate-700 hover:bg-slate-50 active:scale-[0.98] transition-all px-1.5"
+                        className="h-9 text-xs font-semibold rounded-xl border-slate-200 text-slate-700 hover:bg-slate-50 transition-all px-1.5"
                       >
-                        <Link href={`/therapist-profile/${doc.clerkUserId}`} className="truncate text-center">
-                          View Profile
+                        <Link href={`/chat/${doc.clerkUserId}`} className="truncate text-center flex items-center justify-center gap-1">
+                          <MessageSquare className="size-3.5" />
+                          <span>Message</span>
                         </Link>
                       </Button>
 
                       <Button
-                        onClick={() => handleStartConsultation(doc.clerkUserId, concerns[0])}
-                        disabled={isStarting}
-                        className="h-9 text-xs font-bold rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs flex items-center justify-center gap-1 active:scale-[0.98] transition-all px-1.5"
+                        asChild
+                        className="h-9 text-xs font-semibold rounded-xl bg-slate-900 hover:bg-slate-800 text-white shadow-2xs flex items-center justify-center gap-1 transition-all px-1.5"
                       >
-                        {isStarting ? (
-                          <Loader2 className="size-3.5 animate-spin" />
-                        ) : (
-                          <>
-                            <Video className="size-3.5 shrink-0" />
-                            <span className="truncate">Video Consult</span>
-                          </>
-                        )}
+                        <Link href={`/therapist-profile/${doc.clerkUserId}`} className="truncate text-center">
+                          <span>View Profile & Book</span>
+                        </Link>
                       </Button>
                     </div>
                   </div>

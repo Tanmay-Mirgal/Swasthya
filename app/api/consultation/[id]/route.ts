@@ -1,13 +1,13 @@
 import { NextResponse } from "next/server";
 import connectToDatabase from "@/lib/mongodb";
 import Consultation from "@/models/Consultation";
-import TherapistProfile from "@/models/TherapistProfile";
+import AppointmentRequest from "@/models/AppointmentRequest";
+import TherapistProfile, { ITherapistProfile } from "@/models/TherapistProfile";
 import PatientProfile from "@/models/PatientProfile";
 import Prescription from "@/models/Prescription";
 import ChatMessage from "@/models/ChatMessage";
-import { ensureSeedDoctors } from "@/services/doctors/doctorService";
-
-import User from "@/models/User";
+import User, { IUser } from "@/models/User";
+import { canJoinConsultation, getAppointmentTimeStatus } from "@/types/appointment";
 
 export const dynamic = "force-dynamic";
 
@@ -22,74 +22,118 @@ export async function GET(
     }
 
     const authHeader = req.headers.get("Authorization");
-    let callerClerkUserId: string | null = null;
-    if (authHeader && authHeader.startsWith("Bearer ")) {
-      const token = authHeader.split(" ")[1];
-      try {
-        const { verifyToken } = await import("@clerk/backend");
-        const verified = await verifyToken(token, {
-          secretKey: process.env.CLERK_SECRET_KEY,
-        });
-        callerClerkUserId = verified?.sub || null;
-      } catch (err) {
-        console.warn("Token verification note:", err);
-      }
+    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+      return NextResponse.json({ error: "Unauthorized: Sign in required" }, { status: 401 });
+    }
+
+    const token = authHeader.split(" ")[1];
+    const { verifyToken } = await import("@clerk/backend");
+    const verified = await verifyToken(token, { secretKey: process.env.CLERK_SECRET_KEY });
+    const callerClerkUserId = verified?.sub;
+
+    if (!callerClerkUserId) {
+      return NextResponse.json({ error: "Unauthorized: Invalid token" }, { status: 401 });
     }
 
     await connectToDatabase();
-    await ensureSeedDoctors();
 
-    const consultation = await Consultation.findById(id).lean();
+    // Look up Consultation by ID or by linked appointmentId
+    let consultation = null;
+    if (id.match(/^[0-9a-fA-F]{24}$/)) {
+      consultation = await Consultation.findById(id).lean();
+    }
+    if (!consultation) {
+      consultation = await Consultation.findOne({ appointmentId: id }).lean();
+    }
+
     if (!consultation) {
       return NextResponse.json({ error: "Consultation not found" }, { status: 404 });
     }
 
+    // STRICT AUTHORIZATION CHECK (Rule 4 & Part 16)
+    const isPatient = callerClerkUserId === consultation.patientId;
+    const isDoctor = callerClerkUserId === consultation.doctorId;
+
+    if (!isPatient && !isDoctor) {
+      return NextResponse.json(
+        { error: "Forbidden: You are not an authorized participant in this consultation." },
+        { status: 403 }
+      );
+    }
+
+    const currentUserRole: "patient" | "doctor" = isDoctor ? "doctor" : "patient";
+
+    // Lookup linked appointment if exists
+    let appointment = null;
+    if (consultation.appointmentId) {
+      appointment = await AppointmentRequest.findById(consultation.appointmentId).lean();
+    }
+
+    // Check cancellation state
+    if (consultation.status === "CANCELLED" || appointment?.status === "cancelled") {
+      return NextResponse.json(
+        {
+          error: "APPOINTMENT_CANCELLED",
+          message: "This consultation appointment was cancelled.",
+          status: "CANCELLED",
+        },
+        { status: 403 }
+      );
+    }
+
+    // Fetch related records
     const [doctorProfile, doctorUser, patientProfile, patientUser, prescription, messages] =
       await Promise.all([
-        TherapistProfile.findOne({ clerkUserId: consultation.doctorId }).lean(),
-        User.findOne({ clerkUserId: consultation.doctorId }).lean(),
+        TherapistProfile.findOne({ clerkUserId: consultation.doctorId }).lean<ITherapistProfile>(),
+        User.findOne({ clerkUserId: consultation.doctorId }).lean<IUser>(),
         PatientProfile.findOne({ clerkUserId: consultation.patientId }).lean(),
-        User.findOne({ clerkUserId: consultation.patientId }).lean(),
+        User.findOne({ clerkUserId: consultation.patientId }).lean<IUser>(),
         consultation.prescriptionId
           ? Prescription.findById(consultation.prescriptionId).lean()
           : Prescription.findOne({ consultationId: consultation._id }).lean(),
-        ChatMessage.find({ consultationId: id }).sort({ createdAt: 1 }).lean(),
+        ChatMessage.find({ consultationId: consultation._id.toString() }).sort({ createdAt: 1 }).lean(),
       ]);
-
-    // Resolve Clerk / live image for Doctor
-    const doctorAvatar =
-      doctorProfile?.avatarUrl ||
-      doctorUser?.imageUrl ||
-      "https://images.unsplash.com/photo-1594824813589-f54460f997cb?auto=format&fit=crop&q=80&w=400";
 
     const resolvedDoctor = {
       clerkUserId: consultation.doctorId,
-      professionalName: doctorProfile?.professionalName || doctorUser?.fullName || "Dr. Physiotherapist",
+      professionalName:
+        doctorProfile?.professionalName ||
+        (doctorUser?.firstName ? `Dr. ${doctorUser.firstName} ${doctorUser.lastName || ""}`.trim() : "Dr. Physiotherapist"),
       title: doctorProfile?.title || "Doctor / Physiotherapist",
       specialization: doctorProfile?.specialization || "Orthopedic Physical Therapy",
-      avatarUrl: doctorAvatar,
+      qualification: doctorProfile?.qualification || "MPT, Certified Specialist",
+      clinicName: doctorProfile?.clinicName || "Swasthya Partner Center",
+      avatarUrl:
+        doctorProfile?.avatarUrl ||
+        doctorUser?.imageUrl ||
+        "",
+      rating: doctorProfile?.rating || 4.9,
     };
 
-    // Resolve patient details
     const resolvedPatient = {
       patientId: consultation.patientId,
-      name: patientUser?.fullName || patientUser?.name || "Patient",
+      name:
+        (patientUser?.firstName ? `${patientUser.firstName} ${patientUser.lastName || ""}`.trim() : "Patient"),
       imageUrl: patientUser?.imageUrl || null,
       concerns: patientProfile?.concerns || [consultation.issue || "Orthopedic Recovery"],
     };
 
-    // Automatically determine role
-    let currentUserRole: "patient" | "doctor" = "patient";
-    if (callerClerkUserId) {
-      if (callerClerkUserId === consultation.doctorId) {
-        currentUserRole = "doctor";
-      } else {
-        const callerUser = await User.findOne({ clerkUserId: callerClerkUserId }).lean();
-        const callerTherapist = await TherapistProfile.findOne({ clerkUserId: callerClerkUserId }).lean();
-        if (callerUser?.role === "therapist" || callerTherapist) {
-          currentUserRole = "doctor";
-        }
-      }
+    // Evaluate time window
+    const now = new Date();
+    const scheduledAt = consultation.scheduledAt || appointment?.scheduledAt || consultation.createdAt;
+    const duration = consultation.duration || appointment?.duration || 30;
+    const timeStatus = getAppointmentTimeStatus(consultation.status, scheduledAt, duration, now);
+    const canJoinCall = canJoinConsultation(consultation.status, scheduledAt, duration, now);
+
+    // If window expired and not completed yet, update to COMPLETED
+    if (timeStatus === "ENDED" && consultation.status === "ACTIVE") {
+      await Consultation.findByIdAndUpdate(consultation._id, {
+        status: "COMPLETED",
+        roomStatus: "EXPIRED",
+        endedAt: consultation.endedAt || now,
+      });
+      consultation.status = "COMPLETED";
+      consultation.roomStatus = "EXPIRED";
     }
 
     return NextResponse.json({
@@ -101,6 +145,10 @@ export async function GET(
         prescription,
         messages,
         currentUserRole,
+        timeStatus,
+        canJoinCall,
+        isCompleted: consultation.status === "COMPLETED",
+        scheduledAt,
       },
     });
   } catch (error) {
@@ -115,18 +163,66 @@ export async function PATCH(
 ) {
   try {
     const { id } = await params;
-    const body = await req.json();
+    if (!id) {
+      return NextResponse.json({ error: "Consultation ID required" }, { status: 400 });
+    }
+
+    const authHeader = req.headers.get("Authorization");
+    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const token = authHeader.split(" ")[1];
+    const { verifyToken } = await import("@clerk/backend");
+    const verified = await verifyToken(token, { secretKey: process.env.CLERK_SECRET_KEY });
+    const callerClerkUserId = verified?.sub;
+
+    if (!callerClerkUserId) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
 
     await connectToDatabase();
 
-    const updateFields: any = {};
-    if (body.status) updateFields.status = body.status;
+    const consultation = await Consultation.findById(id);
+    if (!consultation) {
+      return NextResponse.json({ error: "Consultation not found" }, { status: 404 });
+    }
+
+    // STRICT AUTHORIZATION CHECK
+    const isPatient = callerClerkUserId === consultation.patientId;
+    const isDoctor = callerClerkUserId === consultation.doctorId;
+
+    if (!isPatient && !isDoctor) {
+      return NextResponse.json({ error: "Forbidden: Not an authorized participant" }, { status: 403 });
+    }
+
+    const body = await req.json();
+    const updateFields: Record<string, unknown> = {};
+
     if (body.callStatus) updateFields.callStatus = body.callStatus;
+    if (body.roomStatus) updateFields.roomStatus = body.roomStatus;
     if (body.duration !== undefined) updateFields.duration = body.duration;
-    if (body.doctorNotes) updateFields.doctorNotes = body.doctorNotes;
     if (body.patientNote) updateFields.patientNote = body.patientNote;
+    if (body.doctorNotes && isDoctor) updateFields.doctorNotes = body.doctorNotes;
+
+    // Doctor ends consultation -> Appointment becomes COMPLETED (Rule 14)
     if (body.status === "COMPLETED") {
+      if (!isDoctor) {
+        return NextResponse.json(
+          { error: "Forbidden: Only the consulting doctor can end and complete a consultation." },
+          { status: 403 }
+        );
+      }
+      updateFields.status = "COMPLETED";
+      updateFields.roomStatus = "COMPLETED";
       updateFields.endedAt = new Date();
+
+      // Update linked appointment if present
+      if (consultation.appointmentId) {
+        await AppointmentRequest.findByIdAndUpdate(consultation.appointmentId, {
+          status: "completed",
+        });
+      }
     }
 
     const updated = await Consultation.findByIdAndUpdate(

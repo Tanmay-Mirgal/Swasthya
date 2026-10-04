@@ -1,4 +1,3 @@
-/* eslint-disable react-hooks/exhaustive-deps */
 "use client";
 
 import { useEffect, useState, use } from "react";
@@ -10,45 +9,78 @@ import { Card, CardContent } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { useAuth } from "@clerk/react";
 
+interface ExerciseAssignmentItem {
+  _id: string;
+  exerciseId: string;
+  targetSets: number;
+  targetReps: number;
+  type: string;
+}
+
+interface PatientSession {
+  id: string;
+  exerciseName: string;
+  date: string;
+  completedReps: number;
+  rom: number;
+}
+
+interface PatientDetailData {
+  user?: {
+    firstName?: string;
+    lastName?: string;
+    email?: string;
+  };
+  profile?: {
+    concerns?: string[];
+  };
+  exerciseAssignments: ExerciseAssignmentItem[];
+}
+
 export default function PatientDetailPage({ params }: { params: Promise<{ patientId: string }> }) {
   const { patientId } = use(params);
   const { getToken } = useAuth();
   
-  const [patientData, setPatientData] = useState<any>(null);
+  const [patientData, setPatientData] = useState<PatientDetailData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  
-  // For now, sessions are local only as per existing system
-  const [sessions, setSessions] = useState<any[]>([]);
+  const [sessions] = useState<PatientSession[]>([]);
 
   useEffect(() => {
-    fetchPatientDetail();
-  }, [patientId]);
+    let isMounted = true;
 
-  const fetchPatientDetail = async () => {
-    try {
-      setIsLoading(true);
-      const token = await getToken();
-      if (!token) return;
+    const loadPatientDetail = async () => {
+      try {
+        const token = await getToken();
+        if (!token || !isMounted) return;
 
-      const res = await fetch(`/api/therapist/patient/${patientId}`, {
-        headers: {
-          Authorization: `Bearer ${token}`
+        const res = await fetch(`/api/therapist/patient/${patientId}`, {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        });
+        
+        const data = await res.json();
+        if (!isMounted) return;
+
+        if (data.success) {
+          setPatientData(data.data as PatientDetailData);
+        } else {
+          setError(data.error || "Failed to load patient data");
         }
-      });
-      
-      const data = await res.json();
-      if (data.success) {
-        setPatientData(data.data);
-      } else {
-        setError(data.error);
+      } catch {
+        if (isMounted) setError("Failed to load patient data");
+      } finally {
+        if (isMounted) setIsLoading(false);
       }
-    } catch (err) {
-      setError("Failed to load patient data");
-    } finally {
-      setIsLoading(false);
-    }
-  };
+    };
+
+    void loadPatientDetail();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [getToken, patientId]);
 
   if (isLoading) {
     return (
@@ -111,7 +143,7 @@ export default function PatientDetailPage({ params }: { params: Promise<{ patien
             {exerciseAssignments.length === 0 ? (
               <p className="text-sm text-slate-500 italic">No active exercises assigned.</p>
             ) : (
-              exerciseAssignments.map((ea: any) => {
+              exerciseAssignments.map((ea: ExerciseAssignmentItem) => {
                 const ex = getExerciseById(ea.exerciseId);
                 return (
                   <Card key={ea._id}>
@@ -135,7 +167,7 @@ export default function PatientDetailPage({ params }: { params: Promise<{ patien
             <p className="text-sm text-slate-500 italic">No sessions recorded yet.</p>
           ) : (
             <div className="space-y-3">
-              {sessions.map((s: any) => (
+              {sessions.map((s: PatientSession) => (
                 <Card key={s.id}>
                   <CardContent className="p-4">
                     <div className="flex justify-between items-start mb-3">
@@ -164,4 +196,3 @@ export default function PatientDetailPage({ params }: { params: Promise<{ patien
     </AppShell>
   );
 }
-

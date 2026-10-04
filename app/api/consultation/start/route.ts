@@ -21,7 +21,7 @@ export async function POST(req: Request) {
           secretKey: process.env.CLERK_SECRET_KEY,
         });
         if (verified.sub) clerkUserId = verified.sub;
-      } catch (err) {
+      } catch {
         console.warn("Auth token fallback to guest_patient");
       }
     }

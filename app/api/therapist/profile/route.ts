@@ -1,10 +1,7 @@
 import { NextResponse } from "next/server";
-import { createClerkClient } from "@clerk/backend";
 import connectToDatabase from "@/lib/mongodb";
 import User from "@/models/User";
 import TherapistProfile from "@/models/TherapistProfile";
-
-const clerkClient = createClerkClient({ secretKey: process.env.CLERK_SECRET_KEY });
 
 export const dynamic = "force-dynamic";
 
@@ -99,9 +96,23 @@ export async function POST(req: Request) {
       isOnline,
     } = body;
 
-    await connectToDatabase();
+interface TherapistUpdateFields {
+  updatedAt: Date;
+  professionalName?: string;
+  title?: string;
+  qualification?: string;
+  specialization?: string;
+  supportedConditions?: string[];
+  yearsOfExperience?: string;
+  clinicName?: string;
+  consultationFee?: number;
+  languages?: string[];
+  availability?: string;
+  bio?: string;
+  isOnline?: boolean;
+}
 
-    const updateFields: any = {
+    const updateFields: TherapistUpdateFields = {
       updatedAt: new Date(),
     };
 
