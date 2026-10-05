@@ -144,7 +144,7 @@ export async function ensureSeedDoctors(): Promise<void> {
     await TherapistProfile.findOneAndUpdate(
       { clerkUserId: doc.clerkUserId },
       { $set: doc },
-      { upsert: true, new: true }
+      { upsert: true, returnDocument: "after" }
     );
   }
 }

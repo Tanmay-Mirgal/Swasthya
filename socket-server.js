@@ -30,13 +30,36 @@ const roomUsers = new Map(); // consultationId -> Set of { socketId, userId, rol
 io.on("connection", (socket) => {
   console.log(`[Socket.IO] Client connected: ${socket.id}`);
 
-  // 1. Join consultation room
+  // 1. Join user personal notification channel
+  socket.on("join_user", ({ userId }) => {
+    if (!userId) return;
+    socket.join(`user:${userId}`);
+    socket.data.userId = userId;
+    console.log(`[Socket.IO] User channel registered: user:${userId}`);
+  });
+
+  // 1b. Join direct chat room
+  socket.on("join_chat", ({ userId, targetUserId, conversationId }) => {
+    if (userId) {
+      socket.join(`user:${userId}`);
+      socket.data.userId = userId;
+    }
+    if (conversationId) {
+      socket.join(`conversation:${conversationId}`);
+    }
+    console.log(`[Socket.IO] Direct chat room joined: user:${userId}, conversation:${conversationId}`);
+  });
+
+  // 1c. Join consultation room
   socket.on("join_consultation", ({ consultationId, userId, role }) => {
     if (!consultationId) return;
 
     socket.join(`consultation:${consultationId}`);
+    if (userId) {
+      socket.join(`user:${userId}`);
+      socket.data.userId = userId;
+    }
     socket.data.consultationId = consultationId;
-    socket.data.userId = userId;
     socket.data.role = role;
 
     if (!roomUsers.has(consultationId)) {
@@ -56,69 +79,132 @@ io.on("connection", (socket) => {
     });
   });
 
-  // 2. Chat messaging
+  // 2. Chat messaging (Direct Chat & Consultation Chat)
   socket.on("send_message", (messageData) => {
-    const { consultationId } = messageData;
-    if (!consultationId) return;
-    console.log(`[Socket.IO] Message in ${consultationId} from ${messageData.senderRole}`);
-    // Broadcast to everyone in the consultation room including sender confirmation
-    io.to(`consultation:${consultationId}`).emit("new_message", messageData);
+    const { consultationId, conversationId, targetUserId, receiverId } = messageData;
+    console.log(`[Socket.IO] Message received:`, {
+      consultationId,
+      conversationId,
+      targetUserId,
+      receiverId,
+      senderRole: messageData.senderRole,
+    });
+
+    // 1. Consultation room delivery (exclude sender — they already added it locally)
+    if (consultationId) {
+      socket.to(`consultation:${consultationId}`).emit("new_message", messageData);
+    }
+
+    // 2. Direct conversation room delivery
+    if (conversationId) {
+      socket.to(`conversation:${conversationId}`).emit("new_message", messageData);
+    }
+
+    // 3. Target user room delivery (ensures cross-room delivery)
+    const target = targetUserId || receiverId;
+    if (target) {
+      socket.to(`user:${target}`).emit("new_message", messageData);
+    }
+
+    // 4. Fallback if no room specified
+    if (!consultationId && !conversationId && !target) {
+      socket.broadcast.emit("new_message", messageData);
+    }
   });
 
   // 3. Typing indicator
-  socket.on("typing", ({ consultationId, userId, role, isTyping }) => {
-    if (!consultationId) return;
-    socket.to(`consultation:${consultationId}`).emit("typing_update", {
-      userId,
-      role,
-      isTyping,
-    });
+  socket.on("typing", ({ consultationId, conversationId, targetUserId, userId, role, isTyping }) => {
+    if (consultationId) {
+      socket.to(`consultation:${consultationId}`).emit("typing_update", {
+        userId,
+        role,
+        isTyping,
+      });
+    }
+    if (conversationId) {
+      socket.to(`conversation:${conversationId}`).emit("typing_update", {
+        userId,
+        role,
+        isTyping,
+      });
+    }
+    if (targetUserId) {
+      socket.to(`user:${targetUserId}`).emit("typing_update", {
+        userId,
+        role,
+        isTyping,
+      });
+    }
   });
 
-  // 4. WebRTC Signaling: Scheduled Room Peer Offer
-  socket.on("peer_offer", ({ consultationId, offer }) => {
-    console.log(`[WebRTC] Peer offer relayed in ${consultationId}`);
-    socket.to(`consultation:${consultationId}`).emit("peer_offer", {
+  // 4. WebRTC Signaling: Call User (single unified handler)
+  //    Emits incoming_call to both the consultation room AND the
+  //    other user's personal channel so it works even if the two
+  //    browsers navigated to slightly different consultation URLs.
+  socket.on("call_user", ({ consultationId, offer, callerName, callerRole, targetUserId }) => {
+    console.log(`[WebRTC] Call initiated in ${consultationId} by ${callerRole} (${callerName}), target: ${targetUserId || "room-only"}`);
+    const payload = {
       consultationId,
       offer,
-    });
-  });
-
-  // 4b. WebRTC Signaling: Scheduled Room Peer Answer
-  socket.on("peer_answer", ({ consultationId, answer }) => {
-    console.log(`[WebRTC] Peer answer relayed in ${consultationId}`);
-    socket.to(`consultation:${consultationId}`).emit("peer_answer", {
-      consultationId,
-      answer,
-    });
-  });
-
-  // Legacy Call Request (for backwards compatibility if needed)
-  socket.on("call_user", ({ consultationId, offer, callerName, callerRole }) => {
-    console.log(`[WebRTC] Call initiated in ${consultationId} by ${callerRole}`);
-    socket.to(`consultation:${consultationId}`).emit("incoming_call", {
-      consultationId,
-      offer,
-      callerName,
+      callerName: callerName || (callerRole === "patient" ? "Patient" : "Doctor"),
       callerRole,
       timestamp: Date.now(),
-    });
+    };
+    // Broadcast to everyone else in the consultation room
+    socket.to(`consultation:${consultationId}`).emit("incoming_call", payload);
+    // Also send directly to target user's personal channel
+    if (targetUserId) {
+      socket.to(`user:${targetUserId}`).emit("incoming_call", payload);
+    }
   });
 
-  // Legacy Call Answer
-  socket.on("call_accepted", ({ consultationId, answer }) => {
-    console.log(`[WebRTC] Call accepted in ${consultationId}`);
-    socket.to(`consultation:${consultationId}`).emit("call_accepted", {
+  // peer_offer is the same signal re-emitted by the client — just relay it
+  socket.on("peer_offer", ({ consultationId, offer, callerName, callerRole, targetUserId }) => {
+    console.log(`[WebRTC] Peer offer relayed in ${consultationId} by ${callerRole || "unknown"}`);
+    const payload = {
       consultationId,
-      answer,
-    });
+      offer,
+      callerName: callerName || (callerRole === "patient" ? "Patient" : "Doctor"),
+      callerRole,
+      timestamp: Date.now(),
+    };
+    socket.to(`consultation:${consultationId}`).emit("incoming_call", payload);
+    if (targetUserId) {
+      socket.to(`user:${targetUserId}`).emit("incoming_call", payload);
+    }
+  });
+
+  // 5. WebRTC Signaling: Call Accepted & Peer Answer
+  socket.on("call_accepted", ({ consultationId, answer, targetUserId }) => {
+    console.log(`[WebRTC] Call accepted in ${consultationId}`);
+    const payload = { consultationId, answer };
+    socket.to(`consultation:${consultationId}`).emit("call_accepted", payload);
+    socket.to(`consultation:${consultationId}`).emit("peer_answer", payload);
+    if (targetUserId) {
+      socket.to(`user:${targetUserId}`).emit("call_accepted", payload);
+      socket.to(`user:${targetUserId}`).emit("peer_answer", payload);
+    }
+  });
+
+  socket.on("peer_answer", ({ consultationId, answer, targetUserId }) => {
+    console.log(`[WebRTC] Peer answer relayed in ${consultationId}`);
+    const payload = { consultationId, answer };
+    socket.to(`consultation:${consultationId}`).emit("peer_answer", payload);
+    socket.to(`consultation:${consultationId}`).emit("call_accepted", payload);
+    if (targetUserId) {
+      socket.to(`user:${targetUserId}`).emit("peer_answer", payload);
+      socket.to(`user:${targetUserId}`).emit("call_accepted", payload);
+    }
   });
 
   // 6. WebRTC Signaling: ICE Candidate relay
-  socket.on("ice_candidate", ({ consultationId, candidate }) => {
-    socket.to(`consultation:${consultationId}`).emit("ice_candidate", {
-      candidate,
-    });
+  socket.on("ice_candidate", ({ consultationId, candidate, targetUserId }) => {
+    if (!consultationId || !candidate) return;
+    const payload = { candidate };
+    socket.to(`consultation:${consultationId}`).emit("ice_candidate", payload);
+    if (targetUserId) {
+      socket.to(`user:${targetUserId}`).emit("ice_candidate", payload);
+    }
   });
 
   // 7. WebRTC Signaling: Call Rejected
@@ -172,6 +258,14 @@ io.on("connection", (socket) => {
     }
     console.log(`[Socket.IO] Client disconnected: ${socket.id}`);
   });
+});
+
+server.on("error", (err) => {
+  if (err.code === "EADDRINUSE") {
+    console.warn(`[Socket.IO Server] Port ${PORT} is already in use. A socket server is likely already running on port ${PORT}.`);
+  } else {
+    console.error("[Socket.IO Server] Server error:", err);
+  }
 });
 
 server.listen(PORT, () => {

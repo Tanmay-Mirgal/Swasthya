@@ -39,7 +39,7 @@ export async function POST(req: Request) {
         concerns: concerns || [],
         onboardingCompleted: true
       },
-      { upsert: true, new: true }
+      { upsert: true, returnDocument: "after" }
     );
 
     // Rule-based Exercise Suggestions

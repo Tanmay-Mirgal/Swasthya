@@ -68,7 +68,7 @@ export async function POST(req: Request) {
         onboardingCompleted: true,
         verificationStatus: "verified",
       },
-      { upsert: true, new: true }
+      { upsert: true, returnDocument: "after" }
     );
 
     user.onboardingCompleted = true;

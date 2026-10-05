@@ -132,7 +132,7 @@ interface TherapistUpdateFields {
     const updatedProfile = await TherapistProfile.findOneAndUpdate(
       { clerkUserId },
       { $set: updateFields },
-      { upsert: true, new: true }
+      { upsert: true, returnDocument: "after" }
     );
 
     // Update User record if professionalName changed

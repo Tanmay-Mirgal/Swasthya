@@ -12,7 +12,7 @@ import {
   ChevronLeft,
 } from "lucide-react";
 import { useAuth, useUser } from "@clerk/react";
-import { getSocket } from "@/lib/socket";
+import { getSocket, joinChatRoom, joinUserRoom } from "@/lib/socket";
 import DoctorAvatar from "@/components/ui/DoctorAvatar";
 
 interface Participant {
@@ -27,8 +27,10 @@ interface Participant {
 
 interface ChatMessageItem {
   _id?: string;
+  conversationId?: string;
   senderId: string;
   senderRole: "patient" | "doctor" | "system";
+  receiverId?: string;
   content: string;
   createdAt: string;
 }
@@ -57,8 +59,10 @@ export default function DirectChatPage({
   const [upcoming, setUpcoming] = useState<UpcomingAppointmentInfo | null>(null);
   const [inputText, setInputText] = useState("");
   const [sending, setSending] = useState(false);
+  const [peerTyping, setPeerTyping] = useState(false);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     async function loadChat() {
@@ -86,30 +90,78 @@ export default function DirectChatPage({
     loadChat();
   }, [targetId, getToken]);
 
-  // Real-time socket message reception
+  // Join user room and direct chat room subscriptions
+  useEffect(() => {
+    if (!user?.id) return;
+    const conversationId = [user.id, targetId].sort().join("_");
+    joinUserRoom(user.id);
+    joinChatRoom(user.id, targetId, conversationId);
+  }, [user?.id, targetId]);
+
+  // Real-time socket message & typing reception
   useEffect(() => {
     const socket = getSocket();
-    const handleNewMessage = (msg: ChatMessageItem) => {
-      if (
-        (msg.senderId === targetId && user?.id) ||
-        msg.senderId === user?.id
-      ) {
+    const convId = user?.id ? [user.id, targetId].sort().join("_") : "";
+
+    const handleNewMessage = (msg: ChatMessageItem & { targetUserId?: string }) => {
+      const isRelevant =
+        (msg.conversationId && msg.conversationId === convId) ||
+        (msg.senderId === targetId && (msg.receiverId === user?.id || msg.targetUserId === user?.id || !msg.receiverId)) ||
+        (msg.senderId === user?.id && (msg.receiverId === targetId || msg.targetUserId === targetId));
+
+      if (isRelevant) {
         setMessages((prev) => {
           if (msg._id && prev.some((m) => m._id === msg._id)) return prev;
           return [...prev, msg];
         });
+        setPeerTyping(false);
+      }
+    };
+
+    const handleTyping = (data: { userId?: string; isTyping: boolean }) => {
+      if (data.userId === targetId) {
+        setPeerTyping(data.isTyping);
       }
     };
 
     socket.on("new_message", handleNewMessage);
+    socket.on("typing_update", handleTyping);
+
     return () => {
       socket.off("new_message", handleNewMessage);
+      socket.off("typing_update", handleTyping);
     };
   }, [targetId, user?.id]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
+  }, [messages, peerTyping]);
+
+  const handleInputChange = (text: string) => {
+    setInputText(text);
+    if (!user?.id) return;
+
+    const socket = getSocket();
+    const convId = [user.id, targetId].sort().join("_");
+    socket.emit("typing", {
+      conversationId: convId,
+      targetUserId: targetId,
+      userId: user.id,
+      isTyping: text.trim().length > 0,
+    });
+
+    if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+    if (text.trim().length > 0) {
+      typingTimeoutRef.current = setTimeout(() => {
+        socket.emit("typing", {
+          conversationId: convId,
+          targetUserId: targetId,
+          userId: user.id,
+          isTyping: false,
+        });
+      }, 3000);
+    }
+  };
 
   const handleSendMessage = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
@@ -118,6 +170,16 @@ export default function DirectChatPage({
     const text = inputText.trim();
     setInputText("");
     setSending(true);
+
+    if (user?.id) {
+      const convId = [user.id, targetId].sort().join("_");
+      getSocket().emit("typing", {
+        conversationId: convId,
+        targetUserId: targetId,
+        userId: user.id,
+        isTyping: false,
+      });
+    }
 
     try {
       const token = await getToken();
@@ -132,11 +194,19 @@ export default function DirectChatPage({
 
       const json = await res.json();
       if (json.success && json.data) {
-        setMessages((prev) => [...prev, json.data]);
+        const savedMsg = json.data;
+        setMessages((prev) => {
+          if (savedMsg._id && prev.some((m) => m._id === savedMsg._id)) return prev;
+          return [...prev, savedMsg];
+        });
+
+        const convId = user?.id ? [user.id, targetId].sort().join("_") : undefined;
         const socket = getSocket();
         socket.emit("send_message", {
-          ...json.data,
+          ...savedMsg,
+          conversationId: convId,
           targetUserId: targetId,
+          receiverId: targetId,
         });
       }
     } catch (err) {
@@ -258,6 +328,12 @@ export default function DirectChatPage({
               );
             })
           )}
+          {peerTyping && (
+            <div className="flex items-center gap-1.5 text-xs text-slate-500 italic px-2 py-1 bg-slate-100/70 rounded-full w-fit animate-pulse">
+              <span className="size-1.5 rounded-full bg-emerald-500 animate-ping" />
+              <span>{participant?.name || "Therapist"} is typing...</span>
+            </div>
+          )}
           <div ref={messagesEndRef} />
         </div>
 
@@ -269,7 +345,7 @@ export default function DirectChatPage({
           <input
             type="text"
             value={inputText}
-            onChange={(e) => setInputText(e.target.value)}
+            onChange={(e) => handleInputChange(e.target.value)}
             placeholder="Type a message to your physiotherapist..."
             className="flex-1 h-10 px-3.5 rounded-xl border border-slate-200 text-xs sm:text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-slate-400 focus:ring-2 focus:ring-slate-100 transition-all"
           />

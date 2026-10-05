@@ -183,7 +183,13 @@ export async function PATCH(
 
     await connectToDatabase();
 
-    const consultation = await Consultation.findById(id);
+    let consultation = null;
+    if (id.match(/^[0-9a-fA-F]{24}$/)) {
+      consultation = await Consultation.findById(id);
+    }
+    if (!consultation) {
+      consultation = await Consultation.findOne({ appointmentId: id });
+    }
     if (!consultation) {
       return NextResponse.json({ error: "Consultation not found" }, { status: 404 });
     }
@@ -226,9 +232,9 @@ export async function PATCH(
     }
 
     const updated = await Consultation.findByIdAndUpdate(
-      id,
+      consultation._id,
       { $set: updateFields },
-      { new: true }
+      { returnDocument: "after" }
     );
 
     return NextResponse.json({

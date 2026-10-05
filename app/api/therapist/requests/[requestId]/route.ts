@@ -93,7 +93,7 @@ export async function POST(
       await TherapistAssignment.findOneAndUpdate(
         { patientId: appointmentRequest.patientId, therapistId: clerkUserId },
         { status: "active", assignedAt: new Date() },
-        { upsert: true, new: true }
+        { upsert: true, returnDocument: "after" }
       );
     } else if (action === "decline") {
       appointmentRequest.status = "declined";

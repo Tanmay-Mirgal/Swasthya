@@ -6,6 +6,17 @@ export interface JoinConsultationPayload {
   role: "patient" | "doctor";
 }
 
+export interface JoinChatPayload {
+  userId: string;
+  targetUserId?: string;
+  conversationId?: string;
+}
+
+export interface JoinUserPayload {
+  userId: string;
+}
+
+
 export interface TypingPayload {
   consultationId: string;
   userId?: string;

@@ -5,9 +5,10 @@ let socket: Socket | null = null;
 export function getSocket(): Socket {
   if (!socket) {
     const socketUrl =
-      typeof window !== "undefined"
+      process.env.NEXT_PUBLIC_SOCKET_URL ||
+      (typeof window !== "undefined"
         ? `${window.location.protocol}//${window.location.hostname}:3001`
-        : "http://localhost:3001";
+        : "http://localhost:3001");
 
     socket = io(socketUrl, {
       transports: ["websocket", "polling"],

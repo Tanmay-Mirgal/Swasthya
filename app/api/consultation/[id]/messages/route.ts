@@ -16,7 +16,20 @@ export async function GET(
     }
 
     await connectToDatabase();
-    const messages = await ChatMessage.find({ consultationId: id })
+
+    let consultation = null;
+    if (id.match(/^[0-9a-fA-F]{24}$/)) {
+      consultation = await Consultation.findById(id).lean();
+    }
+    if (!consultation) {
+      consultation = await Consultation.findOne({ appointmentId: id }).lean();
+    }
+
+    const consultationIdStr = consultation ? consultation._id.toString() : id;
+
+    const messages = await ChatMessage.find({
+      $or: [{ consultationId: id }, { consultationId: consultationIdStr }],
+    })
       .sort({ createdAt: 1 })
       .lean();
 
@@ -48,7 +61,14 @@ export async function POST(
 
     await connectToDatabase();
 
-    const consultation = await Consultation.findById(id).lean();
+    let consultation = null;
+    if (id.match(/^[0-9a-fA-F]{24}$/)) {
+      consultation = await Consultation.findById(id).lean();
+    }
+    if (!consultation) {
+      consultation = await Consultation.findOne({ appointmentId: id }).lean();
+    }
+
     if (!consultation) {
       return NextResponse.json({ error: "Consultation not found" }, { status: 404 });
     }
@@ -57,7 +77,7 @@ export async function POST(
       senderRole === "patient" ? consultation.doctorId : consultation.patientId;
 
     const message = await ChatMessage.create({
-      consultationId: id,
+      consultationId: consultation._id.toString(),
       senderId,
       senderRole,
       receiverId,

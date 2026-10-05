@@ -13,10 +13,11 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { useAuth, useUser } from "@clerk/react";
-import { getSocket, joinConsultationRoom } from "@/lib/socket";
+import { getSocket, joinConsultationRoom, joinUserRoom } from "@/lib/socket";
 import { DEFAULT_RTC_CONFIG, getMediaStreamWithFallback } from "@/lib/webrtc";
 import {
   ConsultationHeader,
+  IncomingCallModal,
   VideoCallArea,
   VideoControls,
   ChatPanel,
@@ -24,6 +25,7 @@ import {
 } from "@/components/consultation";
 import {
   Message,
+  IncomingCallData,
   ConsultationDetails,
   DoctorDetails,
   PatientDetails,
@@ -72,6 +74,7 @@ export default function ConsultationPage({
   const [callActive, setCallActive] = useState(false);
   const [callConnecting, setCallConnecting] = useState(false);
   const [hasRemoteStream, setHasRemoteStream] = useState(false);
+  const [incomingCall, setIncomingCall] = useState<IncomingCallData | null>(null);
   const [callDuration, setCallDuration] = useState(0);
   const [isMuted, setIsMuted] = useState(false);
   const [isVideoDisabled, setIsVideoDisabled] = useState(false);
@@ -79,6 +82,28 @@ export default function ConsultationPage({
   const [connectionStatus, setConnectionStatus] = useState<
     "connecting" | "connected" | "disconnected"
   >("connecting");
+
+  // WebRTC & state synchronization refs
+  const incomingCallRef = useRef<IncomingCallData | null>(null);
+  const callActiveRef = useRef(false);
+  const callConnectingRef = useRef(false);
+  const activeRoleRef = useRef<"patient" | "doctor">("patient");
+
+  useEffect(() => {
+    incomingCallRef.current = incomingCall;
+  }, [incomingCall]);
+
+  useEffect(() => {
+    callActiveRef.current = callActive;
+  }, [callActive]);
+
+  useEffect(() => {
+    callConnectingRef.current = callConnecting;
+  }, [callConnecting]);
+
+  useEffect(() => {
+    activeRoleRef.current = activeRole;
+  }, [activeRole]);
 
   // End consultation confirmation modal
   const [showEndModal, setShowEndModal] = useState(false);
@@ -89,6 +114,7 @@ export default function ConsultationPage({
   const remoteVideoRef = useRef<HTMLVideoElement>(null);
   const peerConnectionRef = useRef<RTCPeerConnection | null>(null);
   const localStreamRef = useRef<MediaStream | null>(null);
+  const remoteStreamRef = useRef<MediaStream | null>(null);
   const callTimerRef = useRef<NodeJS.Timeout | null>(null);
   const iceCandidateQueueRef = useRef<RTCIceCandidateInit[]>([]);
 
@@ -153,12 +179,17 @@ export default function ConsultationPage({
     }
   };
 
-  const cleanupCall = () => {
+  const cleanupCall = useCallback(() => {
     setCallActive(false);
     setCallConnecting(false);
     setHasRemoteStream(false);
     setHasLocalStream(false);
+    setIncomingCall(null);
     setCallDuration(0);
+    if (callTimerRef.current) {
+      clearInterval(callTimerRef.current);
+      callTimerRef.current = null;
+    }
     if (localStreamRef.current) {
       localStreamRef.current.getTracks().forEach((t) => t.stop());
       localStreamRef.current = null;
@@ -167,32 +198,74 @@ export default function ConsultationPage({
       peerConnectionRef.current.close();
       peerConnectionRef.current = null;
     }
+    remoteStreamRef.current = null;
     iceCandidateQueueRef.current = [];
     if (localVideoRef.current) localVideoRef.current.srcObject = null;
     if (remoteVideoRef.current) remoteVideoRef.current.srcObject = null;
-  };
+  }, []);
 
-  const initiatePeerConnection = useCallback(async () => {
+  // Sync streams with video elements even across re-renders
+  useEffect(() => {
+    if (remoteVideoRef.current && remoteStreamRef.current) {
+      if (remoteVideoRef.current.srcObject !== remoteStreamRef.current) {
+        remoteVideoRef.current.srcObject = remoteStreamRef.current;
+        remoteVideoRef.current.play().catch(() => {});
+      }
+    }
+  }, [hasRemoteStream, callActive]);
+
+  useEffect(() => {
+    if (localVideoRef.current && localStreamRef.current) {
+      if (localVideoRef.current.srcObject !== localStreamRef.current) {
+        localVideoRef.current.srcObject = localStreamRef.current;
+        localVideoRef.current.play().catch(() => {});
+      }
+    }
+  }, [hasLocalStream, callActive, callConnecting]);
+
+  const startVideoCall = async () => {
     try {
       setCallConnecting(true);
+      const activeConsultId = consultation?._id?.toString() || consultationId;
       const socket = getSocket();
+
+      // Target the other participant for cross-room delivery
+      const targetUserId = activeRole === "patient"
+        ? (doctor?.clerkUserId || consultation?.doctorId)
+        : (patient?.patientId || consultation?.patientId);
+
+      if (peerConnectionRef.current) {
+        peerConnectionRef.current.close();
+        peerConnectionRef.current = null;
+      }
+      iceCandidateQueueRef.current = [];
+
       const pc = new RTCPeerConnection(DEFAULT_RTC_CONFIG);
       peerConnectionRef.current = pc;
 
       if (!localStreamRef.current) {
         localStreamRef.current = await getMediaStreamWithFallback();
-        if (localStreamRef.current) setHasLocalStream(true);
       }
-      if (localStreamRef.current) {
-        localStreamRef.current.getTracks().forEach((track) => {
-          pc.addTrack(track, localStreamRef.current!);
+      const stream = localStreamRef.current;
+      if (stream) {
+        setHasLocalStream(true);
+        if (localVideoRef.current) {
+          localVideoRef.current.srcObject = stream;
+          localVideoRef.current.play().catch(() => {});
+        }
+        stream.getTracks().forEach((track) => {
+          pc.addTrack(track, stream);
         });
       }
 
       pc.ontrack = (event) => {
-        if (remoteVideoRef.current && event.streams[0]) {
-          remoteVideoRef.current.srcObject = event.streams[0];
-          remoteVideoRef.current.play().catch(() => {});
+        const [remoteStream] = event.streams;
+        if (remoteStream) {
+          remoteStreamRef.current = remoteStream;
+          if (remoteVideoRef.current) {
+            remoteVideoRef.current.srcObject = remoteStream;
+            remoteVideoRef.current.play().catch(() => {});
+          }
           setHasRemoteStream(true);
         }
       };
@@ -200,21 +273,168 @@ export default function ConsultationPage({
       pc.onicecandidate = (event) => {
         if (event.candidate) {
           socket.emit("ice_candidate", {
-            consultationId,
+            consultationId: activeConsultId,
             candidate: event.candidate,
+            targetUserId,
           });
+        }
+      };
+
+      pc.onconnectionstatechange = () => {
+        console.log("[WebRTC] Caller connection state:", pc.connectionState);
+        if (pc.connectionState === "connected") {
+          setCallActive(true);
+          setCallConnecting(false);
+        } else if (pc.connectionState === "failed" || pc.connectionState === "closed") {
+          setCallConnecting(false);
         }
       };
 
       const offer = await pc.createOffer();
       await pc.setLocalDescription(offer);
 
-      socket.emit("peer_offer", { consultationId, offer });
+      const callerName =
+        activeRole === "patient"
+          ? (user?.fullName || patient?.name || "Patient")
+          : (doctor?.professionalName || "Doctor");
+
+      socket.emit("call_user", {
+        consultationId: activeConsultId,
+        offer,
+        callerName,
+        callerRole: activeRole,
+        targetUserId,
+      });
+
+      const token = await getToken();
+      fetch(`/api/consultation/${activeConsultId}`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ callStatus: "calling" }),
+      }).catch(console.warn);
     } catch (err) {
-      console.error("Failed to initiate room connection:", err);
+      console.error("Failed to start video call:", err);
       setCallConnecting(false);
+      alert("Unable to access camera or microphone. Please check browser permissions.");
     }
-  }, [consultationId]);
+  };
+
+  const acceptIncomingCall = async () => {
+    if (!incomingCallRef.current) return;
+    const currentOffer = incomingCallRef.current.offer;
+    const activeConsultId = consultation?._id?.toString() || consultationId;
+
+    try {
+      setCallConnecting(true);
+      setIncomingCall(null);
+      const socket = getSocket();
+
+      // Target the other participant for cross-room delivery
+      const targetUserId = activeRole === "patient"
+        ? (doctor?.clerkUserId || consultation?.doctorId)
+        : (patient?.patientId || consultation?.patientId);
+
+      if (peerConnectionRef.current) {
+        peerConnectionRef.current.close();
+        peerConnectionRef.current = null;
+      }
+
+      const pc = new RTCPeerConnection(DEFAULT_RTC_CONFIG);
+      peerConnectionRef.current = pc;
+
+      if (!localStreamRef.current) {
+        localStreamRef.current = await getMediaStreamWithFallback();
+      }
+      const stream = localStreamRef.current;
+      if (stream) {
+        setHasLocalStream(true);
+        if (localVideoRef.current) {
+          localVideoRef.current.srcObject = stream;
+          localVideoRef.current.play().catch(() => {});
+        }
+        stream.getTracks().forEach((track) => {
+          pc.addTrack(track, stream);
+        });
+      }
+
+      pc.ontrack = (event) => {
+        const [remoteStream] = event.streams;
+        if (remoteStream) {
+          remoteStreamRef.current = remoteStream;
+          if (remoteVideoRef.current) {
+            remoteVideoRef.current.srcObject = remoteStream;
+            remoteVideoRef.current.play().catch(() => {});
+          }
+          setHasRemoteStream(true);
+        }
+      };
+
+      pc.onicecandidate = (event) => {
+        if (event.candidate) {
+          socket.emit("ice_candidate", {
+            consultationId: activeConsultId,
+            candidate: event.candidate,
+            targetUserId,
+          });
+        }
+      };
+
+      pc.onconnectionstatechange = () => {
+        console.log("[WebRTC] Receiver connection state:", pc.connectionState);
+        if (pc.connectionState === "connected") {
+          setCallActive(true);
+          setCallConnecting(false);
+        }
+      };
+
+      await pc.setRemoteDescription(new RTCSessionDescription(currentOffer));
+
+      while (iceCandidateQueueRef.current.length > 0) {
+        const candidate = iceCandidateQueueRef.current.shift();
+        if (candidate) {
+          await pc.addIceCandidate(new RTCIceCandidate(candidate)).catch((e) =>
+            console.warn("Error adding queued ICE candidate:", e)
+          );
+        }
+      }
+
+      const answer = await pc.createAnswer();
+      await pc.setLocalDescription(answer);
+
+      socket.emit("call_accepted", { consultationId: activeConsultId, answer, targetUserId });
+      socket.emit("peer_answer", { consultationId: activeConsultId, answer, targetUserId });
+
+      setCallConnecting(false);
+      setCallActive(true);
+
+      const token = await getToken();
+      fetch(`/api/consultation/${activeConsultId}`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ callStatus: "connected" }),
+      }).catch(console.warn);
+    } catch (err) {
+      console.error("Error accepting incoming call:", err);
+      setCallConnecting(false);
+      setIncomingCall(null);
+      alert("Error connecting to call. Please check camera and microphone permissions.");
+    }
+  };
+
+  const rejectIncomingCall = () => {
+    const activeConsultId = consultation?._id?.toString() || consultationId;
+    getSocket().emit("call_rejected", {
+      consultationId: activeConsultId,
+      reason: "User declined the call",
+    });
+    setIncomingCall(null);
+  };
 
   // 1. Fetch initial consultation and validate access
   useEffect(() => {
@@ -275,119 +495,96 @@ export default function ConsultationPage({
     fetchConsultation();
   }, [consultationId, getToken]);
 
-  // 2. Real-time signaling & direct room peer connection
+  // 2. Real-time signaling & consultation room setup
   useEffect(() => {
     if (!canJoinCall || isCompleted) return;
 
     const socket = getSocket();
     const currentUserId = user?.id || "user";
+    const canonicalId = consultation?._id?.toString() || consultationId;
 
     socket.on("connect", () => setConnectionStatus("connected"));
     socket.on("connect_error", () => setConnectionStatus("disconnected"));
     socket.on("disconnect", () => setConnectionStatus("disconnected"));
 
-    // Join room without ringing or call requests (Rule 7 & 8)
-    joinConsultationRoom(consultationId, currentUserId, activeRole);
+    // Join room subscriptions
+    joinConsultationRoom(canonicalId, currentUserId, activeRole);
+    if (consultationId && consultationId !== canonicalId) {
+      joinConsultationRoom(consultationId, currentUserId, activeRole);
+    }
+    // Also join user's personal channel for cross-consultation message/call delivery
+    joinUserRoom(currentUserId);
 
     const onPresence = (data: { activeUserCount: number }) => {
       if (data.activeUserCount) {
         setOnlineUsers(data.activeUserCount);
-        // If 2 people are in the room, start WebRTC negotiation automatically if not already active
-        if (data.activeUserCount >= 2 && !callActive && !callConnecting && activeRole === "patient") {
-          initiatePeerConnection();
-        }
       }
     };
 
-    const onPeerOffer = async (data: { offer: RTCSessionDescriptionInit }) => {
-      if (!data.offer) return;
-      try {
-        setCallConnecting(true);
-        const pc = new RTCPeerConnection(DEFAULT_RTC_CONFIG);
-        peerConnectionRef.current = pc;
+    const onIncomingCall = (data: IncomingCallData & { callerRole?: string; consultationId?: string }) => {
+      if (data.callerRole && data.callerRole === activeRoleRef.current) return;
+      if (callActiveRef.current) return;
 
-        // Attach local tracks
-        if (!localStreamRef.current) {
-          localStreamRef.current = await getMediaStreamWithFallback();
-        }
-        if (localStreamRef.current) {
-          localStreamRef.current.getTracks().forEach((track) => {
-            pc.addTrack(track, localStreamRef.current!);
-          });
-        }
-
-        pc.ontrack = (event) => {
-          if (remoteVideoRef.current && event.streams[0]) {
-            remoteVideoRef.current.srcObject = event.streams[0];
-            remoteVideoRef.current.play().catch(() => {});
-            setHasRemoteStream(true);
-          }
-        };
-
-        pc.onicecandidate = (event) => {
-          if (event.candidate) {
-            socket.emit("ice_candidate", {
-              consultationId,
-              candidate: event.candidate,
-            });
-          }
-        };
-
-        await pc.setRemoteDescription(new RTCSessionDescription(data.offer));
-        while (iceCandidateQueueRef.current.length > 0) {
-          const candidate = iceCandidateQueueRef.current.shift();
-          if (candidate) {
-            await pc.addIceCandidate(new RTCIceCandidate(candidate)).catch(() => {});
-          }
-        }
-
-        const answer = await pc.createAnswer();
-        await pc.setLocalDescription(answer);
-
-        socket.emit("peer_answer", { consultationId, answer });
-        setCallConnecting(false);
-        setCallActive(true);
-      } catch (err) {
-        console.error("Error answering peer offer:", err);
-        setCallConnecting(false);
-      }
+      console.log("[WebRTC] Incoming call notification from:", data.callerName);
+      setIncomingCall({
+        callerName: data.callerName || (activeRoleRef.current === "patient" ? "Doctor" : "Patient"),
+        callerRole: data.callerRole || (activeRoleRef.current === "patient" ? "doctor" : "patient"),
+        offer: data.offer,
+      });
     };
 
-    const onPeerAnswer = async (data: { answer: RTCSessionDescriptionInit }) => {
+    const onCallAccepted = async (data: { answer: RTCSessionDescriptionInit }) => {
+      console.log("[WebRTC] Call accepted by peer");
       if (peerConnectionRef.current && data.answer) {
         try {
-          await peerConnectionRef.current.setRemoteDescription(
-            new RTCSessionDescription(data.answer)
-          );
+          if (peerConnectionRef.current.signalingState !== "stable") {
+            await peerConnectionRef.current.setRemoteDescription(
+              new RTCSessionDescription(data.answer)
+            );
+          }
           while (iceCandidateQueueRef.current.length > 0) {
             const candidate = iceCandidateQueueRef.current.shift();
             if (candidate) {
-              await peerConnectionRef.current.addIceCandidate(new RTCIceCandidate(candidate)).catch(() => {});
+              await peerConnectionRef.current
+                .addIceCandidate(new RTCIceCandidate(candidate))
+                .catch((e) => console.warn("Error adding queued candidate:", e));
             }
           }
           setCallConnecting(false);
           setCallActive(true);
         } catch (err) {
-          console.error("Error setting peer answer:", err);
+          console.error("Error handling call answer:", err);
         }
       }
     };
 
     const onIceCandidate = async (data: { candidate: RTCIceCandidateInit }) => {
-      if (peerConnectionRef.current && data.candidate) {
+      if (!data.candidate) return;
+      if (
+        peerConnectionRef.current &&
+        peerConnectionRef.current.remoteDescription &&
+        peerConnectionRef.current.remoteDescription.type
+      ) {
         try {
-          if (peerConnectionRef.current.remoteDescription) {
-            await peerConnectionRef.current.addIceCandidate(new RTCIceCandidate(data.candidate));
-          } else {
-            iceCandidateQueueRef.current.push(data.candidate);
-          }
+          await peerConnectionRef.current.addIceCandidate(
+            new RTCIceCandidate(data.candidate)
+          );
         } catch (err) {
           console.warn("RTC addIceCandidate error:", err);
         }
+      } else {
+        iceCandidateQueueRef.current.push(data.candidate);
       }
     };
 
+    const onCallRejected = (data: { reason?: string }) => {
+      console.log("[WebRTC] Call rejected:", data.reason);
+      setCallConnecting(false);
+      alert(data.reason || "Call was declined by participant.");
+    };
+
     const onCallEnded = () => {
+      console.log("[WebRTC] Call ended by remote peer");
       cleanupCall();
       setIsCompleted(true);
       setCanJoinCall(false);
@@ -400,18 +597,24 @@ export default function ConsultationPage({
       }
     };
 
-    const onNewMessage = (msg: Message) =>
+    const onNewMessage = (msg: Message) => {
+      // Skip messages we sent ourselves (already added locally)
+      if (msg.senderId === currentUserId) return;
       setMessages((prev) =>
         prev.some((m) => m._id && m._id === msg._id) ? prev : [...prev, msg]
       );
+    };
 
     const onTyping = (data: { role: string; isTyping: boolean }) => {
-      if (data.role !== activeRole) setPeerTyping(data.isTyping);
+      if (data.role !== activeRoleRef.current) setPeerTyping(data.isTyping);
     };
 
     socket.on("presence_update", onPresence);
-    socket.on("peer_offer", onPeerOffer);
-    socket.on("peer_answer", onPeerAnswer);
+    socket.on("incoming_call", onIncomingCall);
+    socket.on("peer_offer", onIncomingCall);
+    socket.on("call_accepted", onCallAccepted);
+    socket.on("peer_answer", onCallAccepted);
+    socket.on("call_rejected", onCallRejected);
     socket.on("ice_candidate", onIceCandidate);
     socket.on("call_ended", onCallEnded);
     socket.on("prescription_received", onPrescriptionReceived);
@@ -420,8 +623,11 @@ export default function ConsultationPage({
 
     return () => {
       socket.off("presence_update", onPresence);
-      socket.off("peer_offer", onPeerOffer);
-      socket.off("peer_answer", onPeerAnswer);
+      socket.off("incoming_call", onIncomingCall);
+      socket.off("peer_offer", onIncomingCall);
+      socket.off("call_accepted", onCallAccepted);
+      socket.off("peer_answer", onCallAccepted);
+      socket.off("call_rejected", onCallRejected);
       socket.off("ice_candidate", onIceCandidate);
       socket.off("call_ended", onCallEnded);
       socket.off("prescription_received", onPrescriptionReceived);
@@ -431,7 +637,7 @@ export default function ConsultationPage({
       socket.off("connect_error");
       socket.off("disconnect");
     };
-  }, [consultationId, canJoinCall, isCompleted, activeRole, user?.id, callActive, callConnecting, initiatePeerConnection]);
+  }, [consultationId, consultation?._id, canJoinCall, isCompleted, activeRole, user?.id, cleanupCall]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -457,11 +663,12 @@ export default function ConsultationPage({
       setIsEnding(true);
       const token = await getToken();
       const socket = getSocket();
+      const activeConsultId = consultation?._id?.toString() || consultationId;
 
-      socket.emit("end_call", { consultationId, duration: callDuration });
+      socket.emit("end_call", { consultationId: activeConsultId, duration: callDuration });
       cleanupCall();
 
-      await fetch(`/api/consultation/${consultationId}`, {
+      await fetch(`/api/consultation/${activeConsultId}`, {
         method: "PATCH",
         headers: {
           "Content-Type": "application/json",
@@ -486,6 +693,8 @@ export default function ConsultationPage({
   };
 
   const handlePatientLeave = () => {
+    const activeConsultId = consultation?._id?.toString() || consultationId;
+    getSocket().emit("end_call", { consultationId: activeConsultId, duration: callDuration });
     cleanupCall();
     router.push("/appointments");
   };
@@ -510,14 +719,40 @@ export default function ConsultationPage({
     }
   };
 
+  const handleInputChange = (text: string) => {
+    setInputText(text);
+    const activeConsultId = consultation?._id?.toString() || consultationId;
+    getSocket().emit("typing", {
+      consultationId: activeConsultId,
+      userId: user?.id,
+      role: activeRole,
+      isTyping: text.trim().length > 0,
+    });
+  };
+
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!inputText.trim()) return;
     const text = inputText.trim();
     setInputText("");
 
+    const activeConsultId = consultation?._id?.toString() || consultationId;
+
+    getSocket().emit("typing", {
+      consultationId: activeConsultId,
+      userId: user?.id,
+      role: activeRole,
+      isTyping: false,
+    });
+
+    // Determine receiver ID for cross-room delivery
+    const receiverUserId = activeRole === "patient"
+      ? (doctor?.clerkUserId || consultation?.doctorId)
+      : (patient?.patientId || consultation?.patientId);
+
     const newMsg: Message = {
       _id: `msg-${Date.now()}`,
+      consultationId: activeConsultId,
       senderId: user?.id || "user",
       senderRole: activeRole,
       content: text,
@@ -527,9 +762,22 @@ export default function ConsultationPage({
     };
 
     setMessages((prev) => [...prev, newMsg]);
-    getSocket().emit("send_message", { ...newMsg, consultationId });
 
-    fetch(`/api/consultation/${consultationId}/messages`, {
+    const socket = getSocket();
+    socket.emit("send_message", {
+      ...newMsg,
+      consultationId: activeConsultId,
+      receiverId: receiverUserId,
+    });
+    if (consultationId && consultationId !== activeConsultId) {
+      socket.emit("send_message", {
+        ...newMsg,
+        consultationId,
+        receiverId: receiverUserId,
+      });
+    }
+
+    fetch(`/api/consultation/${activeConsultId}/messages`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(newMsg),
@@ -776,6 +1024,12 @@ export default function ConsultationPage({
     <div className="fixed inset-0 w-screen h-screen bg-[#0B0C10] text-slate-100 overflow-hidden font-sans flex select-none">
       {/* === MAIN VIDEO AREA === */}
       <div className="flex-1 h-full relative bg-[#0B0C10] overflow-hidden flex flex-col">
+        <IncomingCallModal
+          incomingCall={incomingCall && !callActive ? incomingCall : null}
+          onAccept={acceptIncomingCall}
+          onReject={rejectIncomingCall}
+        />
+
         <VideoCallArea
           callActive={callActive}
           callConnecting={callConnecting}
@@ -789,7 +1043,7 @@ export default function ConsultationPage({
           remoteVideoRef={remoteVideoRef}
           isMuted={isMuted}
           isVideoDisabled={isVideoDisabled}
-          onStartCall={initiatePeerConnection}
+          onStartCall={startVideoCall}
         />
 
         <ConsultationHeader
@@ -824,7 +1078,7 @@ export default function ConsultationPage({
         patientName={patient?.name}
         peerTyping={peerTyping}
         inputText={inputText}
-        onInputChange={setInputText}
+        onInputChange={handleInputChange}
         onSendMessage={handleSendMessage}
         messagesEndRef={messagesEndRef}
       />

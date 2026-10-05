@@ -23,7 +23,14 @@ export async function POST(
 
     await connectToDatabase();
 
-    const consultation = await Consultation.findById(id);
+    let consultation = null;
+    if (id.match(/^[0-9a-fA-F]{24}$/)) {
+      consultation = await Consultation.findById(id);
+    }
+    if (!consultation) {
+      consultation = await Consultation.findOne({ appointmentId: id });
+    }
+
     if (!consultation) {
       return NextResponse.json({ error: "Consultation not found" }, { status: 404 });
     }
@@ -93,7 +100,7 @@ interface DoctorProfileDoc {
             assignedAt: new Date(),
           },
         },
-        { upsert: true, new: true }
+        { upsert: true, returnDocument: "after" }
       );
     });
 
