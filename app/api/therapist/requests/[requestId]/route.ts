@@ -82,6 +82,7 @@ export async function POST(
         status: "ACTIVE",
         roomStatus: "SCHEDULED",
         scheduledAt: appointmentRequest.scheduledAt,
+        requestedTime: appointmentRequest.requestedTime,
         duration: appointmentRequest.duration || 30,
       });
 

@@ -3,6 +3,7 @@ import connectToDatabase from "@/lib/mongodb";
 import PatientProfile from "@/models/PatientProfile";
 import TherapistAssignment from "@/models/TherapistAssignment";
 import ExerciseAssignment from "@/models/ExerciseAssignment";
+import AppointmentRequest from "@/models/AppointmentRequest";
 import User from "@/models/User";
 
 export const dynamic = "force-dynamic";
@@ -92,12 +93,14 @@ export async function GET(req: Request) {
     // Enrich consultations with patient details and lifecycle status
     interface RawConsultationDoc {
       _id: { toString(): string } | string;
+      appointmentId?: string;
       patientId: string;
       doctorId: string;
       issue?: string;
       status: string;
       roomStatus?: string;
       scheduledAt?: Date | string;
+      requestedTime?: string;
       createdAt: Date | string;
       duration?: number;
     }
@@ -113,6 +116,14 @@ export async function GET(req: Request) {
         const canJoin = canJoinConsultation(c.status, sched, duration, now);
         const timeStatus = getAppointmentTimeStatus(c.status, sched, duration, now);
 
+        let requestedTime = c.requestedTime;
+        if (!requestedTime && c.appointmentId) {
+          const appReq = await AppointmentRequest.findById(c.appointmentId).lean();
+          if (appReq?.requestedTime) {
+            requestedTime = appReq.requestedTime;
+          }
+        }
+
         return {
           ...c,
           _id: c._id.toString(),
@@ -120,6 +131,7 @@ export async function GET(req: Request) {
           patientImage: patientUser?.imageUrl || null,
           patientConcerns: patientProf?.concerns || [c.issue || "Orthopedic Recovery"],
           scheduledAt: sched,
+          requestedTime,
           duration,
           canJoin,
           timeStatus,

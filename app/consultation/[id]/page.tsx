@@ -630,10 +630,11 @@ export default function ConsultationPage({
             <p className="text-slate-500">
               Starts at{" "}
               <strong className="text-slate-800">
-                {scheduledAtTime?.toLocaleTimeString([], {
-                  hour: "2-digit",
-                  minute: "2-digit",
-                })}
+                {consultation?.requestedTime ||
+                  scheduledAtTime?.toLocaleTimeString([], {
+                    hour: "2-digit",
+                    minute: "2-digit",
+                  })}
               </strong>
             </p>
             <p className="text-[11px] text-slate-400 pt-1">

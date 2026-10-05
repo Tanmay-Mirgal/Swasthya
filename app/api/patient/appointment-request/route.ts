@@ -6,7 +6,18 @@ export function parseScheduledAt(
   requestedDate?: string | Date,
   requestedTime?: string
 ): Date {
-  const base = requestedDate ? new Date(requestedDate) : new Date();
+  let base: Date;
+  if (requestedDate instanceof Date) {
+    base = new Date(requestedDate);
+  } else if (typeof requestedDate === "string" && requestedDate.includes("-")) {
+    const parts = requestedDate.split("-").map(Number);
+    base = new Date(parts[0], parts[1] - 1, parts[2] || 1);
+  } else if (requestedDate) {
+    base = new Date(requestedDate);
+  } else {
+    base = new Date();
+  }
+
   let hours = 10;
   let minutes = 0;
 
@@ -21,9 +32,8 @@ export function parseScheduledAt(
     }
   }
 
-  const scheduled = new Date(base);
-  scheduled.setHours(hours, minutes, 0, 0);
-  return scheduled;
+  base.setHours(hours, minutes, 0, 0);
+  return base;
 }
 
 export async function POST(req: Request) {
@@ -43,7 +53,7 @@ export async function POST(req: Request) {
     }
 
     const body = await req.json();
-    const { therapistId, requestedDate, requestedTime, patientNote } = body;
+    const { therapistId, requestedDate, requestedTime, patientNote, scheduledAt: clientScheduledAt } = body;
 
     if (!therapistId) {
       return NextResponse.json({ error: "Therapist ID is required" }, { status: 400 });
@@ -65,7 +75,9 @@ export async function POST(req: Request) {
       );
     }
 
-    const scheduledAt = parseScheduledAt(requestedDate, requestedTime);
+    const scheduledAt = clientScheduledAt
+      ? new Date(clientScheduledAt)
+      : parseScheduledAt(requestedDate, requestedTime);
 
     const newRequest = await AppointmentRequest.create({
       patientId: clerkUserId,

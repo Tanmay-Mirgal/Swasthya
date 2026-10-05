@@ -20,14 +20,29 @@ import { Button } from "@/components/ui/Button";
 import { useAuth } from "@clerk/react";
 import DoctorAvatar from "@/components/ui/DoctorAvatar";
 
-const TIME_SLOTS = [
-  "09:30 AM",
-  "11:00 AM",
-  "02:00 PM",
-  "03:30 PM",
-  "04:30 PM",
-  "06:00 PM",
+const SUGGESTED_TIME_SLOTS = [
+  { label: "09:30 AM", value: "09:30" },
+  { label: "11:00 AM", value: "11:00" },
+  { label: "02:00 PM", value: "14:00" },
+  { label: "03:30 PM", value: "15:30" },
+  { label: "04:30 PM", value: "16:30" },
+  { label: "06:00 PM", value: "18:00" },
 ];
+
+function format24to12(timeStr: string): string {
+  if (!timeStr) return "";
+  if (timeStr.includes("AM") || timeStr.includes("PM")) return timeStr;
+  const parts = timeStr.split(":");
+  if (parts.length < 2) return timeStr;
+  let h = parseInt(parts[0], 10);
+  const m = parts[1];
+  if (isNaN(h)) return timeStr;
+  const ampm = h >= 12 ? "PM" : "AM";
+  h = h % 12;
+  if (h === 0) h = 12;
+  const hStr = h < 10 ? `0${h}` : `${h}`;
+  return `${hStr}:${m} ${ampm}`;
+}
 
 interface TherapistPublicProfile {
   _id?: string;
@@ -68,7 +83,7 @@ export default function TherapistProfilePage({
     tomorrow.setDate(tomorrow.getDate() + 1);
     return tomorrow.toISOString().split("T")[0];
   });
-  const [selectedTime, setSelectedTime] = useState<string>("04:30 PM");
+  const [selectedTime, setSelectedTime] = useState<string>("16:30");
   const [patientNote, setPatientNote] = useState<string>("");
   const [bookingLoading, setBookingLoading] = useState(false);
   const [bookingSuccess, setBookingSuccess] = useState(false);
@@ -110,6 +125,23 @@ export default function TherapistProfilePage({
         return;
       }
 
+      // Compute scheduled Date in the user's browser timezone
+      let scheduledAtISO: string | undefined;
+      try {
+        const [y, m, d] = selectedDate.split("-").map(Number);
+        let hours = 16;
+        let minutes = 30;
+        if (selectedTime.includes(":")) {
+          const parts = selectedTime.split(":");
+          hours = parseInt(parts[0], 10);
+          minutes = parseInt(parts[1], 10);
+        }
+        const localDate = new Date(y, m - 1, d, hours, minutes, 0);
+        scheduledAtISO = localDate.toISOString();
+      } catch (err) {
+        console.warn("Could not compute local scheduled date:", err);
+      }
+
       const res = await fetch("/api/patient/appointment-request", {
         method: "POST",
         headers: {
@@ -119,7 +151,8 @@ export default function TherapistProfilePage({
         body: JSON.stringify({
           therapistId,
           requestedDate: selectedDate,
-          requestedTime: selectedTime,
+          requestedTime: format24to12(selectedTime),
+          scheduledAt: scheduledAtISO,
           patientNote: patientNote.trim() || therapist?.specialization || "Rehabilitation Consultation",
         }),
       });
@@ -381,25 +414,72 @@ export default function TherapistProfilePage({
                     />
                   </div>
 
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-semibold text-slate-700">
-                      Available Consultation Slot
-                    </label>
-                    <div className="grid grid-cols-3 gap-2">
-                      {TIME_SLOTS.map((slot) => (
-                        <button
-                          key={slot}
-                          type="button"
-                          onClick={() => setSelectedTime(slot)}
-                          className={`py-2 px-2 text-xs rounded-lg border text-center transition-colors ${
-                            selectedTime === slot
-                              ? "bg-slate-900 text-white border-slate-900 font-semibold"
-                              : "border-slate-200 text-slate-700 hover:bg-slate-50"
-                          }`}
-                        >
-                          {slot}
-                        </button>
-                      ))}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    {/* Preferred Date */}
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-semibold text-slate-700 flex items-center gap-1.5">
+                        <Calendar className="size-3.5 text-slate-500" />
+                        <span>Preferred Date</span>
+                      </label>
+                      <input
+                        type="date"
+                        min={new Date().toISOString().split("T")[0]}
+                        value={selectedDate}
+                        onChange={(e) => setSelectedDate(e.target.value)}
+                        required
+                        className="w-full h-10 px-3 rounded-xl border border-slate-200 text-xs text-slate-900 focus:outline-none focus:border-slate-400 focus:ring-1 focus:ring-slate-200"
+                      />
+                    </div>
+
+                    {/* Preferred Time (Decided by Patient) */}
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-semibold text-slate-700 flex items-center justify-between">
+                        <span className="flex items-center gap-1.5">
+                          <Clock className="size-3.5 text-slate-500" />
+                          <span>Preferred Time</span>
+                        </span>
+                        {selectedTime && (
+                          <span className="text-[11px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200/60">
+                            {format24to12(selectedTime)}
+                          </span>
+                        )}
+                      </label>
+                      <input
+                        type="time"
+                        value={selectedTime}
+                        onChange={(e) => setSelectedTime(e.target.value)}
+                        required
+                        className="w-full h-10 px-3 rounded-xl border border-slate-200 text-xs text-slate-900 focus:outline-none focus:border-slate-400 focus:ring-1 focus:ring-slate-200"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Quick Preset Slot Suggestions */}
+                  <div className="space-y-1.5 pt-0.5">
+                    <div className="flex items-center justify-between">
+                      <label className="text-[11px] font-medium text-slate-500">
+                        Quick preset slots (optional):
+                      </label>
+                      <span className="text-[10px] text-slate-400">Or pick custom time above</span>
+                    </div>
+                    <div className="grid grid-cols-3 sm:grid-cols-6 gap-1.5">
+                      {SUGGESTED_TIME_SLOTS.map((slot) => {
+                        const isSelected = selectedTime === slot.value;
+                        return (
+                          <button
+                            key={slot.value}
+                            type="button"
+                            onClick={() => setSelectedTime(slot.value)}
+                            className={`py-1.5 px-1 text-[11px] rounded-lg border text-center transition-all ${
+                              isSelected
+                                ? "bg-slate-900 text-white border-slate-900 font-semibold shadow-xs"
+                                : "border-slate-200 text-slate-600 hover:bg-slate-50"
+                            }`}
+                          >
+                            {slot.label}
+                          </button>
+                        );
+                      })}
                     </div>
                   </div>
 

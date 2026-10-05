@@ -70,6 +70,7 @@ export interface ConsultationDetails {
   roomStatus?: ConsultationRoomState;
   callStatus: "idle" | "calling" | "connected" | "ended";
   scheduledAt?: string | Date;
+  requestedTime?: string;
   startedAt?: string | Date;
   endedAt?: string | Date;
   duration?: number;

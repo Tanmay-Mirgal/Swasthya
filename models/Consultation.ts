@@ -17,6 +17,7 @@ export interface IConsultation extends Document {
     | "EXPIRED";
   callStatus: "idle" | "calling" | "connected" | "ended";
   scheduledAt?: Date;
+  requestedTime?: string;
   startedAt?: Date;
   endedAt?: Date;
   patientJoinedAt?: Date;
@@ -79,6 +80,9 @@ const ConsultationSchema = new Schema(
     scheduledAt: {
       type: Date,
       index: true,
+    },
+    requestedTime: {
+      type: String,
     },
     startedAt: {
       type: Date,

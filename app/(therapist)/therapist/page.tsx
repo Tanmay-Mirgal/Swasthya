@@ -86,6 +86,7 @@ interface TherapistConsultationItem {
   issue?: string;
   fee?: number;
   scheduledAt: string | Date;
+  requestedTime?: string;
   createdAt: string | Date;
   duration: number;
   canJoin?: boolean;
@@ -904,7 +905,7 @@ export default function TherapistPortalPage() {
                               month: "short",
                               day: "numeric",
                             })}{" "}
-                            • {schedDate.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })} ({c.duration || 30} mins)
+                            • {c.requestedTime || schedDate.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })} ({c.duration || 30} mins)
                           </p>
                         </div>
                       </div>
