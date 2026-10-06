@@ -1,27 +1,17 @@
 "use client";
 
 import { AlertTriangle, CheckCircle2, Info, Pause, Play, Volume2, VolumeX } from "lucide-react";
-import { Authorship, Button, TickRow } from "@/components/ui";
-import type { FeedbackMessage } from "@/lib/exercises/types";
-import type { TrackingState } from "@/lib/pose/trackingState";
+import { Authorship, Button, TickBox } from "@/components/ui";
+import { ConfidenceBadge } from "@/components/movement/ConfidenceBadge";
+import { JointStatusStrip } from "@/components/movement/JointStatusStrip";
+import type { MovementUi } from "@/hooks/useMovementSession";
 import { cn } from "@/lib/utils";
-import { useVoiceCoach } from "./useVoiceCoach";
 
 export interface LivePanelProps {
-  completedReps: number;
-  targetReps: number;
-  feedback: FeedbackMessage;
-  issueCode?: string;
-  tracking: TrackingState;
+  ui: MovementUi;
   paused: boolean;
-  stepIndex: number;
-  totalSteps: number;
-  stepTitle: string;
-  stepInstruction?: string;
-  phase?: string;
-  angle: number;
-  rom: number;
-  tempo: number;
+  voiceEnabled: boolean;
+  onToggleVoice: () => void;
   onTogglePause: () => void;
   onFinish: () => void;
   onOpenGuide: () => void;
@@ -29,22 +19,39 @@ export interface LivePanelProps {
   contextLabel?: string;
   /** Prescribed sessions: reps already saved for this set before this chunk. */
   contextDetail?: string;
+  /** Reps counted before this chunk in the same set, so the big number is the whole set. */
+  repsBefore?: number;
+  /** Reps in the whole set (prescribed). Defaults to this chunk's target. */
+  setTarget?: number;
   pauseLabel?: string;
   endLabel?: string;
   reachedLabel?: string;
 }
 
-const FEEDBACK_ICON = { success: CheckCircle2, warning: AlertTriangle, camera: AlertTriangle, info: Info } as const;
+const TONE: Record<MovementUi["cueTone"], { box: string; icon: typeof Info }> = {
+  default: { box: "border-slate-300 bg-white", icon: Info },
+  setup: { box: "border-emerald-300 bg-emerald-50", icon: CheckCircle2 },
+  praise: { box: "border-emerald-300 bg-emerald-50", icon: CheckCircle2 },
+  correction: { box: "border-amber-400 bg-amber-50", icon: AlertTriangle },
+  camera: { box: "border-amber-400 bg-amber-50", icon: AlertTriangle },
+  info: { box: "border-slate-300 bg-white", icon: Info },
+};
 
 /**
- * Live exercise controls, in the order a person needs them while moving:
- * rep count → what to do now → tracking confidence → controls; detail sits underneath.
+ * Live exercise controls in the order a person needs them while moving:
+ * set and reps → what to do now → controls (pause is reachable without scrolling on a phone) →
+ * how well the camera sees me → which joints are fine; measurements sit underneath.
  */
 export default function LivePanel(p: LivePanelProps) {
-  const { voiceEnabled, toggleVoice } = useVoiceCoach(p.paused ? "" : p.feedback.message, p.issueCode);
-  const reached = p.completedReps >= p.targetReps;
-  const Icon = FEEDBACK_ICON[p.feedback.type] ?? Info;
-  const trackingOk = p.tracking.kind === "ready";
+  const { ui } = p;
+  const before = p.repsBefore ?? 0;
+  const shown = before + ui.counted;
+  const total = p.setTarget ?? ui.targetReps;
+  const reached = ui.done;
+  const tone = TONE[ui.cueTone] ?? TONE.default;
+  const Icon = tone.icon;
+  const status = p.paused ? "Paused" : ui.phase === "setup" ? (ui.tracking ? "Getting into position" : "Waiting for the camera") : ui.phaseLabel;
+  const flagged = ui.invalid;
 
   return (
     <div className="flex flex-col gap-4 p-4 sm:p-5">
@@ -55,57 +62,44 @@ export default function LivePanel(p: LivePanelProps) {
             {p.contextDetail && <p className="text-sm text-slate-700">{p.contextDetail}</p>}
           </>
         ) : null}
-        <p className="mt-1 text-sm font-semibold text-slate-600">Repetition</p>
+        <p className="mt-1 text-sm font-semibold text-slate-600">Repetitions</p>
         <p className="font-mono tabular text-slate-900">
-          <span className="text-6xl font-bold leading-none sm:text-7xl">{p.completedReps}</span>
-          <span className="text-2xl font-semibold text-slate-500"> / {p.targetReps}</span>
+          <span className="text-5xl font-bold leading-none sm:text-7xl">{shown}</span>
+          <span className="text-2xl font-semibold text-slate-500"> / {total}</span>
         </p>
-        <div className="mt-2.5">
-          <TickRow total={p.targetReps} done={p.completedReps} size={p.targetReps > 12 ? 16 : 20} label={`${p.completedReps} of ${p.targetReps} reps done`} />
+        <div className="mt-2.5 flex flex-wrap gap-1" role="img" aria-label={`${ui.valid} good, ${flagged} counted but flagged, of ${total} reps`}>
+          {Array.from({ length: Math.min(total, 40) }, (_, i) => {
+            const idx = i - before;
+            const state = i < before ? "done" : idx >= 0 && idx < ui.repFlags.length ? (ui.repFlags[idx] ? "done" : "partial") : "todo";
+            return <TickBox key={i} state={state} size={total > 12 ? 16 : 20} />;
+          })}
         </div>
+        {(ui.counted > 0 || ui.partial > 0) && (
+          <p className="mt-2 text-xs text-slate-700">
+            <span className="tabular font-semibold">{ui.valid}</span> good form
+            {flagged > 0 && <>, <span className="tabular font-semibold">{flagged}</span> counted with a note</>}
+            {ui.partial > 0 && <>, <span className="tabular font-semibold">{ui.partial}</span> not counted (too short)</>}
+          </p>
+        )}
       </div>
 
-      <div
-        role="status"
-        aria-live="polite"
-        className={cn(
-          "rounded-lg border px-3.5 py-3",
-          p.paused
-            ? "border-slate-300 bg-slate-50"
-            : p.feedback.type === "success"
-            ? "border-emerald-300 bg-emerald-50"
-            : p.feedback.type === "warning"
-            ? "border-amber-400 bg-amber-50"
-            : "border-slate-300 bg-white"
-        )}
-      >
+      <div role="status" aria-live="polite" className={cn("rounded-lg border px-3.5 py-3", p.paused ? "border-slate-300 bg-slate-50" : tone.box)}>
         <div className="flex items-start gap-2.5">
           <Icon className="mt-0.5 size-5 shrink-0 text-slate-800" aria-hidden="true" />
-          <p className="flex-1 text-lg font-semibold leading-snug text-slate-900">{p.paused ? "Paused. Tap Resume when you’re ready." : p.feedback.message}</p>
+          <p className="flex-1 text-lg font-semibold leading-snug text-slate-900">{p.paused ? "Paused. Tap Resume when you’re ready." : ui.cue}</p>
           <button
             type="button"
-            onClick={toggleVoice}
-            aria-label={voiceEnabled ? "Mute voice coach" : "Turn on voice coach"}
-            aria-pressed={voiceEnabled}
+            onClick={p.onToggleVoice}
+            aria-label={p.voiceEnabled ? "Mute voice coach" : "Turn on voice coach"}
+            aria-pressed={p.voiceEnabled}
             className="-m-1 rounded-md p-1.5 text-slate-700 hover:bg-slate-100"
           >
-            {voiceEnabled ? <Volume2 className="size-5" /> : <VolumeX className="size-5" />}
+            {p.voiceEnabled ? <Volume2 className="size-5" /> : <VolumeX className="size-5" />}
           </button>
         </div>
         <div className="mt-1.5 pl-[30px]">
           <Authorship by="automated" />
         </div>
-      </div>
-
-      <div className="flex items-start gap-2.5 text-sm" role="status" aria-live="polite">
-        {trackingOk ? (
-          <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-emerald-700" aria-hidden="true" />
-        ) : (
-          <AlertTriangle className="mt-0.5 size-4 shrink-0 text-amber-700" aria-hidden="true" />
-        )}
-        <p className="text-slate-800">
-          <span className="font-semibold">{p.tracking.title}.</span> {trackingOk ? "" : p.tracking.detail}
-        </p>
       </div>
 
       <div className="grid grid-cols-2 gap-2">
@@ -118,23 +112,32 @@ export default function LivePanel(p: LivePanelProps) {
         </Button>
       </div>
 
+      <div className="flex flex-col gap-2.5">
+        <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
+          <ConfidenceBadge level={ui.confidence} tracking={ui.tracking} />
+          <p className="text-sm text-slate-800">
+            <span className="text-slate-600">Movement: </span>
+            <span className="font-semibold">{status}</span>
+          </p>
+        </div>
+        <JointStatusStrip joints={ui.joints} />
+      </div>
+
+
       <details className="group border-t border-slate-300 pt-3" open>
-        <summary className="cursor-pointer list-none text-sm font-semibold text-slate-900 marker:hidden">
-          Step {Math.min(p.stepIndex + 1, Math.max(1, p.totalSteps))} of {Math.max(1, p.totalSteps)}: {p.stepTitle}
-        </summary>
-        {p.stepInstruction && <p className="mt-1.5 text-sm leading-relaxed text-slate-700">{p.stepInstruction}</p>}
+        <summary className="cursor-pointer list-none text-sm font-semibold text-slate-900 marker:hidden">Measurements</summary>
         <dl className="mt-3 grid grid-cols-3 gap-3 text-sm">
           <div>
-            <dt className="text-slate-600">Angle</dt>
-            <dd className="font-mono text-lg font-semibold tabular">{Math.round(p.angle)}°</dd>
+            <dt className="text-slate-600">{ui.unit === "deg" ? "Angle" : "Turn"}</dt>
+            <dd className="font-mono text-lg font-semibold tabular">{Number.isFinite(ui.primary) ? `${ui.primary}${ui.unit === "deg" ? "°" : "%"}` : "—"}</dd>
           </div>
           <div>
-            <dt className="text-slate-600">Range</dt>
-            <dd className="font-mono text-lg font-semibold tabular">{Math.round(p.rom)}°</dd>
+            <dt className="text-slate-600">Best range</dt>
+            <dd className="font-mono text-lg font-semibold tabular">{ui.rom > 0 ? `${ui.rom}${ui.unit === "deg" ? "°" : "%"}` : "—"}</dd>
           </div>
           <div>
-            <dt className="text-slate-600">Tempo</dt>
-            <dd className="font-mono text-lg font-semibold tabular">{p.tempo > 0 ? `${p.tempo.toFixed(1)}s` : "—"}</dd>
+            <dt className="text-slate-600">Last rep</dt>
+            <dd className="font-mono text-lg font-semibold tabular">{ui.lastRepSeconds > 0 ? `${ui.lastRepSeconds.toFixed(1)}s` : "—"}</dd>
           </div>
         </dl>
         <button type="button" onClick={p.onOpenGuide} className="mt-3 text-sm font-semibold text-emerald-700 underline underline-offset-4">

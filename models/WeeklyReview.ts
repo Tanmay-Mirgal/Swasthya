@@ -22,8 +22,15 @@ export interface IWeeklyReportExercise {
   repsPrescribed: number;
   repsCompleted: number;
   averageRom?: number;
+  /** Unit of averageRom: degrees, or percent for movements measured as a share of body width. */
+  romUnit?: "deg" | "pct";
   averageFormScore?: number;
+  validReps?: number;
+  invalidReps?: number;
 }
+
+/** What the report's form score is measured against. Scores on different bases are never compared. */
+export type FormBasis = "engine2" | "legacy";
 
 export interface IWeeklyReport {
   generatedAt: Date;
@@ -42,7 +49,20 @@ export interface IWeeklyReport {
   adherencePercent: number | null;
   averageRom?: number;
   averageFormScore?: number;
-  /** Change in average form score against the previous week's report, percentage points. */
+  /** `engine2` = share of counted reps that met the per-rep form checks; `legacy` = the older tempo-based score. */
+  formBasis?: FormBasis;
+  /** Movement quality across the week, from per-rep judgment. Absent when the week has none. */
+  quality?: {
+    validReps: number;
+    invalidReps: number;
+    partialReps: number;
+    correctionAttempts: number;
+    correctionsSucceeded: number;
+    avgConfidence?: number;
+    /** Error codes seen in the most reps across the week. */
+    repeatedErrors: { code: string; reps: number; severity: "minor" | "moderate" | "major" }[];
+  };
+  /** Change in average form score against the previous week's report, percentage points (same basis only). */
   qualityChange?: number | null;
   /** The movement-feedback codes raised most often, as counted by the on-device engine. */
   commonFeedback: { code: string; count: number }[];

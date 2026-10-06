@@ -163,12 +163,11 @@ Reusable React components organized by domain. Built with **Tailwind CSS**, **Lu
 - **`auth/` & `brand/`**: Reusable branding and login components.
 - **`consultation/`**: Video player components, mute/unmute buttons, and WebRTC stream wrappers.
 - **`dashboard/`**: Graphs and metric cards for both Patient and Therapist views.
-- **`exercise/` & `pose/`**: Highly dynamic components that render the camera feed (`<video>`) and the overlaid skeletal canvas (`<canvas>`).
+- **`exercise/` & `movement/`**: the live panel and the camera stage (`<video>` plus the skeleton `<canvas>` drawn outside React).
 - **`session/`**: UI for displaying post-workout summaries.
 - **`ui/`**: Base UI elements (Buttons, Inputs, Dialogs) typically styled via Shadcn.
 
 ### 3. `/hooks` (Business Logic)
-
 - **`useExerciseEngine.ts`**: The core state machine. It takes the live camera feed, pipes it into the MediaPipe pose landmarker, extracts the 33 3D coordinates, passes them to the biomechanics engine to calculate angles, and counts repetitions dynamically in real-time.
 
 ### 4. `/lib` (Core Engines & Utilities)
@@ -176,7 +175,7 @@ Reusable React components organized by domain. Built with **Tailwind CSS**, **Lu
 The brain of the application.
 
 - **`/biomechanics` & `/engine`**: Contains the mathematical formulas (trigonometry) to calculate angles between joints (e.g., shoulder, elbow, wrist).
-- **`/pose`**: Wrapper for initializing `@mediapipe/tasks-vision`.
+- **`lib/movement`**: the movement-intelligence engine: templates, signal processing, rules, coaching, reports. Pure TypeScript with its own tests (`npm run test:movement`).
 - **`/realtime`**: Unified Next.js realtime engine:
   - `protocol/`: Typed event dictionary, payload types, room ids and runtime packet validation.
   - `auth/`: Server-side Clerk JWT token verification and MongoDB room authorization.
@@ -218,3 +217,12 @@ The brain of the application.
   - **The patient's plan, today's exercises, set progress, progress and reports:** from MongoDB (the active prescription plus the stored sets). Nothing on the patient or therapist screens is hard-coded.
   - **Authentication, Consultation & Chat:** Clerk, WebRTC and the realtime WebSocket gateway.
 - **Empty states, not placeholders:** a new account with no plan, no sessions or no reviews sees an explanation of what will appear and how to get it. The `/ui-preview` route (development only, 404 in production) renders the UI with made-up fixtures for design review and is never reachable in production.
+
+
+## Movement intelligence
+
+Each exercise is a **template** (`lib/movement/template/templates`): which joints must be seen, how a repetition is shaped, the form rules with their tolerances, and the wording of every correction. MediaPipe sees, the template defines what correct means, and a deterministic engine judges. The skeleton shows the verdict (green = fine, red = check this, yellow = not seen clearly enough to judge) and the coach says one specific thing at a time (what, where, how), escalating if it persists and acknowledging when it is fixed. If the camera cannot see a joint clearly, nothing is judged and the person is told how to reposition.
+
+A language model (Groq) is optional and only rewords confirmed facts or rewrites a session summary; it never judges, and the app works identically without it. Session summaries are built from stored data only and are always labelled as automatic/AI summaries, not diagnoses. The therapist remains the authority: nothing here changes a prescription.
+
+Seven exercises are tracked today: seated knee extension, seated bicep curl, neck rotation, sit to stand, shoulder abduction, heel raise, and mini squat. Thresholds are defaults, tuned on synthetic geometry; they need on-camera tuning and a physiotherapist's review.

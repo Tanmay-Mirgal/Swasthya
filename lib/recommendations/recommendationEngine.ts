@@ -175,9 +175,9 @@ export const CLINICAL_EXERCISE_PROFILES: Record<string, ClinicalProfile> = {
     isAvailable: true,
   },
 
-  "shoulder-raise": {
-    id: "shoulder-raise",
-    name: "Shoulder Lateral Raise",
+  "shoulder-abduction": {
+    id: "shoulder-abduction",
+    name: "Shoulder Abduction",
     bodySegment: "upper",
     primaryJoint: "shoulder",
     secondaryJoints: ["scapulothoracic", "glenohumeral"],
@@ -209,7 +209,7 @@ export const CLINICAL_EXERCISE_PROFILES: Record<string, ClinicalProfile> = {
       "Enhances coronal plane glenohumeral abduction and stabilizes the rotator cuff force couple during arm elevation.",
     defaultSets: 3,
     defaultReps: 10,
-    isAvailable: false,
+    isAvailable: true,
   },
 
   "straight-leg-raise": {

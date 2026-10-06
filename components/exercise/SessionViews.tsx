@@ -5,6 +5,7 @@ import { Camera } from "lucide-react";
 import { Button, Notice, PageHeader, SectionHeading, SetsGrid, StatusMark } from "@/components/ui";
 import type { ExerciseProgress } from "@/lib/rehab/schedule";
 import { cn } from "@/lib/utils";
+import SessionReportCard from "@/components/reports/SessionReportCard";
 
 export const DISCOMFORT_LEVELS = [
   { id: "none", label: "No discomfort" },
@@ -79,10 +80,14 @@ interface DoneProps {
   recording?: { state: "idle" | "recording" | "ready" | "uploading" | "sent" | "failed"; error: string | null; onRetry: () => void } | null;
   saveNotice: string | null;
   next?: { href: string; name: string } | null;
+  /** Unit the best range of motion is measured in. */
+  romUnit?: "deg" | "pct";
+  /** The saved session this summary is about; when present a performance summary is shown. */
+  sessionId?: string | null;
 }
 
 /** The end of an exercise: the sets as they were really done, an optional "how did that feel", and what to do next. */
-export function SessionDone({ progress, bestRom, discomfort, onDiscomfort, recording, saveNotice, next }: DoneProps) {
+export function SessionDone({ progress, bestRom, discomfort, onDiscomfort, recording, saveNotice, next, romUnit = "deg", sessionId }: DoneProps) {
   return (
     <div className="mx-auto max-w-xl space-y-7 pt-2">
       <PageHeader title={progress.status === "complete" ? `${progress.name} is done for today` : progress.name} description={`${progress.completedSets} of ${progress.targetSets} sets completed.`} />
@@ -96,8 +101,17 @@ export function SessionDone({ progress, bestRom, discomfort, onDiscomfort, recor
             </li>
           ))}
         </ul>
-        {bestRom > 0 && <p className="mt-3 text-sm text-slate-700">Best range of motion this visit: <span className="font-mono font-semibold tabular">{bestRom}°</span> <span className="text-slate-500">(measured by the camera)</span></p>}
+        {bestRom > 0 && <p className="mt-3 text-sm text-slate-700">Best range of motion this visit: <span className="font-mono font-semibold tabular">{bestRom}{romUnit === "pct" ? "%" : "°"}</span> <span className="text-slate-500">(measured by the camera)</span></p>}
       </section>
+
+      {progress.status === "complete" && sessionId && (
+        <section aria-label="Your session summary">
+          <SectionHeading title="Your session summary" description="Made from what the camera recorded today." />
+          <div className="mt-3">
+            <SessionReportCard sessionId={sessionId} audience="patient" />
+          </div>
+        </section>
+      )}
 
       {progress.status === "complete" && (
         <section aria-label="How did that feel?">

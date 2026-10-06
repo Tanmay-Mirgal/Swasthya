@@ -1,0 +1,153 @@
+import type { MovementTemplate } from "../schema";
+
+/**
+ * Sit-to-Stand. Camera side-on, whole body in frame, chair behind the person. Primary metric:
+ * the knee's interior angle (about 95 degrees seated, near straight standing). Leaning the
+ * trunk forward while rising is normal, so only a large forward lean is flagged.
+ * A stable chair and something steady within reach are part of the set-up instructions.
+ */
+export const sitToStand: MovementTemplate = {
+  id: "sit-to-stand",
+  version: 1,
+  name: "Sit to Stand",
+  description: "Stand up from a sturdy chair and sit back down slowly. Builds the strength you use to get out of a chair.",
+  category: "Lower Body",
+  difficulty: "Intermediate",
+  bodyPart: "Hip and knee",
+  bodySegment: "lower",
+  primaryJoint: "knee",
+  movement: "functional",
+  defaultReps: 8,
+  instructions: [
+    "Use a sturdy chair that will not slide, with something steady within reach.",
+    "Place the camera at the side so your whole body is in view.",
+    "Lean slightly forward, then stand up until your hips and knees are straight.",
+    "Sit back down slowly, taking about three seconds.",
+  ],
+  camera: {
+    view: "side",
+    minBodyFraction: 0.3,
+    maxBodyFraction: 0.9,
+    hint: "Side view, about 2.5 to 3 m away, so your whole body is in frame while you stand.",
+    segmentWord: "body",
+  },
+  sideMode: "auto",
+  landmarks: {
+    required: [{ joint: "shoulder" }, { joint: "hip" }, { joint: "knee" }, { joint: "ankle" }],
+    optional: [{ joint: "foot" }, { joint: "heel" }],
+  },
+  metrics: {
+    knee: { kind: "angle", a: { joint: "hip" }, b: { joint: "knee" }, c: { joint: "ankle" } },
+    trunk: { kind: "fromVertical", a: { joint: "shoulder" }, b: { joint: "hip" } },
+  },
+  setup: {
+    instruction: "Sit near the front of a sturdy chair, feet flat, with your side to the camera.",
+    holdMs: 1000,
+    conditions: [{ metric: "trunk", max: 40 }],
+  },
+  phaseLabels: { rest: "Seated", out: "Standing up", peak: "Standing", back: "Sitting down" },
+  phaseCues: {
+    rest: "Ready. Lean forward a little and stand up.",
+    out: "Keep rising until you are standing tall.",
+    peak: "Good. Stand tall, then sit back slowly.",
+    back: "Sit down slowly, with control.",
+  },
+  rep: {
+    metric: "knee",
+    direction: "increase",
+    restThreshold: 115,
+    leaveThreshold: 125,
+    countThreshold: 150,
+    peakThreshold: 165,
+    returnDrop: 10,
+    minRepMs: 2200,
+    maxRepMs: 16000,
+    debounceMs: 1000,
+    returnStallMs: 4500,
+    abandonMs: 30000,
+    unit: "deg",
+  },
+  repRules: {
+    range: {
+      id: "incomplete_stand",
+      label: "Did not stand fully",
+      severity: "moderate",
+      invalidatesRep: true,
+      landmarks: [{ joint: "knee" }, { joint: "hip" }],
+      bones: [[{ joint: "hip" }, { joint: "knee" }]],
+      low: {
+        observation: "the knees and hips did not reach a fully standing position",
+        texts: [
+          "Stand all the way up until your hips and knees are straight.",
+          "Press your feet into the floor to straighten your knees and hips at the top.",
+          "Take your time and rise until your body is standing tall.",
+        ],
+      },
+      ack: "Good, that was a full stand.",
+    },
+    tooFast: {
+      id: "too_fast",
+      label: "Moved too quickly",
+      severity: "moderate",
+      invalidatesRep: false,
+      landmarks: [{ joint: "hip" }, { joint: "knee" }],
+      low: {
+        observation: "the stand and sit was quicker than the controlled pace",
+        texts: [
+          "Slow down. Lower your hips back to the chair over about three seconds.",
+          "Control the way down so your legs, not gravity, set the pace.",
+          "Count three seconds as your hips lower to the chair.",
+        ],
+      },
+      ack: "Nice, that was a controlled pace.",
+    },
+    incompleteReturn: {
+      id: "incomplete_return",
+      label: "Did not sit back down fully",
+      severity: "minor",
+      invalidatesRep: false,
+      landmarks: [{ joint: "hip" }, { joint: "knee" }],
+      high: {
+        observation: "the person did not sit all the way back down before the next stand",
+        texts: [
+          "Sit all the way back down before you stand again.",
+          "Let your hips touch the chair, with your knees bent, before the next stand.",
+          "Finish lowering your hips onto the chair slowly.",
+        ],
+      },
+    },
+  },
+  rules: [
+    {
+      id: "trunk_lean_forward",
+      label: "Leaning too far forward",
+      kind: "alignment",
+      metric: "trunk",
+      phases: ["out", "peak", "back"],
+      max: 55,
+      release: 8,
+      sustainMs: 600,
+      recoverMs: 300,
+      severity: "moderate",
+      invalidatesRep: true,
+      landmarks: [{ joint: "shoulder" }, { joint: "hip" }],
+      bones: [[{ joint: "shoulder" }, { joint: "hip" }]],
+      high: {
+        observation: "the upper body is leaning a long way forward",
+        texts: [
+          "You are leaning far forward. Lift your chest and look ahead as you stand.",
+          "Keep your chest up and your back long while your legs do the work.",
+          "Slow down and keep your chest lifted as you rise.",
+        ],
+      },
+      ack: "Good correction, your chest is up.",
+    },
+  ],
+  statusJoints: [
+    { label: "Shoulder", ref: { joint: "shoulder" } },
+    { label: "Hip", ref: { joint: "hip" } },
+    { label: "Knee", ref: { joint: "knee" } },
+    { label: "Ankle", ref: { joint: "ankle" } },
+  ],
+  commonMistakes: ["Dropping into the chair", "Leaning far forward", "Not standing fully", "Using momentum instead of the legs"],
+};

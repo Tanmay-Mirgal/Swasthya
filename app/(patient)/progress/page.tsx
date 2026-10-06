@@ -20,6 +20,16 @@ interface DbSession {
   targetReps: number;
   rom?: number;
   durationSeconds?: number;
+  romUnit?: "deg" | "pct";
+  engineVersion?: number;
+  validReps?: number;
+  invalidReps?: number;
+  partialReps?: number;
+  correctionAttempts?: number;
+  correctionsSucceeded?: number;
+  avgConfidence?: number;
+  avgRepSeconds?: number;
+  errorList?: { code: string; label?: string; reps: number }[];
 }
 
 /** Account sessions first; sessions that only exist on this device are added (matched by exercise and time). */
@@ -34,6 +44,16 @@ function mergeSessions(db: DbSession[], local: ReturnType<typeof getSessionHisto
     targetReps: s.targetReps,
     rom: s.rom ?? 0,
     durationSeconds: s.durationSeconds,
+    unit: s.romUnit,
+    judged: (s.engineVersion ?? 0) >= 2 && s.validReps !== undefined,
+    validReps: s.validReps,
+    invalidReps: s.invalidReps,
+    partialReps: s.partialReps,
+    correctionAttempts: s.correctionAttempts,
+    correctionsSucceeded: s.correctionsSucceeded,
+    avgConfidence: s.avgConfidence,
+    avgRepSeconds: s.avgRepSeconds,
+    errors: s.errorList,
   }));
   const seen = new Set(out.map((s) => toKey(s.exerciseId, s.date)));
   for (const s of local) {
@@ -47,6 +67,16 @@ function mergeSessions(db: DbSession[], local: ReturnType<typeof getSessionHisto
       targetReps: s.targetReps,
       rom: s.rom,
       durationSeconds: s.durationSeconds,
+      unit: s.unit,
+      judged: (s.engine ?? 0) >= 2 && s.validReps !== undefined,
+      validReps: s.validReps,
+      invalidReps: s.invalidReps,
+      partialReps: s.partialReps,
+      correctionAttempts: s.correctionAttempts,
+      correctionsSucceeded: s.correctionsSucceeded,
+      avgConfidence: s.avgConfidence,
+      avgRepSeconds: s.averageTempo,
+      errors: Object.entries(s.errors ?? {}).map(([code, e]) => ({ code, reps: e.count })),
     });
   }
   return out;

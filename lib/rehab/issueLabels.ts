@@ -1,3 +1,5 @@
+import { getAllMovementTemplates } from "@/lib/movement/template/registry";
+
 /** Plain-language labels for the movement-feedback codes the on-device engine raises. */
 export const ISSUE_LABELS: Record<string, string> = {
   CAMERA_TOO_FAR: "Camera too far away",
@@ -21,6 +23,21 @@ export const ISSUE_LABELS: Record<string, string> = {
   KNEE_POSITION_INVALID: "Knee position",
 };
 
+let templateLabels: Record<string, string> | null = null;
+
+/** Labels for the codes the movement engine's exercise templates raise (built once from the templates). */
+function fromTemplates(): Record<string, string> {
+  if (templateLabels) return templateLabels;
+  const out: Record<string, string> = {};
+  for (const t of getAllMovementTemplates()) {
+    for (const r of t.rules) out[r.id.toUpperCase()] ??= r.label;
+    for (const r of Object.values(t.repRules)) if (r) out[r.id.toUpperCase()] ??= r.label;
+  }
+  templateLabels = out;
+  return out;
+}
+
+/** Plain-language name for a stored issue code. Older (pre-engine-v2) codes keep their labels. */
 export function issueLabel(code: string): string {
-  return ISSUE_LABELS[code] ?? code.toLowerCase().replace(/_/g, " ");
+  return fromTemplates()[code] ?? ISSUE_LABELS[code] ?? code.toLowerCase().replace(/_/g, " ");
 }

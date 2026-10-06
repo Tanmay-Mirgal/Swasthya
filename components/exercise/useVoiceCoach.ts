@@ -1,50 +1,26 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import VoiceService from "@/services/voice/voiceService";
 import { getVoiceCoachPreference, setVoiceCoachPreference } from "@/lib/preferences";
 
-// Issue codes that warrant high-priority speech (safety-critical).
-const SAFETY_ISSUE_CODES = new Set([
-  "CAMERA_TOO_FAR",
-  "CAMERA_TOO_CLOSE",
-  "LANDMARK_NOT_VISIBLE",
-  "LOW_CONFIDENCE",
-  "TRUNK_LEAN",
-  "FOOT_NOT_PLANTED",
-  "COMPENSATORY_MOVEMENT",
-]);
-
 /**
- * Speaks each new coaching cue once. Audio complements the on-screen text (it never adds
- * new information), and the person can mute it at any time.
+ * The patient's voice on/off preference. What is said, and when, is decided by the coaching
+ * loop (lib/movement/coach); this hook only owns the switch and the speaker's lifecycle.
  */
-export function useVoiceCoach(message: string, issueCode?: string) {
+export function useVoicePreference() {
   const [enabled, setEnabled] = useState(() => getVoiceCoachPreference());
-  const lastSpoken = useRef("");
-  const initialised = useRef(false);
 
   useEffect(() => {
-    if (initialised.current) return;
-    initialised.current = true;
-    VoiceService.init().catch(() => undefined);
-    return () => {
-      VoiceService.destroy().catch(() => undefined);
-    };
+    void VoiceService.init();
+    return () => VoiceService.destroy();
   }, []);
 
-  useEffect(() => {
-    if (!enabled || !message || lastSpoken.current === message) return;
-    lastSpoken.current = message;
-    const priority = issueCode && SAFETY_ISSUE_CODES.has(issueCode) ? "high" : "normal";
-    VoiceService.speak(message, priority).catch(() => undefined);
-  }, [message, enabled, issueCode]);
-
-  const toggle = () => {
-    if (enabled) VoiceService.stop().catch(() => undefined);
+  const toggle = useCallback(() => {
+    if (enabled) VoiceService.stop();
     setVoiceCoachPreference(!enabled);
     setEnabled(!enabled);
-  };
+  }, [enabled]);
 
   return { voiceEnabled: enabled, toggleVoice: toggle };
 }

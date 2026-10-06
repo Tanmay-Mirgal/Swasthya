@@ -8,7 +8,7 @@
  */
 
 import { getAllExercises, type ExtendedExerciseConfig } from "@/lib/exercises/registry";
-import { getTemplate } from "@/lib/engine/templates";
+import { getMovementTemplate } from "@/lib/movement/template/registry";
 import { bodySegmentLabel, exerciseGuideImage } from "@/lib/exercises/presentation";
 
 export interface CatalogExercise {
@@ -26,12 +26,6 @@ export interface CatalogExercise {
   guideImage?: string;
 }
 
-/** Camera placement the engine templates were written for (see lib/engine/templates). */
-const CAMERA_NOTE: Record<string, string> = {
-  "seated-knee-extension": "Side view, about 1.5 to 2.5 m away, so the whole leg is in frame.",
-  "seated-bicep-curl": "Front or slightly side-on, so shoulder, elbow and wrist are visible.",
-  "neck-rotation": "Front view, so the nose and both shoulders are visible.",
-};
 
 function toCatalog(ex: ExtendedExerciseConfig): CatalogExercise {
   return {
@@ -45,14 +39,14 @@ function toCatalog(ex: ExtendedExerciseConfig): CatalogExercise {
     description: ex.description,
     instructions: ex.instructions,
     defaultReps: ex.targetReps,
-    cameraNote: CAMERA_NOTE[ex.id] ?? "Make sure the joint being moved is fully visible.",
+    cameraNote: getMovementTemplate(ex.id)?.camera.hint ?? "Make sure the joint being moved is fully visible.",
     guideImage: exerciseGuideImage(ex.id),
   };
 }
 
 export function getPrescribableExercises(): CatalogExercise[] {
   return getAllExercises()
-    .filter((ex) => ex.isAvailable && getTemplate(ex.id) !== null)
+    .filter((ex) => ex.isAvailable && getMovementTemplate(ex.id) !== null)
     .map(toCatalog)
     .sort((a, b) => a.name.localeCompare(b.name));
 }

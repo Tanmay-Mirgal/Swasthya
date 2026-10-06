@@ -8,7 +8,9 @@
  * The server stays the source of truth; this only retries.
  */
 
-export interface OutboxChunk {
+import type { ChunkQuality } from "./chunkQuality";
+
+export interface OutboxChunk extends ChunkQuality {
   chunkId: string;
   prescriptionId: string;
   exerciseKey: string;

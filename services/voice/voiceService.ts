@@ -1,125 +1,93 @@
 /**
- * voiceService.ts — Browser SpeechSynthesis TTS service for RehabLens.
+ * voiceService.ts: browser SpeechSynthesis for the exercise coach.
  *
- * Architecture:
- *   Exercise feedback
- *     └─> VoiceService.speak(text, priority?)
- *           └─ Browser → window.speechSynthesis
+ * This is only the speaker. WHETHER something should be said (cooldowns, priority,
+ * duplicates, movement phase) is decided upstream by lib/movement/coach/voicePolicy. Here:
  *
- * Priority levels:
- *   "normal"   — waits if something is already speaking (no overlap)
- *   "high"     — interrupts any current speech (safety corrections)
- *
- * Deduplication:
- *   Identical consecutive cues are suppressed (lastSpoken guard).
- *
- * Lifecycle:
- *   Call VoiceService.init() once (e.g. on app mount).
- *   Call VoiceService.destroy() on unmount to release resources.
+ *   - one utterance at a time
+ *   - a cue that arrives while speaking waits in a single slot (the latest wins; stale cues
+ *     are dropped instead of piling up)
+ *   - `interrupt` cuts off the current speech, for something more important
+ *   - everything fails silently: no voice is never an error
  */
 
-export type VoicePriority = "normal" | "high";
+let speaking = false;
+let queued: string | null = null;
+let rate = 1.0;
 
-// ---------------------------------------------------------------------------
-// Internal state
-// ---------------------------------------------------------------------------
-let isSpeakingFlag = false;     // guard for overlap prevention
-let lastSpokenText = "";        // deduplication guard
-let speechRate = 1.0;           // coaching rate (slightly slower for clarity)
-let initialized = false;
+const supported = () => typeof window !== "undefined" && "speechSynthesis" in window;
 
-// ── Browser TTS helpers ──────────────────────────────────────────────────────
-
-function browserStop() {
-  if (typeof window !== "undefined" && "speechSynthesis" in window) {
-    try { window.speechSynthesis.cancel(); } catch { /* ignore */ }
+function speakNow(text: string) {
+  if (!supported()) return;
+  const u = new SpeechSynthesisUtterance(text);
+  u.rate = rate;
+  u.pitch = 1;
+  u.volume = 1;
+  const done = () => {
+    speaking = false;
+    if (queued) {
+      const next = queued;
+      queued = null;
+      speakNow(next);
+    }
+  };
+  u.onend = done;
+  u.onerror = done;
+  speaking = true;
+  try {
+    window.speechSynthesis.speak(u);
+  } catch {
+    speaking = false;
   }
-  isSpeakingFlag = false;
 }
-
-function browserSpeak(text: string): Promise<void> {
-  return new Promise((resolve) => {
-    if (typeof window === "undefined" || !("speechSynthesis" in window)) {
-      resolve();
-      return;
-    }
-    const utterance = new SpeechSynthesisUtterance(text);
-    utterance.rate = speechRate;
-    utterance.pitch = 1.0;
-    utterance.volume = 1.0;
-    utterance.onend = () => { isSpeakingFlag = false; resolve(); };
-    utterance.onerror = () => { isSpeakingFlag = false; resolve(); };
-    isSpeakingFlag = true;
-    try {
-      window.speechSynthesis.speak(utterance);
-    } catch {
-      isSpeakingFlag = false;
-      resolve();
-    }
-  });
-}
-
-// ---------------------------------------------------------------------------
-// Public API
-// ---------------------------------------------------------------------------
 
 export const VoiceService = {
-  /**
-   * Initialise the voice service.
-   * Safe to call from any client component context.
-   */
+  isSupported: supported,
+
   async init(): Promise<void> {
-    if (initialized) return;
-    initialized = true;
+    /* nothing to prepare for the browser engine; kept so callers have one lifecycle */
   },
 
-  /**
-   * Speak a coaching cue.
-   *
-   * @param text     The text to speak.
-   * @param priority "high" interrupts any current speech.
-   *                 "normal" is suppressed if already speaking.
-   */
-  async speak(text: string, priority: VoicePriority = "normal"): Promise<void> {
-    if (!text || text.trim().length === 0) return;
-
-    // Deduplication: do not repeat identical consecutive cues
-    if (text === lastSpokenText && priority !== "high") return;
-
-    // Overlap prevention
-    if (isSpeakingFlag) {
-      if (priority === "normal") {
-        // Do not overlap -- skip this cue
-        return;
+  speak(text: string, opts: { interrupt?: boolean } = {}): void {
+    if (!text || !text.trim() || !supported()) return;
+    if (speaking) {
+      if (opts.interrupt) {
+        queued = null;
+        try {
+          window.speechSynthesis.cancel();
+        } catch {
+          /* ignore */
+        }
+        speaking = false;
+        speakNow(text);
+      } else {
+        queued = text;
       }
-      // High priority -- interrupt current speech
-      await VoiceService.stop();
+      return;
     }
-
-    lastSpokenText = text;
-    await browserSpeak(text);
+    speakNow(text);
   },
 
-  /** Immediately stop any current speech. */
-  async stop(): Promise<void> {
-    browserStop();
+  stop(): void {
+    queued = null;
+    speaking = false;
+    if (supported()) {
+      try {
+        window.speechSynthesis.cancel();
+      } catch {
+        /* ignore */
+      }
+    }
   },
 
-  /** Returns true if TTS is currently speaking. */
-  isSpeaking(): boolean {
-    return isSpeakingFlag;
+  isSpeaking: () => speaking,
+
+  setRate(r: number) {
+    rate = Math.max(0.5, Math.min(2, r));
   },
 
-  /** Set the speech rate (1.0 = normal). */
-  setRate(rate: number): void {
-    speechRate = Math.max(0.5, Math.min(2.0, rate));
-  },
-
-  /** Release resources. Call on component unmount. */
-  async destroy(): Promise<void> {
-    await VoiceService.stop();
-    lastSpokenText = "";
-    isSpeakingFlag = false;
+  destroy(): void {
+    VoiceService.stop();
   },
 };
 

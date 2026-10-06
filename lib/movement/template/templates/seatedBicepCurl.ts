@@ -1,0 +1,176 @@
+import type { MovementTemplate } from "../schema";
+
+/**
+ * Seated Bicep Curl. Camera in front (or slightly to the side); shoulder, elbow and wrist in
+ * frame. Primary metric: the elbow's interior angle (shoulder-elbow-wrist). Rest ~170 degrees
+ * (arm hanging), peak ~60 degrees (hand toward shoulder).
+ */
+export const seatedBicepCurl: MovementTemplate = {
+  id: "seated-bicep-curl",
+  version: 2,
+  name: "Seated Bicep Curl",
+  description: "Sit upright, bend your elbow to curl your hand toward your shoulder, then lower it under control.",
+  category: "Upper Body",
+  difficulty: "Beginner",
+  bodyPart: "Elbow",
+  bodySegment: "upper",
+  primaryJoint: "elbow",
+  movement: "flexion",
+  defaultReps: 10,
+  instructions: [
+    "Sit upright in front of your camera.",
+    "Keep your shoulder, elbow and wrist in view.",
+    "Curl your hand up toward your shoulder, keeping your elbow by your side.",
+    "Lower your arm smoothly back to the start.",
+  ],
+  camera: {
+    view: "either",
+    minBodyFraction: 0.14,
+    maxBodyFraction: 0.85,
+    hint: "Front or slightly side-on, about 1 to 2 m away, so shoulder, elbow and wrist are in view.",
+    segmentWord: "arm",
+  },
+  sideMode: "auto",
+  landmarks: {
+    required: [{ joint: "shoulder" }, { joint: "elbow" }, { joint: "wrist" }],
+    optional: [{ joint: "hip" }],
+  },
+  metrics: {
+    elbow: { kind: "angle", a: { joint: "shoulder" }, b: { joint: "elbow" }, c: { joint: "wrist" } },
+    upperArm: { kind: "fromVertical", a: { joint: "shoulder" }, b: { joint: "elbow" } },
+    trunk: { kind: "fromVertical", a: { joint: "shoulder" }, b: { joint: "hip" } },
+  },
+  setup: {
+    instruction: "Sit tall with your arm hanging by your side.",
+    holdMs: 900,
+    conditions: [{ metric: "upperArm", max: 30 }],
+  },
+  phaseLabels: { rest: "Ready", out: "Curling up", peak: "Top", back: "Lowering" },
+  phaseCues: {
+    rest: "Ready. Curl your hand toward your shoulder.",
+    out: "Keep curling, elbow by your side.",
+    peak: "Good. Squeeze briefly, then lower.",
+    back: "Lower your arm slowly.",
+  },
+  rep: {
+    metric: "elbow",
+    direction: "decrease",
+    restThreshold: 140,
+    leaveThreshold: 125,
+    countThreshold: 95,
+    peakThreshold: 72,
+    returnDrop: 12,
+    minRepMs: 1600,
+    maxRepMs: 14000,
+    debounceMs: 800,
+    returnStallMs: 3500,
+    abandonMs: 25000,
+    unit: "deg",
+  },
+  repRules: {
+    range: {
+      id: "insufficient_curl",
+      label: "Elbow not bent fully",
+      severity: "minor",
+      invalidatesRep: true,
+      landmarks: [{ joint: "elbow" }, { joint: "wrist" }],
+      bones: [[{ joint: "elbow" }, { joint: "wrist" }]],
+      low: {
+        observation: "the hand stopped before it reached the top of the curl",
+        texts: [
+          "Curl your hand a little higher toward your shoulder.",
+          "Bring your wrist closer to your shoulder at the top of the curl.",
+          "Take your time and curl your hand as high as is comfortable.",
+        ],
+      },
+      ack: "Good, that was a fuller curl.",
+    },
+    tooFast: {
+      id: "too_fast",
+      label: "Moved too quickly",
+      severity: "minor",
+      invalidatesRep: false,
+      landmarks: [{ joint: "elbow" }],
+      low: {
+        observation: "the repetition was quicker than the controlled pace",
+        texts: [
+          "Slow down. Take about two seconds to curl your hand up.",
+          "Lower your arm more slowly and keep control of the weight of your arm.",
+          "Count two seconds as your arm curls up and two as it lowers.",
+        ],
+      },
+      ack: "Nice, that was a controlled pace.",
+    },
+    incompleteReturn: {
+      id: "incomplete_return",
+      label: "Did not lower fully",
+      severity: "minor",
+      invalidatesRep: false,
+      landmarks: [{ joint: "elbow" }, { joint: "wrist" }],
+      high: {
+        observation: "the arm was not lowered back to the starting position",
+        texts: [
+          "Lower your arm all the way down before the next curl.",
+          "Let your arm hang straight down at the bottom of each curl.",
+          "Finish lowering your arm slowly until it is straight.",
+        ],
+      },
+    },
+  },
+  rules: [
+    {
+      id: "elbow_drift",
+      label: "Elbow drifting away from the body",
+      kind: "compensation",
+      metric: "upperArm",
+      phases: ["out", "peak", "back"],
+      max: 28,
+      release: 5,
+      sustainMs: 500,
+      recoverMs: 300,
+      severity: "moderate",
+      invalidatesRep: true,
+      landmarks: [{ joint: "elbow" }, { joint: "shoulder" }],
+      bones: [[{ joint: "shoulder" }, { joint: "elbow" }]],
+      high: {
+        observation: "the elbow is swinging away from the side of the body",
+        texts: [
+          "Your elbow is drifting. Keep it close to your side as you curl.",
+          "Tuck your elbow in by your ribs and let only your forearm move.",
+          "Slow down and keep your elbow still against your side.",
+        ],
+      },
+      ack: "Good correction, your elbow is steady.",
+    },
+    {
+      id: "trunk_lean",
+      label: "Leaning the trunk",
+      kind: "alignment",
+      metric: "trunk",
+      phases: ["out", "peak", "back"],
+      max: 18,
+      release: 4,
+      sustainMs: 500,
+      recoverMs: 300,
+      severity: "moderate",
+      invalidatesRep: true,
+      landmarks: [{ joint: "shoulder" }, { joint: "hip" }],
+      bones: [[{ joint: "shoulder" }, { joint: "hip" }]],
+      high: {
+        observation: "the upper body is leaning instead of staying upright",
+        texts: [
+          "You are leaning. Sit tall and keep your shoulders over your hips.",
+          "Keep your back upright and let only your arm do the work.",
+          "Slow the curl down and stay tall through your back.",
+        ],
+      },
+      ack: "Good correction, you are sitting tall.",
+    },
+  ],
+  statusJoints: [
+    { label: "Shoulder", ref: { joint: "shoulder" } },
+    { label: "Elbow", ref: { joint: "elbow" } },
+    { label: "Wrist", ref: { joint: "wrist" } },
+  ],
+  commonMistakes: ["Swinging the elbow forward", "Leaning back to lift", "Dropping the arm quickly", "Stopping short of the top"],
+};

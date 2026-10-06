@@ -7,6 +7,9 @@ import WeeklyReview from "@/models/WeeklyReview";
 import { adherenceForPlans } from "@/lib/rehab/adherence";
 import { serializePrescription } from "@/lib/rehab/sessionService";
 import User from "@/models/User";
+import { issueLabel } from "@/lib/rehab/issueLabels";
+import { avgRepSecondsOf } from "@/lib/rehab/chunkQuality";
+import { getMovementTemplate } from "@/lib/movement/template/registry";
 
 export async function GET(
   req: Request,
@@ -83,6 +86,17 @@ export async function GET(
       therapistNote?: string;
       therapistAssessment?: string;
       reviewedAt?: Date;
+      engineVersion?: number;
+      validReps?: number;
+      invalidReps?: number;
+      partialReps?: number;
+      correctionAttempts?: number;
+      correctionsSucceeded?: number;
+      avgConfidence?: number;
+      issueCounts?: Record<string, number>;
+      issueSeverity?: Record<string, "minor" | "moderate" | "major">;
+      observations?: { code: string; repsAffected: number; ofReps: number }[];
+      sets?: { chunks?: { repRecords?: { ms: number }[] }[] }[];
     }[]).map((s) => ({
       id: s._id.toString(),
       exerciseId: s.exerciseId,
@@ -96,6 +110,24 @@ export async function GET(
       therapistNote: s.therapistNote,
       therapistAssessment: s.therapistAssessment,
       reviewedAt: s.reviewedAt,
+      romUnit: getMovementTemplate(s.exerciseId)?.rep.unit ?? "deg",
+      avgRepSeconds: avgRepSecondsOf(s.sets as never),
+      // Per-rep movement judgment (engine v2). Absent on older sessions: nothing is filled in.
+      quality:
+        (s.engineVersion ?? 0) >= 2 && s.validReps !== undefined
+          ? {
+              validReps: s.validReps,
+              invalidReps: s.invalidReps ?? 0,
+              partialReps: s.partialReps ?? 0,
+              correctionAttempts: s.correctionAttempts,
+              correctionsSucceeded: s.correctionsSucceeded,
+              avgConfidence: s.avgConfidence,
+              errors: Object.entries(s.issueCounts ?? {})
+                .map(([code, reps]) => ({ code, label: issueLabel(code), reps: Number(reps), severity: s.issueSeverity?.[code] ?? "minor" }))
+                .sort((a, b) => b.reps - a.reps),
+              observations: (s.observations ?? []).map((o) => ({ ...o, label: issueLabel(o.code) })),
+            }
+          : null,
     }));
 
     const ChatMessage = (await import("@/models/ChatMessage")).default;

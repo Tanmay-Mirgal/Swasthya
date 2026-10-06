@@ -182,6 +182,7 @@ A near-monochrome green-tinged grey ladder, one deep logo green, a yellow highli
 **The Highlighter Rule.** Yellow means a person needs to look at this. Never decorative, never a brand fill, never for success.
 **The Authorship Rule.** Pen (Kalam, green) = a therapist wrote it; toner (Geist) = automated. Never set machine output in the handwriting face.
 **The Shape-Plus-Word Rule.** State is a tick, dash, cross or empty box plus a label; colour alone never carries meaning.
+**The Skeleton Verdict Rule.** On the camera, the skeleton is the verdict, not decoration: a green-ringed joint is fine, a large red disc with a cross is "check this", a hollow dashed yellow ring is "not seen clearly enough to judge", a small white dot is not part of the exercise. The same three states appear as a tick, a cross or a dashed ring beside a word in the joint strip. These overlay colours are brighter than the page palette because they sit on Camera Black video; they are the only place those hues appear. Low confidence never shows red.
 
 ## Typography
 

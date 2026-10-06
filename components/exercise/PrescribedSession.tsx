@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "@clerk/react";
 import { BookOpen, CheckCircle2 } from "lucide-react";
 import AppShell from "@/components/layout/AppShell";
-import PoseDetector, { type FrameUpdateData } from "@/components/pose/PoseDetector";
+import MovementStage from "@/components/movement/MovementStage";
 import FocusFrame from "./FocusFrame";
 import LivePanel from "./LivePanel";
 import PoseGuidePanel from "./PoseGuidePanel";
@@ -14,9 +14,11 @@ import { Button, Dialog, Notice, PageLoading, SetsGrid } from "@/components/ui";
 import { SessionDone, SessionIntro } from "./SessionViews";
 import { startHref } from "@/components/patient/PatientHome";
 import { getExerciseById } from "@/lib/exercises/registry";
-import { describeTracking } from "@/lib/pose/trackingState";
-import { useExerciseEngine } from "@/hooks/useExerciseEngine";
-import type { FeedbackMessage } from "@/lib/exercises/types";
+import { useMovementSession } from "@/hooks/useMovementSession";
+import { useVoicePreference } from "./useVoiceCoach";
+import { getMovementTemplate } from "@/lib/movement/template/registry";
+import type { MovementTemplate } from "@/lib/movement/template/schema";
+import { summaryToPayload } from "@/lib/movement/analytics/chunkPayload";
 import type { ExerciseProgress } from "@/lib/rehab/schedule";
 import type { PlanSnapshot } from "@/lib/rehab/sessionService";
 import { flushOutbox, outbox, type OutboxChunk } from "@/lib/rehab/chunkOutbox";
@@ -39,7 +41,19 @@ const uuid = () => (typeof crypto !== "undefined" && "randomUUID" in crypto ? cr
  * Every chunk is saved to the server as it ends, so progress survives a pause, a dropped
  * connection or leaving the page, and the same reps are never counted twice.
  */
-export default function PrescribedSession({ exerciseId, planId, exerciseKey, reviewId }: Props) {
+export default function PrescribedSession(props: Props) {
+  const template = getMovementTemplate(props.exerciseId);
+  if (!template) {
+    return (
+      <AppShell title="Exercise" showBackNav backHref="/">
+        <Notice tone="danger" title="That exercise isn’t available">Go back to Today and choose another.</Notice>
+      </AppShell>
+    );
+  }
+  return <PrescribedSessionInner key={props.exerciseId} {...props} template={template} />;
+}
+
+function PrescribedSessionInner({ exerciseId, planId, exerciseKey, reviewId, template }: Props & { template: MovementTemplate }) {
   const router = useRouter();
   const { getToken, userId } = useAuth();
   const exercise = getExerciseById(exerciseId);
@@ -49,9 +63,7 @@ export default function PrescribedSession({ exerciseId, planId, exerciseKey, rev
   const [progress, setProgress] = useState<ExerciseProgress | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [saveNotice, setSaveNotice] = useState<string | null>(null);
-  const [chunkSeq, setChunkSeq] = useState(0);
   const [chunkTarget, setChunkTarget] = useState(1);
-  const [frameData, setFrameData] = useState<FrameUpdateData | null>(null);
   const [guideOpen, setGuideOpen] = useState(false);
   const [confirmEnd, setConfirmEnd] = useState(false);
   const [discomfort, setDiscomfort] = useState<string | null>(null);
@@ -61,18 +73,18 @@ export default function PrescribedSession({ exerciseId, planId, exerciseKey, rev
   const [streamReady, setStreamReady] = useState(false);
   const [nextExercise, setNextExercise] = useState<{ exerciseId: string; key: string; name: string } | null>(null);
 
-  const engine = useExerciseEngine(exerciseId, exercise?.name ?? exerciseId);
+  const { voiceEnabled, toggleVoice } = useVoicePreference();
+  const [currentSet, setCurrentSet] = useState(1);
+  const cameraStartedRef = useRef(false);
   const recording = useReviewRecording({ reviewId: reviewId ?? null, userId, getToken });
   const { attachStream, start: startRecording, stop: stopRecording, upload: uploadRecording, discard: discardRecording, hasClip } = recording;
   const [bestRom, setBestRom] = useState(0);
+  const [sessionId, setSessionId] = useState<string | null>(null);
 
-  const frameRef = useRef<FrameUpdateData | null>(null);
   const chunkIdRef = useRef(uuid());
   const chunkStartRef = useRef(new Date());
   const chunkSubmittedRef = useRef(false);
   const endingRef = useRef(false);
-  const issuesRef = useRef<Record<string, number>>({});
-  const lastIssueRef = useRef<string | null>(null);
   const bestRomRef = useRef(0);
   const phaseRef = useRef<Phase>("loading");
   const progressRef = useRef<ExerciseProgress | null>(null);
@@ -82,6 +94,24 @@ export default function PrescribedSession({ exerciseId, planId, exerciseKey, rev
   useEffect(() => {
     progressRef.current = progress;
   }, [progress]);
+
+  const doneRef = useRef<() => void>(() => undefined);
+  const session = useMovementSession({
+    template,
+    targetReps: chunkTarget,
+    paused: phase !== "active",
+    set: currentSet,
+    autoStart: false,
+    voiceEnabled,
+    llmEnabled: true,
+    getToken,
+    onStream: (s) => {
+      attachStream(s);
+      setStreamReady(Boolean(s));
+    },
+    onDone: () => doneRef.current(),
+  });
+  const { start: startCamera, stop: stopCamera, reset: resetSession, getSummary, announceSetComplete } = session;
 
   const authedFetch = useCallback(
     async (url: string, init?: RequestInit) => {
@@ -93,14 +123,14 @@ export default function PrescribedSession({ exerciseId, planId, exerciseKey, rev
 
   // ── Sending chunks ────────────────────────────────────────────────────────
   const sendChunk = useCallback(
-    async (c: OutboxChunk): Promise<{ result: "sent" | "retry" | "drop"; exercise?: ExerciseProgress; message?: string }> => {
+    async (c: OutboxChunk): Promise<{ result: "sent" | "retry" | "drop"; exercise?: ExerciseProgress; sessionId?: string; message?: string }> => {
       try {
         const res = await authedFetch("/api/patient/plan/sets", {
           method: "POST",
           body: JSON.stringify({ ...c, day: undefined }),
         });
         const json = await res.json().catch(() => ({}));
-        if (res.ok && json.success) return { result: "sent", exercise: json.data.exercise as ExerciseProgress };
+        if (res.ok && json.success) return { result: "sent", exercise: json.data.exercise as ExerciseProgress, sessionId: json.data.sessionId as string };
         if (res.status === 401 || res.status >= 500) return { result: "retry", message: "We couldn’t save that yet." };
         return { result: "drop", message: json.error || "That set can’t be saved." };
       } catch {
@@ -171,48 +201,46 @@ export default function PrescribedSession({ exerciseId, planId, exerciseKey, rev
   }, [sendChunk]);
 
   // ── Chunk lifecycle ───────────────────────────────────────────────────────
-  const beginChunk = useCallback((ex: ExerciseProgress) => {
-    const cur = ex.currentSetIndex !== null ? ex.sets[ex.currentSetIndex] : null;
-    if (!cur) return;
-    chunkIdRef.current = uuid();
-    chunkStartRef.current = new Date();
-    chunkSubmittedRef.current = false;
-    endingRef.current = false;
-    issuesRef.current = {};
-    lastIssueRef.current = null;
-    frameRef.current = null;
-    setFrameData(null);
-    setChunkTarget(cur.remainingReps);
-    setChunkSeq((n) => n + 1);
-    setPhase("active");
-  }, [setChunkSeq, setChunkTarget, setFrameData, setPhase]);
+  const beginChunk = useCallback(
+    (ex: ExerciseProgress) => {
+      const cur = ex.currentSetIndex !== null ? ex.sets[ex.currentSetIndex] : null;
+      if (!cur) return;
+      chunkIdRef.current = uuid();
+      chunkStartRef.current = new Date();
+      chunkSubmittedRef.current = false;
+      endingRef.current = false;
+      setChunkTarget(cur.remainingReps);
+      setCurrentSet(cur.index + 1);
+      resetSession(cur.remainingReps, cur.index + 1);
+      if (!cameraStartedRef.current) {
+        cameraStartedRef.current = true;
+        void startCamera();
+      }
+      setPhase("active");
+    },
+    [resetSession, setChunkTarget, setPhase, startCamera]
+  );
 
   const buildChunk = useCallback((): OutboxChunk | null => {
     const ex = progressRef.current;
-    const d = frameRef.current;
-    const reps = d?.repState.completedReps ?? 0;
-    if (!ex || ex.currentSetIndex === null || reps <= 0) return null;
-    const good = d?.repState.goodFormCount ?? 0;
-    const warn = d?.repState.warningCount ?? 0;
-    const rom = Math.round(d?.romTracker?.rom || 0);
-    if (rom > bestRomRef.current) {
-      bestRomRef.current = rom;
-      setBestRom(rom);
+    const summary = getSummary();
+    if (!ex || ex.currentSetIndex === null || !summary || summary.counted <= 0) return null;
+    const payload = summaryToPayload(summary);
+    if (summary.rom > bestRomRef.current) {
+      bestRomRef.current = summary.rom;
+      setBestRom(summary.rom);
     }
     return {
+      ...payload,
       chunkId: chunkIdRef.current,
       prescriptionId: planId,
       exerciseKey,
       setIndex: ex.currentSetIndex,
-      reps,
       startedAt: chunkStartRef.current.toISOString(),
       endedAt: new Date().toISOString(),
-      rom: rom > 0 ? rom : undefined,
-      formScore: good + warn > 0 ? Math.round((100 * good) / (good + warn)) : undefined,
-      issues: Object.keys(issuesRef.current).length ? issuesRef.current : undefined,
       day: new Date().toDateString(),
     };
-  }, [exerciseKey, planId]);
+  }, [exerciseKey, getSummary, planId]);
 
   /** Saves the current chunk. Resolves to the updated exercise, or null if nothing was counted or it is still queued. */
   const submitChunk = useCallback(async (): Promise<ExerciseProgress | null> => {
@@ -224,6 +252,7 @@ export default function PrescribedSession({ exerciseId, planId, exerciseKey, rev
     const r = await sendChunk(chunk);
     if (r.result === "sent" && r.exercise) {
       outbox.remove(chunk.chunkId);
+      if (r.sessionId) setSessionId(r.sessionId);
       setSaveNotice(null);
       setProgress(r.exercise);
       progressRef.current = r.exercise;
@@ -241,6 +270,7 @@ export default function PrescribedSession({ exerciseId, planId, exerciseKey, rev
   const finishExercise = useCallback(
     async (ex: ExerciseProgress | null) => {
       await stopRecording();
+      stopCamera();
       setPhase("done");
       try {
         const data = await loadPlan();
@@ -252,13 +282,14 @@ export default function PrescribedSession({ exerciseId, planId, exerciseKey, rev
       }
       if (ex && reviewId && wantsRecording && hasClip()) void uploadRecording();
     },
-    [exerciseKey, hasClip, loadPlan, reviewId, setNextExercise, setPhase, setSnap, stopRecording, uploadRecording, wantsRecording]
+    [exerciseKey, hasClip, loadPlan, reviewId, setNextExercise, setPhase, setSnap, stopCamera, stopRecording, uploadRecording, wantsRecording]
   );
 
   const endChunk = useCallback(
     async (kind: "pause" | "set_complete") => {
       if (endingRef.current) return;
       endingRef.current = true;
+      if (kind === "set_complete") announceSetComplete();
       const ex = await submitChunk();
       if (kind === "pause") {
         setPhase("paused");
@@ -270,27 +301,15 @@ export default function PrescribedSession({ exerciseId, planId, exerciseKey, rev
         setPhase("rest");
       }
     },
-    [finishExercise, setPhase, setRestSeconds, submitChunk]
+    [announceSetComplete, finishExercise, setPhase, setRestSeconds, submitChunk]
   );
 
-  const handleFrameUpdate = useCallback(
-    (data: FrameUpdateData) => {
-      frameRef.current = data;
-      setFrameData(data);
-      if (data.landmarks) engine.processFrame(data.landmarks);
-      if (data.repState.completedReps >= data.repState.targetReps && phaseRef.current === "active" && !endingRef.current) {
-        setTimeout(() => void endChunk("set_complete"), 900);
-      }
-    },
-    [engine, endChunk]
-  );
-
-  // Count each time the engine raises a feedback code (not each frame) for the weekly report.
+  // The engine counted the chunk's target: save it a moment later so the last rep is seen.
   useEffect(() => {
-    const code = engine.activeIssueCode;
-    if (code && code !== lastIssueRef.current && phase === "active") issuesRef.current[code] = (issuesRef.current[code] ?? 0) + 1;
-    lastIssueRef.current = code;
-  }, [engine.activeIssueCode, phase]);
+    doneRef.current = () => {
+      if (phaseRef.current === "active" && !endingRef.current) setTimeout(() => void endChunk("set_complete"), 900);
+    };
+  }, [endChunk]);
 
   // Closing the tab mid-chunk: keep the reps in the outbox so the next visit saves them.
   useEffect(() => {
@@ -387,6 +406,8 @@ export default function PrescribedSession({ exerciseId, planId, exerciseKey, rev
         <SessionDone
           progress={progress}
           bestRom={bestRom}
+          romUnit={template.rep.unit}
+          sessionId={sessionId}
           discomfort={discomfort}
           onDiscomfort={async (id) => {
             setDiscomfort(id);
@@ -405,13 +426,11 @@ export default function PrescribedSession({ exerciseId, planId, exerciseKey, rev
   }
 
   // active, paused, rest: the camera stays on so the next set starts straight away.
-  const chunkReps = frameData?.repState.completedReps ?? 0;
+  const ui = session.ui;
+  const chunkReps = ui.counted;
   const base = set ? set.completedReps : 0;
   const setTarget = set?.targetReps ?? chunkTarget;
-  const inChunk = phase === "active" || phase === "paused";
   const paused = phase !== "active";
-  const tracking = describeTracking(frameData?.confidence, exercise.bodySegment);
-  const feedback: FeedbackMessage = engine.activeFeedback ? { type: "warning", message: engine.activeFeedback } : frameData?.feedback ?? { type: "info", message: "Move slowly and stay in control." };
   const doneInSet = set ? base + (phase === "rest" ? 0 : chunkReps) : 0;
 
   return (
@@ -427,21 +446,7 @@ export default function PrescribedSession({ exerciseId, planId, exerciseKey, rev
           </Button>
         }
         camera={
-          <PoseDetector
-            onFrameUpdate={handleFrameUpdate}
-            autoStart
-            paused={paused}
-            targetReps={chunkTarget}
-            chunkKey={chunkSeq}
-            exerciseId={exercise.id}
-            bodySegment={exercise.bodySegment}
-            onStream={(s) => {
-              attachStream(s);
-              setStreamReady(Boolean(s));
-            }}
-            incorrectLandmarkIndices={engine.incorrectLandmarkIndices}
-            lowConfidenceLandmarkIndices={engine.lowConfidenceLandmarkIndices}
-          >
+          <MovementStage videoRef={session.videoRef} canvasRef={session.canvasRef} ui={ui} error={session.error} onRetry={() => void startCamera()} quiet={paused}>
             {phase === "paused" && (
               <div className="flex size-full items-center justify-center bg-slate-950/55">
                 <p className="rounded-lg bg-[var(--paper)] px-5 py-3 text-lg font-bold text-slate-900">Paused</p>
@@ -452,12 +457,7 @@ export default function PrescribedSession({ exerciseId, planId, exerciseKey, rev
                 <p className="rounded-lg bg-[var(--paper)] px-5 py-3 text-center text-lg font-bold text-slate-900">Set {set ? set.index : ""} complete. Rest.</p>
               </div>
             )}
-            {inChunk && phase === "active" && frameData && tracking.kind !== "ready" && (
-              <div className="absolute inset-x-3 bottom-3 flex justify-center">
-                <p role="status" className="max-w-md rounded-lg bg-[var(--paper)] px-4 py-2.5 text-center text-sm font-semibold text-slate-900 shadow-md">{tracking.detail}</p>
-              </div>
-            )}
-          </PoseDetector>
+          </MovementStage>
         }
         panel={
           phase === "rest" && progress && set ? (
@@ -485,22 +485,14 @@ export default function PrescribedSession({ exerciseId, planId, exerciseKey, rev
               )}
               {saveNotice && <div className="px-4 pt-3 sm:px-5"><Notice tone="warning" title="Not saved yet">{saveNotice}</Notice></div>}
               <LivePanel
-                completedReps={chunkReps}
-                targetReps={chunkTarget}
+                ui={ui}
+                paused={paused}
+                voiceEnabled={voiceEnabled}
+                onToggleVoice={toggleVoice}
+                repsBefore={base}
+                setTarget={setTarget}
                 contextLabel={set && progress ? `Set ${set.index + 1} of ${progress.targetSets}` : undefined}
                 contextDetail={set ? (base > 0 ? `${base} saved earlier in this set; this part counts up to ${chunkTarget} more.` : `${setTarget} reps in this set`) : undefined}
-                feedback={feedback}
-                issueCode={engine.activeIssueCode ?? undefined}
-                tracking={tracking}
-                paused={paused}
-                stepIndex={engine.currentStepIndex}
-                totalSteps={engine.totalSteps}
-                stepTitle={engine.currentStepTitle}
-                stepInstruction={engine.currentStepInstruction}
-                phase={engine.currentPhase}
-                angle={frameData?.jointAngle ?? 0}
-                rom={frameData?.romTracker?.rom ?? 0}
-                tempo={frameData?.repState?.tempoTracker?.lastRepDuration ?? 0}
                 pauseLabel="Pause and rest"
                 endLabel="Stop for now"
                 reachedLabel="Finish set"
@@ -510,7 +502,7 @@ export default function PrescribedSession({ exerciseId, planId, exerciseKey, rev
                   } else if (chunkReps > 0) void endChunk("pause");
                   else setPhase("paused");
                 }}
-                onFinish={() => (chunkReps >= chunkTarget ? void endChunk("set_complete") : setConfirmEnd(true))}
+                onFinish={() => (ui.done ? void endChunk("set_complete") : setConfirmEnd(true))}
                 onOpenGuide={() => setGuideOpen(true)}
               />
             </>

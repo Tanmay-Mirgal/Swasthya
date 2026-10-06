@@ -1,4 +1,5 @@
 import mongoose, { Schema, Document } from "mongoose";
+import type { StoredObservation, StoredRep, ErrorSeverity } from "@/lib/rehab/chunkQuality";
 
 export interface IExerciseSessionSet {
   index: number;
@@ -11,6 +12,17 @@ export interface IExerciseSessionSet {
     rom?: number;
     formScore?: number;
     issues?: Record<string, number>;
+    /** Movement-engine quality measurements (see lib/rehab/chunkQuality). Absent on older records. */
+    engine?: number;
+    validReps?: number;
+    invalidReps?: number;
+    partialReps?: number;
+    avgConfidence?: number;
+    lowConfidenceMs?: number;
+    corrections?: { attempted: number; succeeded: number };
+    flags?: Record<string, { count: number; severity: ErrorSeverity }>;
+    repRecords?: StoredRep[];
+    observations?: StoredObservation[];
   }[];
   completedAt?: Date;
 }
@@ -30,8 +42,21 @@ export interface IExerciseSession extends Document {
   sets?: IExerciseSessionSet[];
   /** Optimistic-concurrency counter for set updates. */
   rev?: number;
-  /** Totals of each movement-feedback code across the day's chunks. */
+  /** Totals of each movement-feedback code across the day's chunks (reps affected, for engine v2 data). */
   issueCounts?: Record<string, number>;
+  /** Worst severity seen per issue code. Engine v2 only. */
+  issueSeverity?: Record<string, ErrorSeverity>;
+  /** Version of the movement engine behind formAccuracy / the quality totals. Absent = legacy tempo-based score. */
+  engineVersion?: number;
+  validReps?: number;
+  invalidReps?: number;
+  partialReps?: number;
+  correctionAttempts?: number;
+  correctionsSucceeded?: number;
+  avgConfidence?: number;
+  lowConfidenceMs?: number;
+  /** Persistent problems worth a therapist's attention: what was measured and how often. No causes. */
+  observations?: StoredObservation[];
   /** Patient-reported discomfort after the exercise (their words, not an app judgement). */
   discomfort?: "none" | "mild" | "moderate" | "severe";
   exerciseId: string;
@@ -65,6 +90,16 @@ const ExerciseSessionSchema = new Schema(
     dateKey: { type: String },
     rev: { type: Number, default: 0 },
     issueCounts: { type: Schema.Types.Mixed },
+    issueSeverity: { type: Schema.Types.Mixed },
+    engineVersion: { type: Number },
+    validReps: { type: Number },
+    invalidReps: { type: Number },
+    partialReps: { type: Number },
+    correctionAttempts: { type: Number },
+    correctionsSucceeded: { type: Number },
+    avgConfidence: { type: Number },
+    lowConfidenceMs: { type: Number },
+    observations: { type: Schema.Types.Mixed },
     discomfort: { type: String, enum: ["none", "mild", "moderate", "severe"] },
     sets: [
       {
@@ -81,6 +116,16 @@ const ExerciseSessionSchema = new Schema(
             rom: { type: Number },
             formScore: { type: Number },
             issues: { type: Schema.Types.Mixed },
+            engine: { type: Number },
+            validReps: { type: Number },
+            invalidReps: { type: Number },
+            partialReps: { type: Number },
+            avgConfidence: { type: Number },
+            lowConfidenceMs: { type: Number },
+            corrections: { type: Schema.Types.Mixed },
+            flags: { type: Schema.Types.Mixed },
+            repRecords: { type: Schema.Types.Mixed },
+            observations: { type: Schema.Types.Mixed },
           },
         ],
         completedAt: { type: Date },

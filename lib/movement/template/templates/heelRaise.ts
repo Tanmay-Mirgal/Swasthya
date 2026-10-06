@@ -1,0 +1,196 @@
+import type { MovementTemplate } from "../schema";
+
+/**
+ * Heel Raise. Camera in front or at the side, legs and feet in view. Primary metric: how far the
+ * heel has risen relative to the toe, as a fraction of shin length, measured against the
+ * person's own flat-footed position (captured during set-up), so it does not depend on camera
+ * distance or foot size. Foot landmarks are the least reliable on the body, so the exercise is
+ * judged conservatively and asks for a clear view of the feet. Hold a steady support.
+ */
+export const heelRaise: MovementTemplate = {
+  id: "heel-raise",
+  version: 1,
+  name: "Heel Raise",
+  description: "Rise up onto your toes, pause, and lower your heels slowly. Strengthens the calf and helps balance.",
+  category: "Lower Body",
+  difficulty: "Beginner",
+  bodyPart: "Ankle and calf",
+  bodySegment: "lower",
+  primaryJoint: "ankle",
+  movement: "plantarflexion",
+  defaultReps: 12,
+  instructions: [
+    "Stand tall holding a steady support such as a counter or the back of a chair.",
+    "Place the camera so your legs and feet are fully in view.",
+    "Rise up onto your toes, keeping your knees straight, and pause at the top.",
+    "Lower your heels slowly to the floor.",
+  ],
+  camera: {
+    view: "either",
+    minBodyFraction: 0.2,
+    maxBodyFraction: 0.85,
+    hint: "From the front or side, about 2 m away, so both legs and feet are fully in frame.",
+    segmentWord: "legs and feet",
+  },
+  sideMode: "auto",
+  landmarks: {
+    required: [{ joint: "knee" }, { joint: "ankle" }, { joint: "heel" }, { joint: "foot" }],
+    optional: [{ joint: "hip" }, { joint: "shoulder" }],
+  },
+  metrics: {
+    lift: { kind: "offsetY", point: { joint: "foot" }, from: { joint: "heel" }, scale: "shin", baseline: "delta" },
+    knee: { kind: "angle", a: { joint: "hip" }, b: { joint: "knee" }, c: { joint: "ankle" } },
+    trunk: { kind: "fromVertical", a: { joint: "shoulder" }, b: { joint: "hip" } },
+  },
+  setup: {
+    instruction: "Stand tall with your feet flat, holding a steady support.",
+    holdMs: 1200,
+    stableWithin: 0.05,
+  },
+  phaseLabels: { rest: "Feet flat", out: "Rising", peak: "On your toes", back: "Lowering" },
+  phaseCues: {
+    rest: "Ready. Rise up onto your toes.",
+    out: "Keep rising, knees straight.",
+    peak: "Good. Pause, then lower slowly.",
+    back: "Lower your heels slowly.",
+  },
+  rep: {
+    metric: "lift",
+    direction: "increase",
+    restThreshold: 0.05,
+    leaveThreshold: 0.07,
+    countThreshold: 0.1,
+    peakThreshold: 0.15,
+    returnDrop: 0.03,
+    minRepMs: 2000,
+    maxRepMs: 14000,
+    minPeakHoldMs: 500,
+    debounceMs: 800,
+    returnStallMs: 3500,
+    abandonMs: 25000,
+    displayScale: 100,
+    unit: "pct",
+  },
+  repRules: {
+    range: {
+      id: "insufficient_rise",
+      label: "Heels not lifted high enough",
+      severity: "minor",
+      invalidatesRep: true,
+      landmarks: [{ joint: "heel" }, { joint: "ankle" }],
+      bones: [[{ joint: "ankle" }, { joint: "heel" }]],
+      low: {
+        observation: "the heels stopped below the target height",
+        texts: [
+          "Rise a little higher onto your toes.",
+          "Press down through the balls of your feet and lift your heels higher.",
+          "Take your time and lift your heels as high as is comfortable.",
+        ],
+      },
+      ack: "Good, that rise went higher.",
+    },
+    tooFast: {
+      id: "too_fast",
+      label: "Moved too quickly",
+      severity: "minor",
+      invalidatesRep: false,
+      landmarks: [{ joint: "heel" }],
+      low: {
+        observation: "the heel raise was quicker than the controlled pace",
+        texts: [
+          "Slow down. Take about two seconds to rise onto your toes.",
+          "Lower your heels more slowly and keep control of your ankles.",
+          "Count two seconds as your heels rise and two as they lower.",
+        ],
+      },
+      ack: "Nice, that was a controlled pace.",
+    },
+    shortHold: {
+      id: "short_hold",
+      label: "Did not pause at the top",
+      severity: "minor",
+      invalidatesRep: false,
+      landmarks: [{ joint: "heel" }],
+      low: {
+        observation: "there was no pause at the top of the raise",
+        texts: [
+          "Pause for a moment on your toes before you lower your heels.",
+          "Hold the top for a second, with your heels lifted, before coming down.",
+          "Stay up on your toes briefly at the top of each raise.",
+        ],
+      },
+    },
+    incompleteReturn: {
+      id: "incomplete_return",
+      label: "Heels did not return to the floor",
+      severity: "minor",
+      invalidatesRep: false,
+      landmarks: [{ joint: "heel" }, { joint: "ankle" }],
+      high: {
+        observation: "the heels were not lowered all the way to the floor",
+        texts: [
+          "Lower your heels all the way to the floor before the next raise.",
+          "Let your heels touch the floor at the bottom of each raise.",
+          "Finish lowering your heels slowly until your feet are flat.",
+        ],
+      },
+    },
+  },
+  rules: [
+    {
+      id: "knee_bent",
+      label: "Knees bending during the raise",
+      kind: "alignment",
+      metric: "knee",
+      phases: ["out", "peak", "back"],
+      min: 160,
+      release: 6,
+      sustainMs: 600,
+      recoverMs: 300,
+      severity: "moderate",
+      invalidatesRep: true,
+      landmarks: [{ joint: "knee" }, { joint: "hip" }],
+      bones: [[{ joint: "hip" }, { joint: "knee" }], [{ joint: "knee" }, { joint: "ankle" }]],
+      low: {
+        observation: "the knee is bending instead of staying straight",
+        texts: [
+          "Keep your knees straight as you rise onto your toes.",
+          "Straighten your knees and lift only through your ankles.",
+          "Slow down and keep your legs long as your heels lift.",
+        ],
+      },
+      ack: "Good correction, your knees are straight.",
+    },
+    {
+      id: "trunk_lean",
+      label: "Leaning forward",
+      kind: "alignment",
+      metric: "trunk",
+      phases: ["out", "peak", "back"],
+      max: 14,
+      release: 4,
+      sustainMs: 600,
+      recoverMs: 300,
+      severity: "moderate",
+      invalidatesRep: false,
+      landmarks: [{ joint: "shoulder" }, { joint: "hip" }],
+      bones: [[{ joint: "shoulder" }, { joint: "hip" }]],
+      high: {
+        observation: "the upper body is leaning instead of staying upright",
+        texts: [
+          "You are leaning. Stand tall with your shoulders over your hips.",
+          "Keep your body upright and let your legs do the lifting.",
+          "Slow down and stay tall through your back as you rise.",
+        ],
+      },
+      ack: "Good correction, you are standing tall.",
+    },
+  ],
+  statusJoints: [
+    { label: "Knee", ref: { joint: "knee" } },
+    { label: "Ankle", ref: { joint: "ankle" } },
+    { label: "Heel", ref: { joint: "heel" } },
+    { label: "Toes", ref: { joint: "foot" } },
+  ],
+  commonMistakes: ["Bending the knees", "Leaning forward onto the support", "Dropping the heels quickly", "No pause at the top"],
+};

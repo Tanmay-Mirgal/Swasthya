@@ -24,7 +24,8 @@ export function saveSession(session: Omit<SessionRecord, "id" | "date">): Sessio
   return newRecord;
 }
 
-export async function syncSessionToDatabase(session: SessionRecord, token: string): Promise<boolean> {
+/** Copies a session to the account. Resolves to the saved session id, or null if it could not be saved. */
+export async function syncSessionToDatabase(session: SessionRecord, token: string): Promise<string | null> {
   try {
     const res = await fetch("/api/patient/session", {
       method: "POST",
@@ -42,12 +43,22 @@ export async function syncSessionToDatabase(session: SessionRecord, token: strin
         targetRom: session.targetRom,
         targetMet: session.targetMet,
         date: session.date,
+        engine: session.engine,
+        validReps: session.validReps,
+        invalidReps: session.invalidReps,
+        partialReps: session.partialReps,
+        avgConfidence: session.avgConfidence,
+        corrections:
+          session.correctionAttempts !== undefined ? { attempted: session.correctionAttempts, succeeded: session.correctionsSucceeded ?? 0 } : undefined,
+        flags: session.errors,
       }),
     });
-    return res.ok;
+    if (!res.ok) return null;
+    const json = await res.json().catch(() => null);
+    return typeof json?.data?.id === "string" ? json.data.id : null;
   } catch (err) {
     console.error("Failed to sync session to database:", err);
-    return false;
+    return null;
   }
 }
 

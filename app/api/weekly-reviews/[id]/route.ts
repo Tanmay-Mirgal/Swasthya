@@ -37,7 +37,13 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
     ]);
 
     const report = review.report
-      ? { ...review.report, commonFeedback: (review.report.commonFeedback ?? []).map((f) => ({ ...f, label: issueLabel(f.code) })) }
+      ? {
+          ...review.report,
+          commonFeedback: (review.report.commonFeedback ?? []).map((f) => ({ ...f, label: issueLabel(f.code) })),
+          quality: review.report.quality
+            ? { ...review.report.quality, repeatedErrors: review.report.quality.repeatedErrors.map((e) => ({ ...e, label: issueLabel(e.code) })) }
+            : undefined,
+        }
       : null;
 
     return NextResponse.json({

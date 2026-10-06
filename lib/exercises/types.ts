@@ -1,18 +1,3 @@
-export type MovementState =
-  | "READY"
-  | "EXTENDING"
-  | "EXTENDED"
-  | "RETURNING";
-
-export type FeedbackType = "success" | "warning" | "camera" | "info";
-
-export interface FeedbackMessage {
-  type: FeedbackType;
-  message: string;
-  actionDirective?: string; // e.g. "CURL UPWARD", "EXTEND LEG", "HOLD PEAK", "LOWER SLOWLY"
-  icon?: string; // e.g. "⬆️", "⏸️", "⬇️", "✅", "⚠️"
-}
-
 export interface ExerciseConfig {
   id: string;
   name: string;
@@ -25,15 +10,10 @@ export interface ExerciseConfig {
   instructions: string[];
 }
 
-export interface BiomechanicalMetrics {
-  currentAngle: number;
-  minAngle: number;
-  maxAngle: number;
-  rom: number;
-  lastTempo: number;
-  averageTempo: number;
-}
-
+/**
+ * A free-practice session kept on this device (and copied to the account when signed in).
+ * Every field is something the camera measured or the person did: nothing is a default.
+ */
 export interface SessionRecord {
   id: string;
   exerciseId: string;
@@ -41,13 +21,24 @@ export interface SessionRecord {
   date: string;
   targetReps: number;
   completedReps: number;
-  minAngle: number;
-  maxAngle: number;
+  /** Best range of motion in any counted rep, in `unit`. 0 when none was measured. */
   rom: number;
-  averageTempo: number;
-  goodFormCount: number;
-  warningCount: number;
+  unit?: "deg" | "pct";
+  /** Mean seconds per counted rep; absent when no rep was counted. */
+  averageTempo?: number;
   durationSeconds: number;
+  /** Per-rep judgment from the movement engine. */
+  validReps?: number;
+  invalidReps?: number;
+  partialReps?: number;
+  correctionAttempts?: number;
+  correctionsSucceeded?: number;
+  avgConfidence?: number;
+  /** Reps affected by each error code, worst severity seen. */
+  errors?: Record<string, { count: number; severity: "minor" | "moderate" | "major" }>;
+  engine?: number;
+  /** Id of the copy saved to the account, once synced. */
+  serverId?: string;
   targetRom?: number;
   targetMet?: boolean;
 }

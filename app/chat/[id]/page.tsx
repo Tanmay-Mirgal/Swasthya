@@ -105,16 +105,22 @@ export default function DirectChatPage({
 
   const offline = connectionStatus !== "connected";
 
+  const isTherapist = user?.publicMetadata?.role === "therapist";
+  const backHref = isTherapist ? "/therapist?tab=patients" : "/appointments";
+
   return (
-    <AppShell hideHeader>
-      <div className="max-w-3xl mx-auto w-full flex flex-col h-[calc(100dvh-5rem)] md:h-[calc(100dvh-4rem)] bg-white rounded-lg border border-slate-900 overflow-hidden">
+    <AppShell hideHeader fullBleed hideBottomNav>
+      <div className="w-full h-full flex flex-col bg-white overflow-hidden">
         {/* Top Header */}
-        <div className="px-4 py-3.5 border-b border-slate-100 flex items-center justify-between gap-3 bg-white shrink-0">
+        <div
+          className="px-4 md:px-6 py-3 border-b border-slate-200 flex items-center justify-between gap-3 bg-white shrink-0 z-10"
+          style={{ paddingTop: "calc(env(safe-area-inset-top, 0px) + 0.75rem)" }}
+        >
           <div className="flex items-center gap-3 min-w-0">
             <Link
-              href="/appointments"
-              className="p-1 -ml-1 text-slate-600 hover:text-slate-700 transition-colors"
-              aria-label="Back to appointments"
+              href={backHref}
+              className="p-1.5 -ml-1.5 text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition-colors"
+              aria-label="Back"
             >
               <ChevronLeft className="size-5" />
             </Link>
@@ -128,10 +134,10 @@ export default function DirectChatPage({
             />
 
             <div className="min-w-0">
-              <h1 className="text-sm font-semibold text-slate-900 leading-snug truncate">
+              <h1 className="text-sm md:text-base font-semibold text-slate-900 leading-snug truncate">
                 {participant?.name || "Doctor"}
               </h1>
-              <p className="text-xs text-slate-600 truncate">
+              <p className="text-xs text-slate-500 truncate">
                 {participant?.specialization || "Clinical Physiotherapist"}
               </p>
             </div>
@@ -139,14 +145,14 @@ export default function DirectChatPage({
 
           <div className="flex items-center gap-3 shrink-0">
             <div
-              className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-slate-50 border border-slate-200/60 text-xs"
+              className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-slate-50 border border-slate-200 text-xs"
               role="status"
               aria-live="polite"
             >
               <span
                 className={`inline-block size-2 rounded-full ${
                   connectionStatus === "connected"
-                    ? "bg-emerald-500"
+                    ? "bg-emerald-500 animate-pulse"
                     : connectionStatus === "auth_failed"
                     ? "bg-red-500"
                     : connectionStatus === "disconnected"
@@ -154,12 +160,12 @@ export default function DirectChatPage({
                     : "bg-amber-500"
                 }`}
               />
-              <span className="text-xs text-slate-700">{STATUS_LABEL[connectionStatus]}</span>
+              <span className="text-xs font-medium text-slate-700">{STATUS_LABEL[connectionStatus]}</span>
             </div>
 
             {participant?.availabilityNotice && (
-              <div className="hidden items-center gap-1.5 text-sm text-slate-700 sm:flex">
-                <Clock className="size-3.5 text-slate-600" aria-hidden="true" />
+              <div className="hidden items-center gap-1.5 text-xs text-slate-600 sm:flex">
+                <Clock className="size-3.5 text-slate-500" aria-hidden="true" />
                 <span>{participant.availabilityNotice}</span>
               </div>
             )}
@@ -167,7 +173,7 @@ export default function DirectChatPage({
         </div>
 
         {offline && !loading && (
-          <div className="px-4 py-2 bg-amber-50 border-b border-amber-100 flex items-center gap-2 text-xs text-amber-800 shrink-0">
+          <div className="px-4 md:px-6 py-2 bg-amber-50 border-b border-amber-200 text-xs text-amber-800 flex items-center gap-2 shrink-0">
             <WifiOff className="size-3.5 shrink-0" />
             <span>
               {connectionStatus === "auth_failed"
@@ -179,8 +185,8 @@ export default function DirectChatPage({
 
         {/* Upcoming Consultation Reminder Banner (Contextual link, NOT a call room) */}
         {upcoming && (
-          <div className="px-4 py-2 bg-slate-50 border-b border-slate-100 flex items-center justify-between text-xs text-slate-600 shrink-0">
-            <div className="flex items-center gap-1.5 truncate">
+          <div className="px-4 md:px-6 py-2.5 bg-slate-50 border-b border-slate-200 flex items-center justify-between text-xs text-slate-600 shrink-0">
+            <div className="flex items-center gap-2 truncate">
               <Calendar className="size-3.5 text-slate-500 shrink-0" />
               <span className="truncate">
                 Upcoming Consultation:{" "}
@@ -196,7 +202,7 @@ export default function DirectChatPage({
             </div>
             <Link
               href="/appointments"
-              className="text-xs font-semibold text-slate-800 hover:text-emerald-800 underline underline-offset-2 shrink-0 ml-2"
+              className="text-xs font-semibold text-emerald-700 hover:text-emerald-800 underline underline-offset-2 shrink-0 ml-2"
             >
               View Appointment
             </Link>
@@ -204,115 +210,122 @@ export default function DirectChatPage({
         )}
 
         {/* Messages Body */}
-        <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-3 bg-slate-50">
-          {loading ? (
-            <div className="flex flex-col items-center justify-center h-full space-y-2 text-slate-600">
-              <Loader2 className="size-6 animate-spin text-slate-500" />
-              <p className="text-xs">Loading conversation...</p>
-            </div>
-          ) : error && messages.length === 0 ? (
-            <div className="flex flex-col items-center justify-center h-full space-y-3 text-center text-slate-500 p-6">
-              <AlertCircle className="size-6 text-slate-600" />
-              <p className="text-xs max-w-xs">{error}</p>
-              <button
-                onClick={() => void chat.reload()}
-                className="text-xs font-semibold text-slate-800 underline underline-offset-2 cursor-pointer"
+        <div className="flex-1 min-h-0 overflow-y-auto px-4 py-5 md:px-8 bg-slate-50/70">
+          <div className="max-w-4xl mx-auto w-full space-y-3.5">
+            {loading ? (
+              <div className="flex flex-col items-center justify-center min-h-90 space-y-2 text-slate-600">
+                <Loader2 className="size-6 animate-spin text-slate-500" />
+                <p className="text-xs">Loading conversation...</p>
+              </div>
+            ) : error && messages.length === 0 ? (
+              <div className="flex flex-col items-center justify-center min-h-90 space-y-3 text-center text-slate-500 p-6">
+                <AlertCircle className="size-6 text-slate-600" />
+                <p className="text-xs max-w-xs">{error}</p>
+                <button
+                  onClick={() => void chat.reload()}
+                  className="text-xs font-semibold text-slate-800 underline underline-offset-2 cursor-pointer"
+                >
+                  Try again
+                </button>
+              </div>
+            ) : messages.length === 0 ? (
+              <div className="flex flex-col items-center justify-center min-h-90 text-center space-y-1.5 p-6 text-slate-600">
+                <p className="text-sm font-medium text-slate-700">
+                  Start a conversation with {participant?.name || "your therapist"}
+                </p>
+                <p className="text-xs text-slate-500 max-w-sm">
+                  Feel free to share recovery questions or symptoms. Messages are reviewed during clinic hours.
+                </p>
+              </div>
+            ) : (
+              messages.map((m) => {
+                const isMine = m.senderId === selfId;
+                return (
+                  <div key={m.clientId || m._id} className={`flex flex-col ${isMine ? "items-end" : "items-start"}`}>
+                    <div
+                      className={`max-w-[85%] sm:max-w-[72%] px-4 py-2.5 rounded-2xl text-sm leading-relaxed whitespace-pre-wrap wrap-break-word shadow-xs ${
+                        isMine
+                          ? `bg-emerald-700 text-white rounded-tr-xs ${m.status === "failed" ? "opacity-70" : ""}`
+                          : "bg-white text-slate-900 border border-slate-200/90 rounded-tl-xs"
+                      }`}
+                    >
+                      {m.content}
+                    </div>
+                    <div className="text-[11px] text-slate-500 mt-1 px-1 flex items-center gap-1">
+                      <span>
+                        {new Date(m.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                      </span>
+                      {isMine && m.status === "sending" && <span>· Sending…</span>}
+                      {isMine && m.status === "failed" && m.clientId && (
+                        <button
+                          onClick={() => void chat.retry(m.clientId!)}
+                          className="flex items-center gap-1 text-red-600 font-semibold cursor-pointer"
+                        >
+                          <RotateCcw className="size-3" /> Not sent · Retry
+                        </button>
+                      )}
+                      {isMine && m.status !== "sending" && m.status !== "failed" &&
+                        (m.read ? (
+                          <span className="flex items-center gap-0.5 text-emerald-700 font-medium" aria-label="Read">
+                            <CheckCheck className="size-3.5" /> Read
+                          </span>
+                        ) : (
+                          <span className="flex items-center gap-0.5" aria-label="Delivered">
+                            <Check className="size-3.5" /> Sent
+                          </span>
+                        ))}
+                    </div>
+                  </div>
+                );
+              })
+            )}
+            {peerTyping && (
+              <div
+                className="flex items-center gap-2 text-xs text-slate-600 italic px-3 py-1.5 bg-white border border-slate-200 rounded-full w-fit shadow-xs"
+                role="status"
               >
-                Try again
-              </button>
-            </div>
-          ) : messages.length === 0 ? (
-            <div className="flex flex-col items-center justify-center h-full text-center space-y-1.5 p-6 text-slate-600">
-              <p className="text-xs font-medium text-slate-700">
-                Start a conversation with {participant?.name || "your therapist"}
-              </p>
-              <p className="text-xs text-slate-500 max-w-sm">
-                Feel free to share recovery questions or symptoms. Messages are reviewed during clinic hours.
-              </p>
-            </div>
-          ) : (
-            messages.map((m) => {
-              const isMine = m.senderId === selfId;
-              return (
-                <div key={m.clientId || m._id} className={`flex flex-col ${isMine ? "items-end" : "items-start"}`}>
-                  <div
-                    className={`max-w-[82%] px-3.5 py-2.5 rounded-lg text-sm leading-relaxed whitespace-pre-wrap break-words ${
-                      isMine
-                        ? `bg-emerald-700 text-white ${m.status === "failed" ? "opacity-70" : ""}`
-                        : "bg-white text-slate-900 border border-slate-300"
-                    }`}
-                  >
-                    {m.content}
-                  </div>
-                  <div className="text-xs text-slate-600 mt-1 px-1 flex items-center gap-1">
-                    <span>
-                      {new Date(m.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
-                    </span>
-                    {isMine && m.status === "sending" && <span>· Sending…</span>}
-                    {isMine && m.status === "failed" && m.clientId && (
-                      <button
-                        onClick={() => void chat.retry(m.clientId!)}
-                        className="flex items-center gap-1 text-red-600 font-semibold cursor-pointer"
-                      >
-                        <RotateCcw className="size-3" /> Not sent · Retry
-                      </button>
-                    )}
-                    {isMine && m.status !== "sending" && m.status !== "failed" &&
-                      (m.read ? (
-                        <span className="flex items-center gap-0.5 text-emerald-700" aria-label="Read">
-                          <CheckCheck className="size-3" /> Read
-                        </span>
-                      ) : (
-                        <span className="flex items-center gap-0.5" aria-label="Delivered">
-                          <Check className="size-3" /> Sent
-                        </span>
-                      ))}
-                  </div>
-                </div>
-              );
-            })
-          )}
-          {peerTyping && (
-            <div
-              className="flex items-center gap-1.5 text-xs text-slate-500 italic px-2 py-1 bg-slate-100/70 rounded-md w-fit"
-              role="status"
-            >
-              <span aria-hidden="true" className="size-1.5 rounded-full bg-emerald-600" />
-              <span>{participant?.name || "Therapist"} is typing...</span>
-            </div>
-          )}
-          <div ref={messagesEndRef} />
+                <span aria-hidden="true" className="size-1.5 rounded-full bg-emerald-600 animate-pulse" />
+                <span>{participant?.name || "Therapist"} is typing...</span>
+              </div>
+            )}
+            <div ref={messagesEndRef} />
+          </div>
         </div>
 
         {sendError && (
-          <div className="px-4 py-2 bg-red-50 border-t border-red-100 text-xs text-red-700 shrink-0" role="alert">
+          <div className="px-4 md:px-6 py-2 bg-red-50 border-t border-red-200 text-xs text-red-700 shrink-0" role="alert">
             {sendError}
           </div>
         )}
 
         {/* Input Bar */}
-        <form
-          onSubmit={handleSendMessage}
-          className="p-3 bg-white border-t border-slate-100 flex items-center gap-2 shrink-0"
+        <div
+          className="p-3 md:p-4 bg-white border-t border-slate-200 shrink-0"
+          style={{ paddingBottom: "max(0.75rem, env(safe-area-inset-bottom, 0px))" }}
         >
-          <input
-            type="text"
-            value={inputText}
-            onChange={(e) => handleInputChange(e.target.value)}
-            placeholder="Type a message to your physiotherapist..."
-            aria-label="Message"
-            maxLength={4000}
-            className="flex-1 h-10 px-3.5 rounded-lg border border-slate-300 text-sm text-slate-900 placeholder:text-slate-500 hover:border-slate-500 focus-visible:border-emerald-600"
-          />
-          <button
-            type="submit"
-            disabled={!inputText.trim() || sending}
-            className="h-10 px-4 rounded-lg bg-emerald-600 hover:bg-emerald-700 disabled:opacity-45 text-white text-sm font-semibold flex items-center gap-1.5 transition-colors cursor-pointer"
+          <form
+            onSubmit={handleSendMessage}
+            className="max-w-4xl mx-auto w-full flex items-center gap-2"
           >
-            {sending ? <Loader2 className="size-4 animate-spin" /> : <Send className="size-3.5" />}
-            <span className="hidden sm:inline">Send</span>
-          </button>
-        </form>
+            <input
+              type="text"
+              value={inputText}
+              onChange={(e) => handleInputChange(e.target.value)}
+              placeholder={isTherapist ? "Type a message to patient..." : "Type a message to your physiotherapist..."}
+              aria-label="Message"
+              maxLength={4000}
+              className="flex-1 h-11 px-4 rounded-xl border border-slate-300 bg-slate-50/50 text-sm text-slate-900 placeholder:text-slate-500 focus:bg-white focus:outline-none focus:border-emerald-600 focus:ring-1 focus:ring-emerald-600 transition-colors"
+            />
+            <button
+              type="submit"
+              disabled={!inputText.trim() || sending}
+              className="h-11 px-5 rounded-xl bg-emerald-700 hover:bg-emerald-800 disabled:opacity-40 disabled:cursor-not-allowed text-white text-sm font-semibold flex items-center gap-2 transition-colors cursor-pointer shrink-0 shadow-xs"
+            >
+              {sending ? <Loader2 className="size-4 animate-spin" /> : <Send className="size-4" />}
+              <span className="hidden sm:inline">Send</span>
+            </button>
+          </form>
+        </div>
       </div>
     </AppShell>
   );

@@ -9,6 +9,9 @@
     "lint": "eslint",
     "test:realtime": "tsx scripts/test_realtime_e2e.ts",
     "test:rehab": "tsx --test lib/rehab/*.test.ts",
+    "movement:replay": "tsx --conditions=react-server scripts/movement_replay.ts",
+    "test:movement": "tsx --conditions=react-server --test lib/movement/__tests__/*.test.ts",
+    "test:movement:e2e": "tsx --conditions=react-server scripts/test_movement_e2e.ts",
     "test:rehab:e2e": "tsx --conditions=react-server scripts/test_rehab_e2e.ts",
     "migrate:plans": "tsx --conditions=react-server scripts/migrate_assignments_to_prescriptions.ts"
   },

@@ -9,6 +9,9 @@ import AppShell from "@/components/layout/AppShell";
 import { Authorship, Button, EmptyState, Notice, PageLoading, SectionHeading, Select, StatusMark, TickRow } from "@/components/ui";
 import PatientAvatar from "@/components/therapist/PatientAvatar";
 import PlanSection, { type PlanData, type PlanHistoryItem } from "@/components/therapist/PlanSection";
+import QualityTrend from "@/components/progress/QualityTrend";
+import { buildTrends } from "@/lib/movement/analytics/trends";
+import { SessionReportDisclosure } from "@/components/reports/SessionReportCard";
 import SessionReviewDialog, { ASSESSMENT_LABEL, type Assessment } from "@/components/therapist/SessionReviewDialog";
 import RomChart from "@/components/progress/RomChart";
 import AdherenceGrid from "@/components/progress/AdherenceGrid";
@@ -41,6 +44,18 @@ interface PatientSession {
   therapistNote?: string;
   therapistAssessment?: Assessment;
   reviewedAt?: string;
+  romUnit?: "deg" | "pct";
+  avgRepSeconds?: number;
+  quality?: {
+    validReps: number;
+    invalidReps: number;
+    partialReps: number;
+    correctionAttempts?: number;
+    correctionsSucceeded?: number;
+    avgConfidence?: number;
+    errors: { code: string; label: string; reps: number; severity: "minor" | "moderate" | "major" }[];
+    observations: { code: string; label: string; repsAffected: number; ofReps: number }[];
+  } | null;
 }
 
 interface PatientDetailData {
@@ -117,6 +132,31 @@ export default function PatientDetailPage({ params }: { params: Promise<{ patien
     [sessions, activeRomExercise]
   );
   const doneKeys = useMemo(() => new Set(sessions.map((s) => dayKey(new Date(s.date)))), [sessions]);
+  const trend = useMemo(
+    () =>
+      buildTrends(
+        sessions.filter((s) => s.exerciseId === activeRomExercise).map((s) => ({
+          id: s.id,
+          date: s.date,
+          exerciseId: s.exerciseId,
+          exerciseName: s.exerciseName,
+          completedReps: s.completedReps,
+          targetReps: s.targetReps,
+          rom: s.rom,
+          unit: s.romUnit,
+          judged: Boolean(s.quality),
+          validReps: s.quality?.validReps,
+          invalidReps: s.quality?.invalidReps,
+          partialReps: s.quality?.partialReps,
+          correctionAttempts: s.quality?.correctionAttempts,
+          correctionsSucceeded: s.quality?.correctionsSucceeded,
+          avgConfidence: s.quality?.avgConfidence,
+          avgRepSeconds: s.avgRepSeconds,
+          errors: s.quality?.errors.map((e) => ({ code: e.code, label: e.label, reps: e.reps })),
+        }))
+      ).find((t) => t.exerciseId === activeRomExercise),
+    [sessions, activeRomExercise]
+  );
 
   if (isLoading) {
     return (
@@ -199,9 +239,23 @@ export default function PatientDetailPage({ params }: { params: Promise<{ patien
                         <div className="mt-1.5"><TickRow total={Math.min(s.targetReps, 20)} done={Math.min(s.completedReps, 20)} size={14} label={`${s.completedReps} of ${s.targetReps} reps`} /></div>
                         <p className="mt-1 text-sm text-slate-800">
                           <span className="font-mono font-semibold tabular">{s.completedReps}/{s.targetReps}</span> reps
-                          {s.rom > 0 && <> · <span className="font-mono font-semibold tabular">{Math.round(s.rom)}°</span> range</>}
+                          {s.rom > 0 && <> · <span className="font-mono font-semibold tabular">{Math.round(s.rom)}{s.romUnit === "pct" ? "%" : "°"}</span> range</>}
                           {s.durationSeconds > 0 && <> · <span className="font-mono tabular">{Math.floor(s.durationSeconds / 60)}:{String(s.durationSeconds % 60).padStart(2, "0")}</span></>}
                         </p>
+                        {s.quality && (
+                          <p className="mt-1 text-sm text-slate-800">
+                            <span className="font-mono font-semibold tabular">{s.quality.validReps}</span> met the form checks
+                            {s.quality.invalidReps > 0 && <>, <span className="font-mono font-semibold tabular">{s.quality.invalidReps}</span> counted with a note</>}
+                            {s.quality.partialReps > 0 && <>, <span className="font-mono font-semibold tabular">{s.quality.partialReps}</span> partial</>}
+                            {s.quality.errors[0] && <> · most often: {s.quality.errors[0].label.toLowerCase()} ({s.quality.errors[0].reps})</>}
+                          </p>
+                        )}
+                        {s.quality?.observations.map((o) => (
+                          <p key={o.code} className="mt-1 text-sm font-semibold text-amber-900">
+                            <span className="bg-amber-100 px-1">Repeated: {o.label.toLowerCase()} in {o.repsAffected} of {o.ofReps} reps</span>
+                          </p>
+                        ))}
+                        {s.quality && <SessionReportDisclosure sessionId={s.id} audience="therapist" />}
                       </div>
                       <div>
                         <Authorship by="therapist" name="you" />
@@ -243,9 +297,11 @@ export default function PatientDetailPage({ params }: { params: Promise<{ patien
               </div>
             )}
             <div className="mt-3">
-              {romPoints.length === 0 ? <EmptyState title="No readings yet">Range-of-motion readings appear after tracked sessions.</EmptyState> : <RomChart points={romPoints} />}
+              {romPoints.length === 0 ? <EmptyState title="No readings yet">Range-of-motion readings appear after tracked sessions.</EmptyState> : <RomChart points={romPoints} unit={trend?.unit === "pct" ? "%" : "°"} />}
             </div>
           </section>
+
+          {trend && <QualityTrend trend={trend} />}
         </aside>
       </div>
 

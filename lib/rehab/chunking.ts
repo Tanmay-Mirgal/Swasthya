@@ -8,14 +8,16 @@
  * and a set can never be credited with more than its prescribed reps.
  */
 
-export interface ChunkRecord {
+import { clampQuality, type ChunkQuality } from "./chunkQuality";
+
+export interface ChunkRecord extends ChunkQuality {
   chunkId: string;
   reps: number;
   startedAt?: Date;
   endedAt?: Date;
   /** Largest range of motion measured in this chunk, degrees. */
   rom?: number;
-  /** Share of reps in this chunk with no form warning, 0-100. */
+  /** Share of reps in this chunk that met the exercise's form rules, 0-100. */
   formScore?: number;
   /** Count of each movement-feedback code the engine raised during this chunk. */
   issues?: Record<string, number>;
@@ -83,7 +85,7 @@ export function applyChunk({ sets, targetSets, targetReps, setIndex, chunk }: Ap
   if (credited <= 0) return { ok: false, error: "No reps to record." };
 
   target.completedReps += credited;
-  target.chunks.push({ ...chunk, reps: credited });
+  target.chunks.push(clampQuality({ ...chunk, reps: credited }, credited));
   const setComplete = target.completedReps >= targetReps;
   if (setComplete) target.completedAt = chunk.endedAt ?? new Date();
   next.sort((a, b) => a.index - b.index);

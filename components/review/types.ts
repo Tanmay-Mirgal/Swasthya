@@ -7,7 +7,10 @@ export interface ReportExercise {
   repsPrescribed: number;
   repsCompleted: number;
   averageRom?: number;
+  romUnit?: "deg" | "pct";
   averageFormScore?: number;
+  validReps?: number;
+  invalidReps?: number;
 }
 
 export interface WeeklyReportData {
@@ -26,6 +29,16 @@ export interface WeeklyReportData {
   adherencePercent: number | null;
   averageRom?: number;
   averageFormScore?: number;
+  formBasis?: "engine2" | "legacy";
+  quality?: {
+    validReps: number;
+    invalidReps: number;
+    partialReps: number;
+    correctionAttempts: number;
+    correctionsSucceeded: number;
+    avgConfidence?: number;
+    repeatedErrors: { code: string; reps: number; severity: "minor" | "moderate" | "major"; label?: string }[];
+  };
   qualityChange?: number | null;
   commonFeedback: { code: string; count: number; label?: string }[];
   discomfortReports: { level: "mild" | "moderate" | "severe"; day: string; exerciseName: string }[];

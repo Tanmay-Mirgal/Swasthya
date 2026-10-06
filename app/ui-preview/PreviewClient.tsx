@@ -11,7 +11,7 @@ import SessionSummary from "@/components/session/SessionSummary";
 import OverviewTab from "@/components/therapist/OverviewTab";
 import PatientsTable from "@/components/therapist/PatientsTable";
 import type { TherapistConsultationItem, TherapistPatientItem, TherapistPendingRequestItem } from "@/components/therapist/types";
-import FocusFrame from "@/components/exercise/FocusFrame";
+
 import { SessionDone, SessionIntro } from "@/components/exercise/SessionViews";
 import { PlanBuilder } from "@/components/prescription/PlanBuilder";
 import PlanSection from "@/components/therapist/PlanSection";
@@ -19,9 +19,13 @@ import ReportView from "@/components/review/ReportView";
 import ReviewsTab from "@/components/review/ReviewsTab";
 import type { ReviewListItem, WeeklyReportData } from "@/components/review/types";
 import { computeExerciseProgress } from "@/lib/rehab/schedule";
-import LivePanel from "@/components/exercise/LivePanel";
 import { getAllExercises } from "@/lib/exercises/registry";
-import { describeTracking } from "@/lib/pose/trackingState";
+import ReplayScreen, { type ReplayScenario } from "./ReplayScreen";
+import StageSmoke from "./StageSmoke";
+import QualityTrend from "@/components/progress/QualityTrend";
+import { ReportBody } from "@/components/reports/SessionReportCard";
+import { buildTrends } from "@/lib/movement/analytics/trends";
+import { buildSessionFacts, deterministicReport } from "@/lib/movement/analytics/sessionReport";
 import { Button, Notice, SectionHeading, TickBox, StatusMark, Authorship, EmptyState } from "@/components/ui";
 
 // Fixture plan built with the real schedule functions, so the shape matches what /api/patient/plan returns.
@@ -123,38 +127,46 @@ const samplePlan = {
 };
 const sampleHistory = [{ id: "p1", version: 2, status: "active", startDate: "2026-10-02", endDate: "2026-10-31", exerciseCount: 2 }, { id: "p0", version: 1, status: "completed", startDate: "2026-09-20", endDate: "2026-10-01", exerciseCount: 1, closedReason: "superseded" }];
 
+const trendFixture = buildTrends(
+  [18, 14, 11, 8, 5, 3, 1].map((n, i) => ({
+    id: `t${i}`,
+    date: day(n),
+    exerciseId: "seated-knee-extension",
+    exerciseName: "Seated Knee Extension",
+    completedReps: 45,
+    targetReps: 45,
+    rom: 78 + i * 2,
+    judged: i !== 0,
+    validReps: 24 + i * 3,
+    invalidReps: 21 - i * 3,
+    correctionAttempts: 6,
+    correctionsSucceeded: 2 + i / 1.5 | 0,
+    avgConfidence: i === 3 ? 0.55 : 0.92,
+    avgRepSeconds: 3.4,
+    errors: [{ code: "TRUNK_LEAN", label: "Leaning the trunk", reps: 8 - i }],
+  })),
+  { now: new Date() }
+)[0];
+
+const reportFixture = (() => {
+  const mk = (index: number, reps: number, valid: number, invalid: number) => ({ index, completedReps: reps, chunks: [{ chunkId: `c${index}`, reps, engine: 2, validReps: valid, invalidReps: invalid, partialReps: 0, rom: 80, avgConfidence: 0.93, repRecords: [{ n: 1, valid: true, reasons: [], errors: [], rom: 80, ms: 3200, conf: 0.9 }] }] });
+  const facts = buildSessionFacts({
+    exerciseId: "seated-knee-extension", exerciseName: "Seated Knee Extension", targetReps: 45, completedReps: 45, rom: 82, targetRom: 90, dateKey: "2026-10-07", engineVersion: 2,
+    validReps: 37, invalidReps: 8, partialReps: 3, correctionAttempts: 6, correctionsSucceeded: 4, avgConfidence: 0.92,
+    issueCounts: { TRUNK_LEAN: 6, TOO_FAST: 2 }, issueSeverity: { TRUNK_LEAN: "major", TOO_FAST: "minor" }, observations: [{ code: "TRUNK_LEAN", repsAffected: 6, ofReps: 45 }],
+    sets: [mk(0, 15, 10, 5), mk(1, 15, 13, 2), mk(2, 15, 14, 1)],
+  } as never);
+  return { sessionId: "x", source: "deterministic" as const, generatedAt: new Date().toISOString(), content: deterministicReport(facts), disclosure: "Automatic summary from your recorded session data. It is not a medical diagnosis." };
+})();
+
 export default function PreviewClient() {
   const screen = useSearchParams().get("screen") || "home";
 
-  if (screen === "live" || screen === "setup") {
-    const tracking = describeTracking(undefined, "lower");
-    return (
-      <FocusFrame
-        title="Seated Knee Extension"
-        subtitle="7 of 10 reps"
-        backLabel="End"
-        camera={<div className="flex size-full items-center justify-center text-slate-500">camera area</div>}
-        panel={
-          <LivePanel
-            completedReps={7}
-            targetReps={10}
-            feedback={{ type: "warning", message: "Straighten your back a little" }}
-            tracking={screen === "live" ? { ...tracking, kind: "ready", title: "Tracking well" } : { kind: "low_confidence", title: "I can’t see your ankle clearly", detail: "Move the camera back or tilt it down so your ankle is in view." }}
-            paused={false}
-            stepIndex={1}
-            totalSteps={4}
-            stepTitle="Extend the leg"
-            stepInstruction="Straighten your knee slowly until your leg is level."
-            angle={142}
-            rom={84}
-            tempo={2.4}
-            onTogglePause={() => undefined}
-            onFinish={() => undefined}
-            onOpenGuide={() => undefined}
-          />
-        }
-      />
-    );
+  if (screen === "stage") return <StageSmoke />;
+
+  if (screen === "live" || screen === "setup" || screen.startsWith("replay-")) {
+    const scenario: ReplayScenario = screen === "live" ? "ok" : screen === "setup" ? "camera" : (screen.slice(7) as ReplayScenario);
+    return <ReplayScreen scenario={scenario} />;
   }
 
   return (
@@ -185,14 +197,16 @@ export default function PreviewClient() {
       {screen === "progress-empty" && <ProgressView sessions={[]} />}
       {screen === "summary" && (
         <SessionSummary
-          session={{ id: "x", exerciseId: "seated-knee-extension", exerciseName: "Seated Knee Extension", date: day(0), targetReps: 10, completedReps: 10, minAngle: 90, maxAngle: 174, rom: 84, averageTempo: 2.4, goodFormCount: 10, warningCount: 2, durationSeconds: 372 }}
-          previous={{ id: "y", exerciseId: "seated-knee-extension", exerciseName: "Seated Knee Extension", date: day(2), targetReps: 10, completedReps: 10, minAngle: 90, maxAngle: 170, rom: 80, averageTempo: 2.5, goodFormCount: 10, warningCount: 3, durationSeconds: 390 }}
+          session={{ id: "x", exerciseId: "seated-knee-extension", exerciseName: "Seated Knee Extension", date: day(0), targetReps: 10, completedReps: 10, rom: 84, averageTempo: 2.4, durationSeconds: 372, validReps: 8, invalidReps: 2, partialReps: 1, correctionAttempts: 3, correctionsSucceeded: 2, avgConfidence: 0.94, errors: { TRUNK_LEAN: { count: 2, severity: "major" } } }}
+          previous={{ id: "y", exerciseId: "seated-knee-extension", exerciseName: "Seated Knee Extension", date: day(2), targetReps: 10, completedReps: 10, rom: 80, averageTempo: 2.5, durationSeconds: 390 }}
         />
       )}
       {screen === "therapist" && (
         <OverviewTab patients={patients} consultations={consults} pendingRequests={requests} onRequestAction={async () => undefined} busyRequestId={null} onShowAll={() => undefined} />
       )}
       {screen === "patients" && <PatientsTable patients={patients} />}
+      {screen === "trend" && <div className="max-w-2xl"><QualityTrend trend={trendFixture} /></div>}
+      {screen === "session-report" && <div className="max-w-2xl"><ReportBody report={reportFixture} audience="therapist" /></div>}
       {screen === "kit" && (
         <div className="max-w-2xl space-y-6">
           <SectionHeading title="Buttons" />

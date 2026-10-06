@@ -3,7 +3,7 @@
 import { useState } from "react";
 
 /** Range of motion over time for one exercise: a plain line chart with labelled axes and a table alternative. */
-export default function RomChart({ points }: { points: { date: Date; rom: number }[] }) {
+export default function RomChart({ points, unit = "°" }: { points: { date: Date; rom: number }[]; unit?: "°" | "%" }) {
   const [asTable, setAsTable] = useState(false);
   if (points.length === 0) return null;
 
@@ -36,7 +36,7 @@ export default function RomChart({ points }: { points: { date: Date; rom: number
             {points.map((p, i) => (
               <tr key={i} className="border-b border-slate-200">
                 <td className="py-1.5">{fmt(p.date)}</td>
-                <td className="py-1.5 text-right font-mono tabular">{p.rom}°</td>
+                <td className="py-1.5 text-right font-mono tabular">{p.rom}{unit}</td>
               </tr>
             ))}
           </tbody>
@@ -46,7 +46,7 @@ export default function RomChart({ points }: { points: { date: Date; rom: number
           {ticks.map((t) => (
             <g key={t}>
               <line x1={pad.l} x2={W - pad.r} y1={y(t)} y2={y(t)} stroke="var(--rule)" strokeWidth="1" />
-              <text x={pad.l - 8} y={y(t) + 4} textAnchor="end" fontSize="12" fill="var(--color-slate-500)" className="tabular">{Math.round(t)}°</text>
+              <text x={pad.l - 8} y={y(t) + 4} textAnchor="end" fontSize="12" fill="var(--color-slate-500)" className="tabular">{Math.round(t)}{unit}</text>
             </g>
           ))}
           <path d={path} fill="none" stroke="var(--brand)" strokeWidth="2.5" strokeLinejoin="round" strokeLinecap="round" />

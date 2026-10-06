@@ -15,6 +15,7 @@ import ExerciseSession, { type IExerciseSession } from "@/models/ExerciseSession
 import WeeklyReview from "@/models/WeeklyReview";
 import { addDays, dateKeyInTimezone, weekdayOf, type DateKey } from "./dates";
 import { applyChunk, totalRepsOf, type SetRecord } from "./chunking";
+import { cleanQuality, formAccuracyOf, rollupQuality, type ChunkQuality } from "./chunkQuality";
 import {
   adherenceBetween,
   computeDailyPlan,
@@ -181,7 +182,7 @@ export async function getPlanSnapshot(patientId: string, timezone?: string): Pro
   };
 }
 
-export interface RecordChunkInput {
+export interface RecordChunkInput extends ChunkQuality {
   prescriptionId: string;
   exerciseKey: string;
   setIndex: number;
@@ -249,6 +250,7 @@ export async function recordChunk(patientId: string, input: RecordChunkInput): P
     rom: Number.isFinite(Number(input.rom)) && Number(input.rom) > 0 ? Math.min(360, Number(input.rom)) : undefined,
     formScore: Number.isFinite(Number(input.formScore)) ? Math.max(0, Math.min(100, Math.round(Number(input.formScore)))) : undefined,
     issues: cleanIssues(input.issues),
+    ...cleanQuality(input, Number(input.reps)),
   };
   const discomfort = ["none", "mild", "moderate", "severe"].includes(input.discomfort ?? "") ? input.discomfort : undefined;
 
@@ -292,10 +294,13 @@ export async function recordChunk(patientId: string, input: RecordChunkInput): P
     if (!result.duplicate) {
       const allChunks = result.sets.flatMap((s) => s.chunks);
       const roms = allChunks.map((c) => c.rom).filter((n): n is number => typeof n === "number");
+      const quality = rollupQuality(allChunks);
+      // Engine v2 judges each rep, so form accuracy is the share of counted reps that were valid. Older chunks only
+      // carry a tempo-based score; it is used only when no chunk has per-rep judgment.
       const forms = allChunks.filter((c) => typeof c.formScore === "number" && c.reps > 0);
-      const formAccuracy = forms.length
-        ? Math.round(forms.reduce((sum, c) => sum + c.formScore! * c.reps, 0) / forms.reduce((sum, c) => sum + c.reps, 0))
-        : undefined;
+      const formAccuracy =
+        formAccuracyOf(quality.validReps, quality.invalidReps) ??
+        (forms.length ? Math.round(forms.reduce((sum, c) => sum + c.formScore! * c.reps, 0) / forms.reduce((sum, c) => sum + c.reps, 0)) : undefined);
       const seconds = allChunks.reduce(
         (sum, c) => sum + (c.startedAt && c.endedAt ? Math.max(0, Math.min(3600, (c.endedAt.getTime() - c.startedAt.getTime()) / 1000)) : 0),
         0
@@ -303,6 +308,8 @@ export async function recordChunk(patientId: string, input: RecordChunkInput): P
 
       const issueCounts: Record<string, number> = {};
       for (const c of allChunks) for (const [code, n] of Object.entries(c.issues ?? {})) issueCounts[code] = (issueCounts[code] ?? 0) + n;
+      for (const [code, e] of Object.entries(quality.errors ?? {})) issueCounts[code] = Math.max(issueCounts[code] ?? 0, e.count);
+      const issueSeverity = Object.fromEntries(Object.entries(quality.errors ?? {}).map(([code, e]) => [code, e.severity]));
 
       const updated = await ExerciseSession.findOneAndUpdate(
         { _id: doc._id, rev: doc.rev ?? 0 },
@@ -315,6 +322,16 @@ export async function recordChunk(patientId: string, input: RecordChunkInput): P
             durationSeconds: Math.round(seconds),
             targetMet: progress.status === "complete",
             issueCounts: Object.keys(issueCounts).length ? issueCounts : undefined,
+            issueSeverity: Object.keys(issueSeverity).length ? issueSeverity : undefined,
+            engineVersion: quality.engineVersion,
+            validReps: quality.validReps,
+            invalidReps: quality.invalidReps,
+            partialReps: quality.partialReps,
+            correctionAttempts: quality.correctionAttempts,
+            correctionsSucceeded: quality.correctionsSucceeded,
+            avgConfidence: quality.avgConfidence,
+            lowConfidenceMs: quality.lowConfidenceMs,
+            observations: quality.observations,
             ...(discomfort ? { discomfort } : {}),
             date: new Date(),
           },

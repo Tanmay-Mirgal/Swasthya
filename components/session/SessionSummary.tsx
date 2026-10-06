@@ -2,6 +2,9 @@ import Link from "next/link";
 import { ArrowRight } from "lucide-react";
 import { Authorship, Button, SectionHeading, TickRow } from "@/components/ui";
 import type { SessionRecord } from "@/lib/exercises/types";
+import { issueLabel } from "@/lib/rehab/issueLabels";
+import SessionReportCard from "@/components/reports/SessionReportCard";
+import { correctionRateOf } from "@/lib/rehab/chunkQuality";
 
 interface SessionSummaryProps {
   session: SessionRecord;
@@ -20,8 +23,14 @@ export default function SessionSummary({ session, previous }: SessionSummaryProp
   const target = session.targetReps;
   const complete = reps >= target && target > 0;
   const rom = Math.round(session.rom || 0);
-  const tempo = session.averageTempo > 0 ? (Math.round(session.averageTempo * 10) / 10).toFixed(1) : null;
-  const hints = session.warningCount;
+  const unit = session.unit === "pct" ? "%" : "°";
+  const tempo = session.averageTempo && session.averageTempo > 0 ? (Math.round(session.averageTempo * 10) / 10).toFixed(1) : null;
+  const judged = session.validReps !== undefined && session.invalidReps !== undefined;
+  const noted = session.invalidReps ?? 0;
+  const topErrors = Object.entries(session.errors ?? {})
+    .sort((a, b) => b[1].count - a[1].count)
+    .slice(0, 3);
+  const corrected = correctionRateOf(session.correctionAttempts, session.correctionsSucceeded);
   const when = new Date(session.date);
 
   const headline =
@@ -61,8 +70,8 @@ export default function SessionSummary({ session, previous }: SessionSummaryProp
               <span className="block text-sm text-slate-600">How far you moved the joint, from smallest to largest angle.</span>
             </dt>
             <dd className="shrink-0 text-right">
-              <span className="font-mono text-2xl font-semibold tabular">{rom}°</span>
-              {previous && previous.rom > 0 && rom > 0 && <span className="block text-xs text-slate-600">{delta(rom, previous.rom, "°")}</span>}
+              <span className="font-mono text-2xl font-semibold tabular">{rom > 0 ? `${rom}${unit}` : "—"}</span>
+              {previous && previous.rom > 0 && rom > 0 && (previous.unit ?? "deg") === (session.unit ?? "deg") && <span className="block text-xs text-slate-600">{delta(rom, previous.rom, unit)}</span>}
             </dd>
           </div>
           <div className="flex items-baseline justify-between gap-4 py-3">
@@ -74,21 +83,58 @@ export default function SessionSummary({ session, previous }: SessionSummaryProp
               <span className="font-mono text-2xl font-semibold tabular">{tempo ? `${tempo}s` : "—"}</span>
             </dd>
           </div>
-          <div className="flex items-baseline justify-between gap-4 py-3">
-            <dt>
-              <span className="font-semibold text-slate-900">Form reminders</span>
-              <span className="block text-sm text-slate-600">Times the camera suggested adjusting your position or movement.</span>
-            </dt>
-            <dd className="shrink-0 text-right">
-              <span className="font-mono text-2xl font-semibold tabular">{hints}</span>
-              <span className="block whitespace-nowrap text-xs text-slate-600">{hints === 0 ? "none came up" : "to work on"}</span>
-            </dd>
-          </div>
+          {judged && (
+            <div className="flex items-baseline justify-between gap-4 py-3">
+              <dt>
+                <span className="font-semibold text-slate-900">Reps with good form</span>
+                <span className="block text-sm text-slate-600">Every rep counts toward your target. This is how many also met the form checks.</span>
+              </dt>
+              <dd className="shrink-0 text-right">
+                <span className="font-mono text-2xl font-semibold tabular">{session.validReps}</span>
+                <span className="block whitespace-nowrap text-xs text-slate-600">{noted === 0 ? "of every rep counted" : `${noted} counted with a note`}</span>
+              </dd>
+            </div>
+          )}
+          {judged && topErrors.length > 0 && (
+            <div className="py-3">
+              <dt className="font-semibold text-slate-900">Things to work on</dt>
+              <dd>
+                <ul className="mt-1 space-y-0.5 text-sm text-slate-800">
+                  {topErrors.map(([code, e]) => (
+                    <li key={code}>
+                      {issueLabel(code)} <span className="text-slate-600">in {e.count} {e.count === 1 ? "rep" : "reps"}</span>
+                    </li>
+                  ))}
+                </ul>
+              </dd>
+            </div>
+          )}
+          {corrected !== undefined && (
+            <div className="flex items-baseline justify-between gap-4 py-3">
+              <dt>
+                <span className="font-semibold text-slate-900">Corrections that worked</span>
+                <span className="block text-sm text-slate-600">Times a spoken or on-screen tip was followed by a fix.</span>
+              </dt>
+              <dd className="shrink-0 text-right">
+                <span className="font-mono text-2xl font-semibold tabular">{session.correctionsSucceeded}</span>
+                <span className="block whitespace-nowrap text-xs text-slate-600">of {session.correctionAttempts}</span>
+              </dd>
+            </div>
+          )}
         </dl>
         <p className="mt-2 max-w-prose text-xs leading-relaxed text-slate-600">
           These are movement measurements from your camera, not a medical assessment. Your physiotherapist decides what they mean for your recovery.
         </p>
       </section>
+
+      {session.serverId && judged && (
+        <section aria-label="Session summary" className="mt-8">
+          <SectionHeading title="Session summary" description="Made from what the camera recorded." />
+          <div className="mt-3">
+            <SessionReportCard sessionId={session.serverId} audience="patient" />
+          </div>
+        </section>
+      )}
 
       <div className="mt-8 flex flex-col gap-2 sm:flex-row">
         <Button asChild size="lg" className="sm:min-w-44">

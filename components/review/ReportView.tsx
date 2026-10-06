@@ -56,7 +56,7 @@ export default function ReportView({ report }: { report: WeeklyReportData }) {
                 <dl className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
                   <div><dt className="text-slate-600">Sets</dt><dd className="tabular font-semibold text-slate-900">{e.setsCompleted} of {e.setsPrescribed}</dd></div>
                   <div><dt className="text-slate-600">Reps</dt><dd className="tabular font-semibold text-slate-900">{e.repsCompleted} of {e.repsPrescribed}</dd></div>
-                  <div><dt className="text-slate-600">Range of motion</dt><dd className="tabular font-semibold text-slate-900">{e.averageRom ? `${e.averageRom}°` : "Not measured"}</dd></div>
+                  <div><dt className="text-slate-600">Range of motion</dt><dd className="tabular font-semibold text-slate-900">{e.averageRom ? `${e.averageRom}${e.romUnit === "pct" ? "%" : "°"}` : "Not measured"}</dd></div>
                   <div><dt className="text-slate-600">Form score</dt><dd className="tabular font-semibold text-slate-900">{e.averageFormScore !== undefined ? `${e.averageFormScore}%` : "Not measured"}</dd></div>
                 </dl>
               </li>
@@ -83,7 +83,7 @@ export default function ReportView({ report }: { report: WeeklyReportData }) {
                       <span className="mt-1 block text-slate-700">{e.setsCompleted} of {e.setsPrescribed}</span>
                     </td>
                     <td className="py-3 pr-3 tabular text-slate-800">{e.repsCompleted} of {e.repsPrescribed}</td>
-                    <td className="py-3 pr-3 tabular text-slate-800">{e.averageRom ? `${e.averageRom}°` : "Not measured"}</td>
+                    <td className="py-3 pr-3 tabular text-slate-800">{e.averageRom ? `${e.averageRom}${e.romUnit === "pct" ? "%" : "°"}` : "Not measured"}</td>
                     <td className="py-3 tabular text-slate-800">{e.averageFormScore !== undefined ? `${e.averageFormScore}%` : "Not measured"}</td>
                   </tr>
                 ))}
@@ -97,13 +97,37 @@ export default function ReportView({ report }: { report: WeeklyReportData }) {
       <section aria-label="Movement measured by the camera">
         <SectionHeading title="Movement quality" action={<Authorship by="automated" />} description="Counted on the patient’s device. This is guidance, not a clinical assessment." />
         <dl className="mt-4 grid grid-cols-2 gap-x-6 gap-y-5 sm:grid-cols-3">
-          <Fact label="Average form score" value={report.averageFormScore !== undefined ? `${report.averageFormScore}%` : "Not measured"} />
+          <Fact label={report.formBasis === "legacy" ? "Form score (older, pace-based)" : "Reps that met the form checks"} value={report.averageFormScore !== undefined ? `${report.averageFormScore}%` : "Not measured"} />
           <Fact label="Average range of motion" value={report.averageRom ? `${report.averageRom}°` : "Not measured"} />
           <div className="col-span-2 min-w-0 sm:col-span-1">
             <dt className="text-sm text-slate-600">Compared with last week</dt>
             <dd className="mt-1 text-base"><QualityChange change={report.qualityChange} /></dd>
           </div>
         </dl>
+        {report.quality && (
+          <dl className="mt-5 grid grid-cols-2 gap-x-6 gap-y-5 sm:grid-cols-4">
+            <Fact label="Met the form checks" value={String(report.quality.validReps)} />
+            <Fact label="Counted with a note" value={String(report.quality.invalidReps)} />
+            <Fact label="Partial attempts" value={String(report.quality.partialReps)} />
+            <Fact
+              label="Suggestions that worked"
+              value={report.quality.correctionAttempts ? `${report.quality.correctionsSucceeded} of ${report.quality.correctionAttempts}` : "None needed"}
+            />
+          </dl>
+        )}
+        {report.quality && report.quality.repeatedErrors.length > 0 && (
+          <div className="mt-5">
+            <h3 className="text-sm font-bold text-slate-900">Repeated in the most reps</h3>
+            <ol className="mt-1 border-t border-slate-300">
+              {report.quality.repeatedErrors.map((f, i) => (
+                <li key={f.code} className="flex items-baseline justify-between gap-3 border-b border-slate-300 py-2 text-sm">
+                  <span className="text-slate-900"><span className="tabular text-slate-500">{i + 1}.</span> {f.label ?? issueLabel(f.code)}</span>
+                  <span className="tabular text-slate-700">{f.reps} {f.reps === 1 ? "rep" : "reps"}</span>
+                </li>
+              ))}
+            </ol>
+          </div>
+        )}
         <div className="mt-5">
           <h3 className="text-sm font-bold text-slate-900">Most common feedback</h3>
           {report.commonFeedback.length === 0 ? (

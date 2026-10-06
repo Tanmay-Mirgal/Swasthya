@@ -16,8 +16,11 @@ interface AppShellProps {
   backHref?: string;
   hideNav?: boolean;
   hideHeader?: boolean;
+  hideBottomNav?: boolean;
   rightAction?: ReactNode;
   maxWidth?: "default" | "full" | "wide";
+  fullBleed?: boolean;
+  className?: string;
 }
 
 /**
@@ -31,34 +34,67 @@ export default function AppShell({
   backHref = "/",
   hideNav = false,
   hideHeader = false,
+  hideBottomNav = false,
   rightAction,
   maxWidth = "default",
+  fullBleed = false,
+  className,
 }: AppShellProps) {
   const { isLoaded, isSignedIn } = useAuth();
 
   const width = maxWidth === "full" ? "max-w-none" : maxWidth === "wide" ? "max-w-[80rem]" : "max-w-5xl";
 
   return (
-    <div className="min-h-dvh w-full bg-[var(--paper)] text-slate-900">
+    <div
+      className={cn(
+        "w-full bg-(--paper) text-slate-900",
+        fullBleed ? "h-dvh overflow-hidden flex flex-col" : "min-h-dvh",
+      )}
+    >
       {!hideNav && <SideRail />}
 
-      <div className={cn("flex min-h-dvh flex-col", !hideNav && "md:pl-60")}>
+      <div
+        className={cn(
+          "flex flex-1 flex-col",
+          fullBleed ? "h-dvh overflow-hidden" : "min-h-dvh",
+          !hideNav && "md:pl-60",
+        )}
+      >
         {!hideHeader && (
           <header
-            className="sticky top-0 z-40 flex h-14 items-center gap-2 border-b border-slate-300 bg-[var(--paper)] px-3 md:hidden"
-            style={{ paddingTop: "env(safe-area-inset-top, 0px)", height: "calc(env(safe-area-inset-top, 0px) + 56px)" }}
+            className="sticky top-0 z-40 flex h-14 items-center gap-2 border-b border-slate-300 bg-(--paper) px-3 md:hidden"
+            style={{
+              paddingTop: "env(safe-area-inset-top, 0px)",
+              height: "calc(env(safe-area-inset-top, 0px) + 56px)",
+            }}
           >
             {showBackNav ? (
-              <Link href={backHref} aria-label="Back" className="-ml-1 flex size-10 items-center justify-center rounded-lg text-slate-700 hover:bg-slate-100">
+              <Link
+                href={backHref}
+                aria-label="Back"
+                className="-ml-1 flex size-10 items-center justify-center rounded-lg text-slate-700 hover:bg-slate-100"
+              >
                 <ChevronLeft className="size-5" />
               </Link>
             ) : (
-              <Link href="/" className="flex items-center gap-2 pr-1" aria-label="Swasthya home">
-                <Image src="/swasthya-logo-icon.png" alt="" width={28} height={28} className="size-7 object-contain" />
+              <Link
+                href="/"
+                className="flex items-center gap-2 pr-1"
+                aria-label="Swasthya home"
+              >
+                <Image
+                  src="/swasthya-logo-icon.png"
+                  alt=""
+                  width={28}
+                  height={28}
+                  className="size-7 object-contain"
+                />
               </Link>
             )}
             {title ? (
-              <h1 className="min-w-0 flex-1 truncate text-base font-bold">{title}</h1>
+              <h1 className="min-w-0 flex-1 truncate text-base font-bold">
+                {title}
+              </h1>
             ) : (
               <span className="flex-1 text-base font-bold">Swasthya</span>
             )}
@@ -67,10 +103,14 @@ export default function AppShell({
               {isLoaded && !isSignedIn && (
                 <>
                   <SignInButton mode="modal">
-                    <button className="px-2 text-sm font-semibold text-slate-700">Sign in</button>
+                    <button className="px-2 text-sm font-semibold text-slate-700">
+                      Sign in
+                    </button>
                   </SignInButton>
                   <SignUpButton mode="modal">
-                    <button className="rounded-lg bg-emerald-600 px-3 py-1.5 text-sm font-semibold text-white">Sign up</button>
+                    <button className="rounded-lg bg-emerald-600 px-3 py-1.5 text-sm font-semibold text-white">
+                      Sign up
+                    </button>
                   </SignUpButton>
                 </>
               )}
@@ -82,12 +122,17 @@ export default function AppShell({
         <main
           id="main"
           className={cn(
-            "mx-auto flex w-full min-w-0 flex-1 flex-col px-4 py-5 sm:px-6 md:px-8 md:py-8",
-            width,
-            !hideNav && "pb-24 md:pb-8"
+            fullBleed
+              ? "flex w-full min-w-0 flex-1 flex-col overflow-hidden p-0 max-w-none"
+              : cn(
+                  "mx-auto flex w-full min-w-0 flex-1 flex-col px-4 py-5 sm:px-6 md:px-8 md:py-8",
+                  width,
+                  !hideNav && "pb-24 md:pb-8",
+                ),
+            className,
           )}
         >
-          {showBackNav && (
+          {showBackNav && !fullBleed && (
             <div className="mb-5 hidden items-center gap-3 md:flex">
               <Link
                 href={backHref}
@@ -95,13 +140,17 @@ export default function AppShell({
               >
                 <ChevronLeft className="size-4" aria-hidden="true" /> Back
               </Link>
-              {title && <h1 className="border-l border-slate-300 pl-3 text-lg font-bold">{title}</h1>}
+              {title && (
+                <h1 className="border-l border-slate-300 pl-3 text-lg font-bold">
+                  {title}
+                </h1>
+              )}
             </div>
           )}
           {children}
         </main>
 
-        {!hideNav && <BottomNav />}
+        {!hideNav && !hideBottomNav && <BottomNav />}
       </div>
     </div>
   );

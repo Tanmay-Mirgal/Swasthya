@@ -13,6 +13,8 @@ import { addDays, type DateKey } from "./dates";
 import { adherenceBetween, adherencePercent, computeDailyPlan, type ExerciseDayLog } from "./schedule";
 import { groupLogsByDay } from "./adherence";
 import { toScheduleInput } from "./prescriptionService";
+import { formAccuracyOf } from "./chunkQuality";
+import { getMovementTemplate } from "@/lib/movement/template/registry";
 
 const avg = (nums: number[]): number | undefined => (nums.length ? Math.round(nums.reduce((a, b) => a + b, 0) / nums.length) : undefined);
 
@@ -24,6 +26,7 @@ export interface ReportInput {
   sessions: IExerciseSession[];
   today: DateKey;
   previousFormScore?: number;
+  previousFormBasis?: "engine2" | "legacy";
 }
 
 /** Pure: turns a plan, a date range and the stored sessions into a report. */
@@ -43,6 +46,7 @@ export function buildReport(input: ReportInput): IWeeklyReport {
       setsCompleted: 0,
       repsPrescribed: 0,
       repsCompleted: 0,
+      romUnit: getMovementTemplate(ex.exerciseId)?.rep.unit ?? "deg",
     });
   }
 
@@ -71,13 +75,46 @@ export function buildReport(input: ReportInput): IWeeklyReport {
   for (const row of perExercise.values()) {
     const mine = inWeek.filter((s) => s.prescriptionExerciseKey === row.exerciseKey);
     row.averageRom = avg(mine.map((s) => s.rom ?? 0).filter((n) => n > 0));
-    row.averageFormScore = avg(mine.map((s) => s.formAccuracy).filter((n): n is number => typeof n === "number"));
+    const judged = mine.filter((s) => (s.engineVersion ?? 0) >= 2 && s.validReps !== undefined);
+    row.validReps = judged.length ? judged.reduce((a, s) => a + (s.validReps ?? 0), 0) : undefined;
+    row.invalidReps = judged.length ? judged.reduce((a, s) => a + (s.invalidReps ?? 0), 0) : undefined;
+    // Per-rep judgment when there is any this week; otherwise the older score. Never a mixture.
+    row.averageFormScore = judged.length
+      ? formAccuracyOf(row.validReps, row.invalidReps)
+      : avg(mine.map((s) => s.formAccuracy).filter((n): n is number => typeof n === "number"));
   }
 
   const issueTotals: Record<string, number> = {};
   for (const s of inWeek) for (const [code, n] of Object.entries((s.issueCounts ?? {}) as Record<string, number>)) issueTotals[code] = (issueTotals[code] ?? 0) + n;
 
-  const formScore = avg(inWeek.map((s) => s.formAccuracy).filter((n): n is number => typeof n === "number"));
+  const judgedWeek = inWeek.filter((s) => (s.engineVersion ?? 0) >= 2 && s.validReps !== undefined);
+  const formBasis: "engine2" | "legacy" = judgedWeek.length ? "engine2" : "legacy";
+  const weekValid = judgedWeek.reduce((a, s) => a + (s.validReps ?? 0), 0);
+  const weekInvalid = judgedWeek.reduce((a, s) => a + (s.invalidReps ?? 0), 0);
+  const formScore =
+    formBasis === "engine2" ? formAccuracyOf(weekValid, weekInvalid) : avg(inWeek.map((s) => s.formAccuracy).filter((n): n is number => typeof n === "number"));
+  const confSessions = judgedWeek.filter((s) => s.avgConfidence !== undefined && s.completedReps > 0);
+  const confReps = confSessions.reduce((a, s) => a + s.completedReps, 0);
+  const sevRank = { minor: 0, moderate: 1, major: 2 } as const;
+  const repeated = new Map<string, { reps: number; severity: "minor" | "moderate" | "major" }>();
+  for (const s of judgedWeek) {
+    for (const [code, n] of Object.entries((s.issueCounts ?? {}) as Record<string, number>)) {
+      const sev = (((s.issueSeverity ?? {}) as Record<string, "minor" | "moderate" | "major">)[code] ?? "minor") as "minor" | "moderate" | "major";
+      const cur = repeated.get(code);
+      repeated.set(code, { reps: (cur?.reps ?? 0) + n, severity: cur && sevRank[cur.severity] > sevRank[sev] ? cur.severity : sev });
+    }
+  }
+  const quality = judgedWeek.length
+    ? {
+        validReps: weekValid,
+        invalidReps: weekInvalid,
+        partialReps: judgedWeek.reduce((a, s) => a + (s.partialReps ?? 0), 0),
+        correctionAttempts: judgedWeek.reduce((a, s) => a + (s.correctionAttempts ?? 0), 0),
+        correctionsSucceeded: judgedWeek.reduce((a, s) => a + (s.correctionsSucceeded ?? 0), 0),
+        avgConfidence: confReps ? Math.round((confSessions.reduce((a, s) => a + (s.avgConfidence as number) * s.completedReps, 0) / confReps) * 100) / 100 : undefined,
+        repeatedErrors: [...repeated.entries()].map(([code, v]) => ({ code, ...v })).sort((a, b) => b.reps - a.reps).slice(0, 4),
+      }
+    : undefined;
   const exercises = [...perExercise.values()].filter((e) => e.setsPrescribed > 0);
 
   return {
@@ -95,9 +132,14 @@ export function buildReport(input: ReportInput): IWeeklyReport {
     daysCompleted,
     daysMissed: days.filter((d) => d.status === "missed").length,
     adherencePercent: adherencePercent(days),
-    averageRom: avg(inWeek.map((s) => s.rom ?? 0).filter((n) => n > 0)),
+    // A range in degrees and a range in percent cannot be averaged together: only degrees are pooled.
+    averageRom: avg(inWeek.filter((s) => (getMovementTemplate(s.exerciseId)?.rep.unit ?? "deg") === "deg").map((s) => s.rom ?? 0).filter((n) => n > 0)),
     averageFormScore: formScore,
-    qualityChange: formScore !== undefined && input.previousFormScore !== undefined ? formScore - input.previousFormScore : null,
+    formBasis,
+    quality,
+    // Only compared when both weeks were scored the same way.
+    qualityChange:
+      formScore !== undefined && input.previousFormScore !== undefined && (input.previousFormBasis ?? "legacy") === formBasis ? formScore - input.previousFormScore : null,
     commonFeedback: Object.entries(issueTotals)
       .sort((a, b) => b[1] - a[1])
       .slice(0, 3)
@@ -142,6 +184,7 @@ export async function generateWeeklyReport(reviewId: string, today: DateKey, opt
     sessions,
     today,
     previousFormScore: previous?.report?.averageFormScore,
+    previousFormBasis: previous?.report?.formBasis,
   });
   review.status = "report_ready";
   review.markModified("report");

@@ -3,8 +3,9 @@
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import { Button, EmptyState, PageHeader, SectionHeading, Select, Tabs, TickRow } from "@/components/ui";
-import { cn } from "@/lib/utils";
 import RomChart from "@/components/progress/RomChart";
+import QualityTrend from "@/components/progress/QualityTrend";
+import { buildTrends } from "@/lib/movement/analytics/trends";
 import AdherenceGrid from "@/components/progress/AdherenceGrid";
 import { dayKey, startOfDay } from "@/components/progress/dates";
 
@@ -18,6 +19,18 @@ export interface ProgressSession {
   targetReps: number;
   rom: number;
   durationSeconds?: number;
+  /** Unit of `rom`. */
+  unit?: "deg" | "pct";
+  /** True when the movement engine judged each rep (engine v2 data). */
+  judged?: boolean;
+  validReps?: number;
+  invalidReps?: number;
+  partialReps?: number;
+  correctionAttempts?: number;
+  correctionsSucceeded?: number;
+  avgConfidence?: number;
+  avgRepSeconds?: number;
+  errors?: { code: string; label?: string; reps: number }[];
 }
 
 type RangeId = "7" | "30" | "90";
@@ -69,6 +82,12 @@ export default function ProgressView({ sessions, loading }: { sessions: Progress
         .sort((a, b) => a.date.getTime() - b.date.getTime()),
     [inRange, activeExercise]
   );
+
+  const trend = useMemo(
+    () => buildTrends(inRange.filter((s) => s.exerciseId === activeExercise).map((s) => ({ ...s, judged: Boolean(s.judged) }))).find((t) => t.exerciseId === activeExercise),
+    [inRange, activeExercise]
+  );
+  const unit: "°" | "%" = trend?.unit === "pct" ? "%" : "°";
 
   const grouped = useMemo(() => {
     const g = new Map<string, ProgressSession[]>();
@@ -140,11 +159,13 @@ export default function ProgressView({ sessions, loading }: { sessions: Progress
               ) : (
                 <>
                   <p className="mb-1 text-sm font-semibold text-slate-900">{exercises.find(([id]) => id === activeExercise)?.[1]}</p>
-                  <RomChart points={romPoints} />
+                  <RomChart points={romPoints} unit={unit} />
                 </>
               )}
             </div>
           </section>
+
+          {trend && <QualityTrend trend={trend} />}
         </div>
 
         <section aria-label="Session history" className="min-w-0">
@@ -174,7 +195,7 @@ export default function ProgressView({ sessions, loading }: { sessions: Progress
                         </div>
                         <p className="mt-1 text-sm text-slate-700">
                           <span className="font-mono tabular font-semibold">{s.completedReps}/{s.targetReps}</span> reps
-                          {s.rom > 0 && <> · <span className="font-mono tabular font-semibold">{Math.round(s.rom)}°</span> range</>}
+                          {s.rom > 0 && <> · <span className="font-mono tabular font-semibold">{Math.round(s.rom)}{s.unit === "pct" ? "%" : "°"}</span> range</>}
                           {s.durationSeconds ? <> · <span className="font-mono tabular">{Math.floor(s.durationSeconds / 60)}:{String(s.durationSeconds % 60).padStart(2, "0")}</span></> : null}
                         </p>
                       </li>
