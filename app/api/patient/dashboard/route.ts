@@ -3,7 +3,7 @@ import connectToDatabase from "@/lib/mongodb";
 import PatientProfile from "@/models/PatientProfile";
 import TherapistAssignment from "@/models/TherapistAssignment";
 import TherapistProfile from "@/models/TherapistProfile";
-import ExerciseAssignment from "@/models/ExerciseAssignment";
+import Prescription from "@/models/Prescription";
 
 export const dynamic = "force-dynamic";
 
@@ -80,8 +80,13 @@ export async function GET(req: Request) {
        requestedTherapist = await TherapistProfile.findOne({ clerkUserId: pendingRequest.therapistId }).lean();
     }
 
-    const rawExerciseAssignments = await ExerciseAssignment.find({ patientId: clerkUserId, status: "active" }).lean();
-    const exerciseAssignments = rawExerciseAssignments as unknown as ExerciseAssignmentDoc[];
+    // Prescribed exercises come from the live plan (the single source of truth).
+    const livePlan = await Prescription.findOne({ patientId: clerkUserId, status: { $in: ["active", "paused"] } }).lean();
+    const exerciseAssignments: ExerciseAssignmentDoc[] = (livePlan?.exercises ?? []).map((e) => ({
+      exerciseId: e.exerciseId,
+      targetSets: e.sets,
+      targetReps: e.reps,
+    }));
 
     const ExerciseSession = (await import("@/models/ExerciseSession")).default;
     const rawDbSessions = await ExerciseSession.find({ patientId: clerkUserId }).sort({ date: -1 }).limit(20).lean();

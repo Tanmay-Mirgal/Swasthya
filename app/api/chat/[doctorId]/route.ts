@@ -1,12 +1,20 @@
 import { NextResponse } from "next/server";
 import connectToDatabase from "@/lib/mongodb";
-import ChatMessage, { IChatMessage } from "@/models/ChatMessage";
 import TherapistProfile, { ITherapistProfile } from "@/models/TherapistProfile";
 import AppointmentRequest, { IAppointmentRequest } from "@/models/AppointmentRequest";
 import User, { IUser } from "@/models/User";
+import { getIdentityFromRequest, usersHaveRelationship } from "@/lib/realtime/auth/verifier";
+import {
+  ChatServiceError,
+  listMessages,
+  markScopeRead,
+  sendConversationMessage,
+} from "@/lib/realtime/server/chatService";
+import { Rooms } from "@/lib/realtime/protocol/rooms";
 
 export const dynamic = "force-dynamic";
 
+/** GET /api/chat/:otherUserId[?since=ISO] — history (or only newer messages for reconnect resync). */
 export async function GET(
   req: Request,
   { params }: { params: Promise<{ doctorId: string }> }
@@ -17,42 +25,30 @@ export async function GET(
       return NextResponse.json({ error: "Doctor/User ID required" }, { status: 400 });
     }
 
-    const authHeader = req.headers.get("Authorization");
-    if (!authHeader || !authHeader.startsWith("Bearer ")) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    const me = await getIdentityFromRequest(req);
+    if (!me) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-    const token = authHeader.split(" ")[1];
-    const { verifyToken } = await import("@clerk/backend");
-    const verified = await verifyToken(token, { secretKey: process.env.CLERK_SECRET_KEY });
-    const callerId = verified?.sub;
-
-    if (!callerId) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    if (!(await usersHaveRelationship(me.userId, doctorId))) {
+      return NextResponse.json({ error: "You can message a physiotherapist after you have requested an appointment with them." }, { status: 403 });
     }
 
     await connectToDatabase();
+    const conversationId = Rooms.conversationId(me.userId, doctorId);
+    const since = new URL(req.url).searchParams.get("since");
+    const messages = await listMessages({ conversationId }, since);
 
-    // Fetch conversation messages
-    const conversationId = [callerId, doctorId].sort().join("_");
-    const messages = await ChatMessage.find({
-      $or: [
-        { conversationId },
-        { senderId: callerId, receiverId: doctorId },
-        { senderId: doctorId, receiverId: callerId },
-      ],
-    })
-      .sort({ createdAt: 1 })
-      .lean<IChatMessage[]>();
+    // Opening the conversation marks incoming messages as read (and tells the sender in realtime).
+    if (!since) {
+      void markScopeRead(me, { conversationId }, Rooms.conversation(me.userId, doctorId)).catch(() => undefined);
+    }
 
-    // Fetch target user profile (doctor or patient)
     const [targetDoctorProfile, targetUser, upcomingApp] = await Promise.all([
       TherapistProfile.findOne({ clerkUserId: doctorId }).lean<ITherapistProfile>(),
       User.findOne({ clerkUserId: doctorId }).lean<IUser>(),
       AppointmentRequest.findOne({
         $or: [
-          { patientId: callerId, therapistId: doctorId, status: "accepted" },
-          { patientId: doctorId, therapistId: callerId, status: "accepted" },
+          { patientId: me.userId, therapistId: doctorId, status: "accepted" },
+          { patientId: doctorId, therapistId: me.userId, status: "accepted" },
         ],
       })
         .sort({ scheduledAt: 1 })
@@ -68,7 +64,6 @@ export async function GET(
       specialization: targetDoctorProfile?.specialization || "Orthopedic Physical Therapy",
       clinicName: targetDoctorProfile?.clinicName || "Swasthya Partner Center",
       avatarUrl: targetDoctorProfile?.avatarUrl || targetUser?.imageUrl || "",
-      // Real availability policy:
       availabilityNotice: "Replies during clinical hours (9:00 AM – 6:00 PM)",
     };
 
@@ -77,6 +72,7 @@ export async function GET(
       data: {
         participant,
         messages,
+        conversationId,
         upcomingAppointment: upcomingApp
           ? {
               _id: upcomingApp._id.toString(),
@@ -93,6 +89,7 @@ export async function GET(
   }
 }
 
+/** POST /api/chat/:otherUserId  { content, clientId } — the single write path for direct chat. */
 export async function POST(
   req: Request,
   { params }: { params: Promise<{ doctorId: string }> }
@@ -102,51 +99,16 @@ export async function POST(
     if (!doctorId) {
       return NextResponse.json({ error: "Doctor/User ID required" }, { status: 400 });
     }
+    const me = await getIdentityFromRequest(req);
+    if (!me) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-    const authHeader = req.headers.get("Authorization");
-    if (!authHeader || !authHeader.startsWith("Bearer ")) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    const token = authHeader.split(" ")[1];
-    const { verifyToken } = await import("@clerk/backend");
-    const verified = await verifyToken(token, { secretKey: process.env.CLERK_SECRET_KEY });
-    const senderId = verified?.sub;
-
-    if (!senderId) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    const body = await req.json();
-    const { content } = body;
-
-    if (!content || !content.trim()) {
-      return NextResponse.json({ error: "Message content required" }, { status: 400 });
-    }
-
-    await connectToDatabase();
-
-    // Determine sender role
-    const callerUser = await User.findOne({ clerkUserId: senderId }).lean();
-    const senderRole: "patient" | "doctor" = callerUser?.role === "therapist" ? "doctor" : "patient";
-
-    const conversationId = [senderId, doctorId].sort().join("_");
-
-    const message = await ChatMessage.create({
-      conversationId,
-      senderId,
-      senderRole,
-      receiverId: doctorId,
-      content: content.trim(),
-      type: "text",
-      read: false,
-    });
-
-    return NextResponse.json({
-      success: true,
-      data: message,
-    });
+    const body = await req.json().catch(() => ({}));
+    const message = await sendConversationMessage(me, doctorId, body?.content, body?.clientId);
+    return NextResponse.json({ success: true, data: message });
   } catch (error) {
+    if (error instanceof ChatServiceError) {
+      return NextResponse.json({ error: error.message }, { status: error.status });
+    }
     console.error("Error sending message:", error);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }

@@ -5,6 +5,8 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect } from "react";
 
 const publicRoutes = ["/", "/sign-in", "/sign-up", "/login", "/signup", "/onboarding", "/splash"];
+// Design fixtures (dev only): the route itself 404s in production.
+if (process.env.NODE_ENV !== "production") publicRoutes.push("/ui-preview");
 
 export default function AuthGuard({ children }: { children: React.ReactNode }) {
   const { isLoaded, isSignedIn } = useAuth();
@@ -36,10 +38,10 @@ export default function AuthGuard({ children }: { children: React.ReactNode }) {
   
   if (!isLoaded || (!userLoaded && isSignedIn && !isPublicRoute)) {
     return (
-      <div className="flex h-screen w-full items-center justify-center bg-slate-50">
-        <div className="animate-pulse flex flex-col items-center">
-          <div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mb-4"></div>
-          <p className="text-slate-500 text-sm font-medium">Loading...</p>
+      <div role="status" aria-live="polite" className="flex h-screen w-full items-center justify-center bg-[var(--paper)]">
+        <div className="flex flex-col items-center gap-3">
+          <div className="size-7 animate-spin rounded-full border-[3px] border-emerald-600 border-t-transparent" />
+          <p className="text-sm font-medium text-slate-600">Opening Swasthya…</p>
         </div>
       </div>
     );

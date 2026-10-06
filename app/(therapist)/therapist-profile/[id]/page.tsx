@@ -4,19 +4,9 @@ import { useEffect, useState, use } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import AppShell from "@/components/layout/AppShell";
-import {
-  ArrowLeft,
-  Loader2,
-  Star,
-  ShieldCheck,
-  Clock,
-  CheckCircle2,
-  MessageSquare,
-  Calendar,
-  Languages,
-  AlertCircle,
-} from "lucide-react";
-import { Button } from "@/components/ui/Button";
+import { Calendar, MessageSquare } from "lucide-react";
+import { Button, Dialog, EmptyState, Field, Input, Notice, PageLoading, SectionHeading, Textarea } from "@/components/ui";
+import { cn } from "@/lib/utils";
 import { useAuth } from "@clerk/react";
 import DoctorAvatar from "@/components/ui/DoctorAvatar";
 
@@ -76,7 +66,6 @@ export default function TherapistProfilePage({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Booking Modal State
   const [showBookingModal, setShowBookingModal] = useState(false);
   const [selectedDate, setSelectedDate] = useState<string>(() => {
     const tomorrow = new Date();
@@ -90,26 +79,24 @@ export default function TherapistProfilePage({
   const [bookingError, setBookingError] = useState<string | null>(null);
 
   useEffect(() => {
-    const fetchTherapist = async () => {
+    let cancelled = false;
+    (async () => {
       try {
         const token = await getToken();
-        const res = await fetch(`/api/therapist/public-profile/${therapistId}/`, {
-          headers: token ? { Authorization: `Bearer ${token}` } : {},
-        });
+        const res = await fetch(`/api/therapist/public-profile/${therapistId}/`, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
         const json = await res.json();
-        if (json.success && json.data) {
-          setTherapist(json.data);
-        } else {
-          setError(json.error || "Practitioner profile not found.");
-        }
-      } catch (err) {
-        console.error("Error fetching therapist:", err);
-        setError("Unable to load practitioner profile.");
+        if (cancelled) return;
+        if (json.success && json.data) setTherapist(json.data);
+        else setError(json.error || "We couldn’t find this physiotherapist.");
+      } catch {
+        if (!cancelled) setError("We couldn’t load this profile. Check your connection and try again.");
       } finally {
-        setLoading(false);
+        if (!cancelled) setLoading(false);
       }
+    })();
+    return () => {
+      cancelled = true;
     };
-    fetchTherapist();
   }, [therapistId, getToken]);
 
   const handleBookAppointment = async (e: React.FormEvent) => {
@@ -120,40 +107,29 @@ export default function TherapistProfilePage({
     try {
       const token = await getToken();
       if (!token) {
-        setBookingError("Please sign in to book an appointment.");
+        setBookingError("Please sign in to request an appointment.");
         setBookingLoading(false);
         return;
       }
 
-      // Compute scheduled Date in the user's browser timezone
       let scheduledAtISO: string | undefined;
       try {
         const [y, m, d] = selectedDate.split("-").map(Number);
-        let hours = 16;
-        let minutes = 30;
-        if (selectedTime.includes(":")) {
-          const parts = selectedTime.split(":");
-          hours = parseInt(parts[0], 10);
-          minutes = parseInt(parts[1], 10);
-        }
-        const localDate = new Date(y, m - 1, d, hours, minutes, 0);
-        scheduledAtISO = localDate.toISOString();
-      } catch (err) {
-        console.warn("Could not compute local scheduled date:", err);
+        const [hours, minutes] = selectedTime.includes(":") ? selectedTime.split(":").map((n) => parseInt(n, 10)) : [16, 30];
+        scheduledAtISO = new Date(y, m - 1, d, hours, minutes, 0).toISOString();
+      } catch {
+        /* the server falls back to the requested date and time */
       }
 
       const res = await fetch("/api/patient/appointment-request", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         body: JSON.stringify({
           therapistId,
           requestedDate: selectedDate,
           requestedTime: format24to12(selectedTime),
           scheduledAt: scheduledAtISO,
-          patientNote: patientNote.trim() || therapist?.specialization || "Rehabilitation Consultation",
+          patientNote: patientNote.trim() || therapist?.specialization || "Rehabilitation consultation",
         }),
       });
 
@@ -163,12 +139,12 @@ export default function TherapistProfilePage({
         setTimeout(() => {
           setShowBookingModal(false);
           router.push("/appointments");
-        }, 1500);
+        }, 1800);
       } else {
-        setBookingError(json.error || "Failed to schedule appointment request.");
+        setBookingError(json.error || "We couldn’t send your request. Please try again.");
       }
     } catch {
-      setBookingError("Network error. Please try again.");
+      setBookingError("We couldn’t reach Swasthya. Check your connection and try again.");
     } finally {
       setBookingLoading(false);
     }
@@ -176,354 +152,146 @@ export default function TherapistProfilePage({
 
   if (loading) {
     return (
-      <AppShell hideHeader>
-        <div className="flex flex-col items-center justify-center h-[50vh] space-y-3">
-          <Loader2 className="size-8 animate-spin text-slate-400" />
-          <p className="text-xs text-slate-400">Loading specialist profile...</p>
-        </div>
+      <AppShell title="Physiotherapist" showBackNav backHref="/discover">
+        <PageLoading label="Loading profile" />
       </AppShell>
     );
   }
 
   if (error || !therapist) {
     return (
-      <AppShell hideHeader>
-        <div className="max-w-md mx-auto my-12 p-8 bg-white rounded-2xl border border-slate-200 text-center space-y-4">
-          <AlertCircle className="size-8 text-slate-400 mx-auto" />
-          <h2 className="text-base font-semibold text-slate-900">{error || "Specialist not found"}</h2>
-          <Button asChild className="bg-slate-900 text-white rounded-xl">
-            <Link href="/discover">Browse Specialists</Link>
-          </Button>
+      <AppShell title="Physiotherapist" showBackNav backHref="/discover">
+        <div className="mx-auto w-full max-w-xl pt-4">
+          <EmptyState title={error || "Physiotherapist not found"} action={<Button asChild size="sm"><Link href="/discover">Browse physiotherapists</Link></Button>} />
         </div>
       </AppShell>
     );
   }
 
+  const conditions = therapist.supportedConditions ?? [];
+  const details: { label: string; value: string }[] = [
+    ...(therapist.consultationFee ? [{ label: "Consultation fee", value: `₹${therapist.consultationFee}` }] : []),
+    { label: "Length", value: "30 minutes" },
+    { label: "Format", value: "Video consultation" },
+    ...(therapist.languages && therapist.languages.length ? [{ label: "Languages", value: therapist.languages.join(", ") }] : []),
+  ];
+
   return (
-    <AppShell hideHeader>
-      <div className="max-w-2xl mx-auto w-full space-y-6 pb-28 pt-2 px-3 sm:px-0">
-        
-        {/* Back Link */}
-        <div>
-          <Button asChild variant="ghost" className="text-xs text-slate-500 hover:text-slate-900 p-0 h-auto">
-            <Link href="/discover" className="flex items-center gap-1.5">
-              <ArrowLeft className="size-4" />
-              <span>Back to Specialists</span>
-            </Link>
-          </Button>
-        </div>
-
-        {/* ── 1. DOCTOR IDENTITY CARD ──────────────────────────────────── */}
-        <div className="bg-white rounded-2xl border border-slate-200/90 p-6 sm:p-7 shadow-[0_1px_3px_rgba(15,23,42,0.03)] space-y-5">
-          <div className="flex items-start gap-4 sm:gap-5">
-            <DoctorAvatar
-              src={therapist.avatarUrl}
-              name={therapist.professionalName}
-              size="lg"
-              isOnline={false}
-              className="size-18 sm:size-20 rounded-2xl shrink-0"
-            />
-
-            <div className="min-w-0 space-y-1 flex-1">
-              <div className="flex items-center gap-2 flex-wrap">
-                <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-slate-900 leading-tight">
-                  {therapist.professionalName}
-                </h1>
-                <ShieldCheck className="size-4 text-slate-400 shrink-0" />
-                <span className="text-[10px] font-semibold bg-slate-100 text-slate-700 px-2 py-0.5 rounded-md">
-                  Verified Specialist
-                </span>
-              </div>
-
-              <p className="text-xs sm:text-sm font-medium text-slate-700">
-                {therapist.title || "Clinical Physiotherapist"}
+    <AppShell title={therapist.professionalName} showBackNav backHref="/discover">
+      <div className="mx-auto w-full max-w-2xl pb-24 md:pb-4">
+        <header className="flex items-start gap-4 sm:gap-5">
+          <DoctorAvatar src={therapist.avatarUrl} name={therapist.professionalName} size="lg" className="size-20 shrink-0 sm:size-24" />
+          <div className="min-w-0">
+            <h1 className="text-2xl font-bold leading-tight tracking-tight text-slate-900 sm:text-3xl">{therapist.professionalName}</h1>
+            {(therapist.title || therapist.specialization) && (
+              <p className="mt-1 text-base text-slate-800">{[therapist.title, therapist.specialization].filter(Boolean).join(" · ")}</p>
+            )}
+            <p className="mt-0.5 text-sm text-slate-600">
+              {[therapist.qualification, therapist.yearsOfExperience && `${therapist.yearsOfExperience} experience`, therapist.clinicName].filter(Boolean).join(" · ")}
+            </p>
+            {therapist.rating ? (
+              <p className="mt-1 text-sm text-slate-700">
+                Rated <span className="font-mono font-semibold tabular">{therapist.rating}</span> out of 5
+                {therapist.reviewCount ? <> from <span className="font-mono tabular">{therapist.reviewCount}</span> reviews</> : null}
               </p>
-
-              <p className="text-xs text-slate-500">
-                {therapist.specialization || "Orthopedic Rehabilitation"}
-              </p>
-
-              <div className="flex flex-wrap items-center gap-2 pt-1 text-xs text-slate-600">
-                <div className="flex items-center gap-1 font-semibold text-slate-900">
-                  <Star className="size-3.5 fill-amber-400 text-amber-400" />
-                  <span>{therapist.rating || 4.9}</span>
-                  <span className="text-slate-400 font-normal">({therapist.reviewCount || 86})</span>
-                </div>
-                <span className="text-slate-300">•</span>
-                <span className="text-slate-500">{therapist.yearsOfExperience || "8+ years"} exp</span>
-                <span className="text-slate-300">•</span>
-                <span className="text-slate-500">{therapist.clinicName || "Swasthya Partner Center"}</span>
-              </div>
-            </div>
+            ) : null}
           </div>
+        </header>
 
-          {/* Quick Metrics Line */}
-          <div className="grid grid-cols-3 gap-3 pt-4 border-t border-slate-100 text-center">
-            <div className="p-3 bg-slate-50 rounded-xl">
-              <span className="text-[11px] text-slate-400 block font-medium">Session Fee</span>
-              <span className="text-sm font-bold text-slate-900">₹{therapist.consultationFee || 499}</span>
+        <dl className="mt-6 grid grid-cols-2 gap-x-6 gap-y-3 border-t-2 border-slate-900 pt-4 sm:grid-cols-4">
+          {details.map((d) => (
+            <div key={d.label}>
+              <dt className="text-sm text-slate-600">{d.label}</dt>
+              <dd className="font-semibold text-slate-900">{d.value}</dd>
             </div>
-            <div className="p-3 bg-slate-50 rounded-xl">
-              <span className="text-[11px] text-slate-400 block font-medium">Duration</span>
-              <span className="text-sm font-bold text-slate-900">30 mins</span>
-            </div>
-            <div className="p-3 bg-slate-50 rounded-xl">
-              <span className="text-[11px] text-slate-400 block font-medium">Format</span>
-              <span className="text-sm font-bold text-slate-900">Video & Guidance</span>
-            </div>
-          </div>
-        </div>
+          ))}
+        </dl>
 
-        {/* ── 2. SPECIALTIES & CONDITIONS TREATED ──────────────────────── */}
-        <div className="bg-white rounded-2xl border border-slate-200/90 p-5 sm:p-6 space-y-3 shadow-xs">
-          <h2 className="text-xs font-semibold uppercase tracking-wider text-slate-400">
-            Specialties & Conditions
-          </h2>
-          <div className="flex flex-wrap gap-2">
-            {(therapist.supportedConditions || [
-              "Neck Pain",
-              "Back Pain",
-              "Cervical Spondylosis",
-              "Knee Rehabilitation",
-              "Post-Op Recovery",
-              "Posture Correction",
-            ]).map((cond: string) => (
-              <span
-                key={cond}
-                className="bg-slate-50 text-slate-700 text-xs px-3 py-1.5 rounded-lg border border-slate-200/70 font-medium flex items-center gap-1.5"
-              >
-                <CheckCircle2 className="size-3 text-slate-400 shrink-0" />
-                <span>{cond}</span>
-              </span>
-            ))}
-          </div>
-        </div>
-
-        {/* ── 3. CLINICAL BIO & BACKGROUND ────────────────────────────── */}
-        <div className="bg-white rounded-2xl border border-slate-200/90 p-5 sm:p-6 space-y-3 shadow-xs">
-          <h2 className="text-xs font-semibold uppercase tracking-wider text-slate-400">
-            About the Practitioner
-          </h2>
-          <p className="text-xs sm:text-sm text-slate-600 leading-relaxed">
-            {therapist.bio ||
-              `${therapist.professionalName} is an experienced physical therapist specializing in orthopedic rehabilitation, functional kinematic recovery, and posture correction. Sessions focus on clinical diagnosis, exercise form coaching, and progression tracking.`}
-          </p>
-
-          <div className="pt-2 flex flex-wrap gap-4 text-xs text-slate-500 border-t border-slate-100">
-            <div className="flex items-center gap-1.5">
-              <Languages className="size-3.5 text-slate-400" />
-              <span>Languages: {therapist.languages?.join(", ") || "English, Hindi"}</span>
-            </div>
-            <div className="flex items-center gap-1.5">
-              <Clock className="size-3.5 text-slate-400" />
-              <span>Response: Within clinical hours</span>
-            </div>
-          </div>
-        </div>
-
-        {/* ── 4. STICKY ACTION DOCK ────────────────────────────────────── */}
-        <div
-          className="fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur-md border-t border-slate-200/80 shadow-[0_-4px_16px_rgba(15,23,42,0.04)]"
-          style={{ paddingBottom: "max(env(safe-area-inset-bottom, 0px), 10px)" }}
-        >
-          <div className="max-w-2xl mx-auto px-4 py-3 flex items-center justify-between gap-3">
-            <div>
-              <div className="flex items-baseline gap-1">
-                <span className="text-base font-bold text-slate-900">
-                  ₹{therapist.consultationFee || 499}
-                </span>
-                <span className="text-[11px] text-slate-400">/ consultation</span>
-              </div>
-              <p className="text-[11px] text-slate-500">Scheduled video appointment</p>
-            </div>
-
-            <div className="flex items-center gap-2">
-              <Button
-                asChild
-                variant="outline"
-                className="h-10 px-3.5 text-xs font-semibold rounded-xl border-slate-200 text-slate-700 hover:bg-slate-50"
-              >
-                <Link href={`/chat/${therapist.clerkUserId}`} className="flex items-center gap-1.5">
-                  <MessageSquare className="size-4 text-slate-500" />
-                  <span>Message</span>
-                </Link>
-              </Button>
-
-              <Button
-                onClick={() => setShowBookingModal(true)}
-                className="h-10 px-5 text-xs font-semibold rounded-xl bg-slate-900 hover:bg-slate-800 text-white shadow-xs"
-              >
-                <Calendar className="size-3.5 mr-1.5" />
-                <span>Book Appointment</span>
-              </Button>
-            </div>
-          </div>
-        </div>
-
-        {/* ── 5. BOOK APPOINTMENT MODAL ───────────────────────────────── */}
-        {showBookingModal && (
-          <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
-            <div className="bg-white rounded-2xl p-6 max-w-md w-full space-y-5 text-slate-900 shadow-xl">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h3 className="text-base font-bold text-slate-900">
-                    Schedule Consultation
-                  </h3>
-                  <p className="text-xs text-slate-500">
-                    With {therapist.professionalName}
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setShowBookingModal(false)}
-                  className="text-xs text-slate-400 hover:text-slate-700"
-                >
-                  ✕
-                </button>
-              </div>
-
-              {bookingSuccess ? (
-                <div className="p-6 bg-slate-50 rounded-xl text-center space-y-2">
-                  <CheckCircle2 className="size-8 text-emerald-600 mx-auto" />
-                  <p className="text-sm font-semibold text-slate-900">
-                    Appointment Request Submitted
-                  </p>
-                  <p className="text-xs text-slate-500">
-                    Your request was sent to {therapist.professionalName}. You will receive a confirmation once reviewed.
-                  </p>
-                </div>
-              ) : (
-                <form onSubmit={handleBookAppointment} className="space-y-4">
-                  {bookingError && (
-                    <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-xs text-red-700">
-                      {bookingError}
-                    </div>
-                  )}
-
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-semibold text-slate-700">
-                      Preferred Date
-                    </label>
-                    <input
-                      type="date"
-                      min={new Date().toISOString().split("T")[0]}
-                      value={selectedDate}
-                      onChange={(e) => setSelectedDate(e.target.value)}
-                      required
-                      className="w-full h-10 px-3 rounded-xl border border-slate-200 text-xs text-slate-900 focus:outline-none focus:border-slate-400 focus:ring-1 focus:ring-slate-200"
-                    />
-                  </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    {/* Preferred Date */}
-                    <div className="space-y-1.5">
-                      <label className="text-xs font-semibold text-slate-700 flex items-center gap-1.5">
-                        <Calendar className="size-3.5 text-slate-500" />
-                        <span>Preferred Date</span>
-                      </label>
-                      <input
-                        type="date"
-                        min={new Date().toISOString().split("T")[0]}
-                        value={selectedDate}
-                        onChange={(e) => setSelectedDate(e.target.value)}
-                        required
-                        className="w-full h-10 px-3 rounded-xl border border-slate-200 text-xs text-slate-900 focus:outline-none focus:border-slate-400 focus:ring-1 focus:ring-slate-200"
-                      />
-                    </div>
-
-                    {/* Preferred Time (Decided by Patient) */}
-                    <div className="space-y-1.5">
-                      <label className="text-xs font-semibold text-slate-700 flex items-center justify-between">
-                        <span className="flex items-center gap-1.5">
-                          <Clock className="size-3.5 text-slate-500" />
-                          <span>Preferred Time</span>
-                        </span>
-                        {selectedTime && (
-                          <span className="text-[11px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200/60">
-                            {format24to12(selectedTime)}
-                          </span>
-                        )}
-                      </label>
-                      <input
-                        type="time"
-                        value={selectedTime}
-                        onChange={(e) => setSelectedTime(e.target.value)}
-                        required
-                        className="w-full h-10 px-3 rounded-xl border border-slate-200 text-xs text-slate-900 focus:outline-none focus:border-slate-400 focus:ring-1 focus:ring-slate-200"
-                      />
-                    </div>
-                  </div>
-
-                  {/* Quick Preset Slot Suggestions */}
-                  <div className="space-y-1.5 pt-0.5">
-                    <div className="flex items-center justify-between">
-                      <label className="text-[11px] font-medium text-slate-500">
-                        Quick preset slots (optional):
-                      </label>
-                      <span className="text-[10px] text-slate-400">Or pick custom time above</span>
-                    </div>
-                    <div className="grid grid-cols-3 sm:grid-cols-6 gap-1.5">
-                      {SUGGESTED_TIME_SLOTS.map((slot) => {
-                        const isSelected = selectedTime === slot.value;
-                        return (
-                          <button
-                            key={slot.value}
-                            type="button"
-                            onClick={() => setSelectedTime(slot.value)}
-                            className={`py-1.5 px-1 text-[11px] rounded-lg border text-center transition-all ${
-                              isSelected
-                                ? "bg-slate-900 text-white border-slate-900 font-semibold shadow-xs"
-                                : "border-slate-200 text-slate-600 hover:bg-slate-50"
-                            }`}
-                          >
-                            {slot.label}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-semibold text-slate-700">
-                      Primary Recovery Focus / Clinical Note
-                    </label>
-                    <textarea
-                      rows={3}
-                      value={patientNote}
-                      onChange={(e) => setPatientNote(e.target.value)}
-                      placeholder="e.g. Neck stiffness after work, knee pain following surgery..."
-                      className="w-full p-3 rounded-xl border border-slate-200 text-xs text-slate-900 focus:outline-none focus:border-slate-400 focus:ring-1 focus:ring-slate-200"
-                    />
-                  </div>
-
-                  <div className="flex gap-2 pt-2">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      onClick={() => setShowBookingModal(false)}
-                      disabled={bookingLoading}
-                      className="flex-1 rounded-xl"
-                    >
-                      Cancel
-                    </Button>
-                    <Button
-                      type="submit"
-                      disabled={bookingLoading}
-                      className="flex-1 bg-slate-900 hover:bg-slate-800 text-white rounded-xl"
-                    >
-                      {bookingLoading ? (
-                        <Loader2 className="size-4 animate-spin mx-auto" />
-                      ) : (
-                        "Request Appointment"
-                      )}
-                    </Button>
-                  </div>
-                </form>
-              )}
-            </div>
-          </div>
+        {conditions.length > 0 && (
+          <section aria-label="Conditions treated" className="mt-8">
+            <SectionHeading title="Conditions treated" />
+            <ul className="mt-3 flex flex-wrap gap-1.5">
+              {conditions.map((cond) => (
+                <li key={cond} className="rounded border border-slate-300 px-2 py-0.5 text-sm font-medium">{cond}</li>
+              ))}
+            </ul>
+          </section>
         )}
 
+        {therapist.bio && (
+          <section aria-label="About" className="mt-8">
+            <SectionHeading title="About" />
+            <p className="mt-3 max-w-prose text-base leading-relaxed text-slate-800">{therapist.bio}</p>
+          </section>
+        )}
+
+        <div
+          className="fixed inset-x-0 bottom-0 z-40 border-t border-slate-900 bg-[var(--paper)] md:static md:mt-10 md:border-0 md:bg-transparent"
+          style={{ paddingBottom: "env(safe-area-inset-bottom, 0px)" }}
+        >
+          <div className="mx-auto flex max-w-2xl items-center gap-2 px-4 py-3 md:px-0 md:py-0">
+            <Button size="lg" className="flex-1 md:flex-none" onClick={() => setShowBookingModal(true)}>
+              <Calendar className="size-4" aria-hidden="true" /> Request appointment
+            </Button>
+            <Button asChild size="lg" variant="outline">
+              <Link href={`/chat/${therapist.clerkUserId}`}>
+                <MessageSquare className="size-4" aria-hidden="true" /> Message
+              </Link>
+            </Button>
+          </div>
+        </div>
+
+        <Dialog
+          open={showBookingModal}
+          onClose={() => !bookingLoading && setShowBookingModal(false)}
+          title="Request an appointment"
+          description={`With ${therapist.professionalName}. They will confirm or suggest another time.`}
+        >
+          {bookingSuccess ? (
+            <Notice tone="success" title="Request sent">
+              {therapist.professionalName} will review it. You’ll find it under Appointments.
+            </Notice>
+          ) : (
+            <form onSubmit={handleBookAppointment} className="space-y-4">
+              {bookingError && <Notice tone="danger" title={bookingError} />}
+
+              <div className="grid gap-4 sm:grid-cols-2">
+                <Field label="Preferred date" htmlFor="appt-date">
+                  <Input id="appt-date" type="date" min={new Date().toISOString().split("T")[0]} value={selectedDate} onChange={(e) => setSelectedDate(e.target.value)} required />
+                </Field>
+                <Field label="Preferred time" htmlFor="appt-time">
+                  <Input id="appt-time" type="time" value={selectedTime} onChange={(e) => setSelectedTime(e.target.value)} required />
+                </Field>
+              </div>
+
+              <div role="group" aria-label="Common times" className="grid grid-cols-3 gap-1.5 sm:grid-cols-6">
+                {SUGGESTED_TIME_SLOTS.map((slot) => (
+                  <button
+                    key={slot.value}
+                    type="button"
+                    aria-pressed={selectedTime === slot.value}
+                    onClick={() => setSelectedTime(slot.value)}
+                    className={cn(
+                      "rounded-md border px-1 py-1.5 text-xs font-semibold",
+                      selectedTime === slot.value ? "border-slate-900 bg-slate-900 text-white" : "border-slate-300 text-slate-800 hover:border-slate-500"
+                    )}
+                  >
+                    {slot.label}
+                  </button>
+                ))}
+              </div>
+
+              <Field label="What would you like help with?" htmlFor="appt-note" hint="Optional. For example neck stiffness after work.">
+                <Textarea id="appt-note" rows={3} value={patientNote} onChange={(e) => setPatientNote(e.target.value)} />
+              </Field>
+
+              <div className="flex justify-end gap-2 pt-1">
+                <Button type="button" variant="outline" onClick={() => setShowBookingModal(false)} disabled={bookingLoading}>Cancel</Button>
+                <Button type="submit" disabled={bookingLoading}>{bookingLoading ? "Sending…" : "Send request"}</Button>
+              </div>
+            </form>
+          )}
+        </Dialog>
       </div>
     </AppShell>
   );

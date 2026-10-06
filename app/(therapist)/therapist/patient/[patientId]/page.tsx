@@ -1,198 +1,265 @@
+/* eslint-disable react-hooks/set-state-in-effect */
 "use client";
 
-import { useEffect, useState, use } from "react";
+import { useCallback, useEffect, useMemo, useState, use } from "react";
 import Link from "next/link";
-import AppShell from "@/components/layout/AppShell";
-import { getExerciseById } from "@/lib/exercises/registry";
-import { FilePlus, CheckCircle2, Activity, AlertCircle, Loader2 } from "lucide-react";
-import { Card, CardContent } from "@/components/ui/Card";
-import { Button } from "@/components/ui/Button";
 import { useAuth } from "@clerk/react";
+import { MessageSquare, Pencil } from "lucide-react";
+import AppShell from "@/components/layout/AppShell";
+import { Authorship, Button, EmptyState, Notice, PageLoading, SectionHeading, Select, StatusMark, TickRow } from "@/components/ui";
+import PatientAvatar from "@/components/therapist/PatientAvatar";
+import PlanSection, { type PlanData, type PlanHistoryItem } from "@/components/therapist/PlanSection";
+import SessionReviewDialog, { ASSESSMENT_LABEL, type Assessment } from "@/components/therapist/SessionReviewDialog";
+import RomChart from "@/components/progress/RomChart";
+import AdherenceGrid from "@/components/progress/AdherenceGrid";
+import { dayKey } from "@/components/progress/dates";
+import { getPatientStatus, relativeDay, type TherapistPatientItem } from "@/components/therapist/types";
 
-interface ExerciseAssignmentItem {
+interface PlanItem {
   _id: string;
   exerciseId: string;
   targetSets: number;
   targetReps: number;
   type: string;
+  targetRom?: number;
+  holdSeconds?: number;
+  tempoSeconds?: number;
+  frequency?: string;
+  instructions?: string;
+  modifications?: string;
 }
 
 interface PatientSession {
   id: string;
+  exerciseId: string;
   exerciseName: string;
   date: string;
   completedReps: number;
+  targetReps: number;
   rom: number;
+  durationSeconds: number;
+  therapistNote?: string;
+  therapistAssessment?: Assessment;
+  reviewedAt?: string;
 }
 
 interface PatientDetailData {
-  user?: {
-    firstName?: string;
-    lastName?: string;
-    email?: string;
-  };
-  profile?: {
-    concerns?: string[];
-  };
-  exerciseAssignments: ExerciseAssignmentItem[];
+  user?: { firstName?: string; lastName?: string; email?: string; imageUrl?: string };
+  profile?: { concerns?: string[] };
+  exerciseAssignments: PlanItem[];
+  plan: PlanData | null;
+  planHistory: PlanHistoryItem[];
+  sessions: PatientSession[];
+  unreadMessages: number;
 }
 
 export default function PatientDetailPage({ params }: { params: Promise<{ patientId: string }> }) {
   const { patientId } = use(params);
   const { getToken } = useAuth();
-  
-  const [patientData, setPatientData] = useState<PatientDetailData | null>(null);
+
+  const [data, setData] = useState<PatientDetailData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [sessions] = useState<PatientSession[]>([]);
+  const [reviewing, setReviewing] = useState<PatientSession | null>(null);
+  const [romExercise, setRomExercise] = useState("");
+  const [now] = useState(() => Date.now());
+
+  const load = useCallback(async () => {
+    try {
+      const token = await getToken();
+      if (!token) return;
+      const res = await fetch(`/api/therapist/patient/${patientId}`, { headers: { Authorization: `Bearer ${token}` }, cache: "no-store" });
+      const json = await res.json();
+      if (json.success) {
+        setData(json.data as PatientDetailData);
+        setError(null);
+      } else {
+        setError(json.error || "We couldn’t load this patient.");
+      }
+    } catch {
+      setError("We couldn’t reach Swasthya. Check your connection and try again.");
+    } finally {
+      setIsLoading(false);
+    }
+  }, [getToken, patientId]);
 
   useEffect(() => {
-    let isMounted = true;
+    void load();
+  }, [load]);
 
-    const loadPatientDetail = async () => {
-      try {
-        const token = await getToken();
-        if (!token || !isMounted) return;
+  const saveReview = async (assessment: Assessment | undefined, note: string): Promise<string | null> => {
+    if (!reviewing) return null;
+    try {
+      const token = await getToken();
+      const res = await fetch(`/api/therapist/patient/${patientId}/sessions/${reviewing.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ assessment, note }),
+      });
+      const json = await res.json();
+      if (!res.ok || !json.success) return json.error || "We couldn’t save your assessment. Try again.";
+      await load();
+      return null;
+    } catch {
+      return "We couldn’t reach Swasthya. Check your connection and try again.";
+    }
+  };
 
-        const res = await fetch(`/api/therapist/patient/${patientId}`, {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        });
-        
-        const data = await res.json();
-        if (!isMounted) return;
-
-        if (data.success) {
-          setPatientData(data.data as PatientDetailData);
-        } else {
-          setError(data.error || "Failed to load patient data");
-        }
-      } catch {
-        if (isMounted) setError("Failed to load patient data");
-      } finally {
-        if (isMounted) setIsLoading(false);
-      }
-    };
-
-    void loadPatientDetail();
-
-    return () => {
-      isMounted = false;
-    };
-  }, [getToken, patientId]);
+  const sessions = useMemo(() => data?.sessions ?? [], [data]);
+  const exercisesDone = useMemo(() => {
+    const m = new Map<string, string>();
+    sessions.forEach((s) => m.set(s.exerciseId, s.exerciseName));
+    return [...m.entries()];
+  }, [sessions]);
+  const activeRomExercise = exercisesDone.some(([id]) => id === romExercise) ? romExercise : exercisesDone[0]?.[0] ?? "";
+  const romPoints = useMemo(
+    () => sessions.filter((s) => s.exerciseId === activeRomExercise && s.rom > 0).map((s) => ({ date: new Date(s.date), rom: Math.round(s.rom) })).sort((a, b) => a.date.getTime() - b.date.getTime()),
+    [sessions, activeRomExercise]
+  );
+  const doneKeys = useMemo(() => new Set(sessions.map((s) => dayKey(new Date(s.date)))), [sessions]);
 
   if (isLoading) {
     return (
-      <AppShell title="Patient Profile" showBackNav backHref="/therapist">
-        <div className="flex h-full items-center justify-center">
-          <Loader2 className="w-8 h-8 animate-spin text-slate-400" />
-        </div>
+      <AppShell title="Patient" showBackNav backHref="/therapist?tab=patients">
+        <PageLoading label="Loading patient" />
       </AppShell>
     );
   }
-
-  if (error || !patientData) {
+  if (error || !data) {
     return (
-      <AppShell title="Patient Profile" showBackNav backHref="/therapist">
-        <div className="flex flex-col h-full items-center justify-center p-6 text-center space-y-4">
-          <AlertCircle className="w-12 h-12 text-red-500" />
-          <h2 className="text-xl font-semibold text-slate-900">Error loading patient</h2>
-          <p className="text-slate-500">{error || "Patient not found"}</p>
-        </div>
+      <AppShell title="Patient" showBackNav backHref="/therapist?tab=patients">
+        <Notice tone="danger" title="We couldn’t load this patient" action={<Button size="sm" variant="secondary" onClick={() => { setIsLoading(true); void load(); }}>Try again</Button>}>
+          {error || "Patient not found."}
+        </Notice>
       </AppShell>
     );
   }
 
-  const { user, profile, exerciseAssignments } = patientData;
-  const name = `${user?.firstName || ""} ${user?.lastName || ""}`.trim() || "Patient";
-  const concerns = profile?.concerns?.join(", ") || "No specific concerns listed";
+  const name = `${data.user?.firstName || ""} ${data.user?.lastName || ""}`.trim() || "Patient";
+  const concerns = data.profile?.concerns ?? [];
+  const week = sessions.filter((s) => now - new Date(s.date).getTime() < 7 * 86_400_000);
+  const asItem: TherapistPatientItem = {
+    exerciseAssignments: data.exerciseAssignments,
+    activity: {
+      lastSessionAt: sessions[0]?.date ?? null,
+      totalSessions: sessions.length,
+      sessionsLast7Days: week.length,
+      activeDaysLast7: new Set(week.map((s) => dayKey(new Date(s.date)))).size,
+      unreadMessages: data.unreadMessages,
+    },
+  };
+  const status = getPatientStatus(asItem);
+  const reviewedBadge = (a?: Assessment) => (a === "on_track" ? "done" : a === "concern" ? "attention" : "partial");
 
   return (
-    <AppShell title="Patient Profile" showBackNav backHref="/therapist">
-      <div className="space-y-6">
-        
-        {/* Patient Details */}
-        <Card>
-          <CardContent className="p-4 space-y-3">
-            <div>
-              <h2 className="text-xl font-bold text-slate-900">{name}</h2>
-              <div className="flex items-center gap-4 text-sm text-slate-500 mt-1">
-                <span>{user?.email}</span>
-              </div>
-            </div>
-            <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-amber-50 text-amber-700 text-xs font-medium border border-amber-200">
-              <AlertCircle className="w-3.5 h-3.5" />
-              Concerns: {concerns}
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Prescriptions */}
-        <section className="space-y-3">
-          <div className="flex items-center justify-between">
-            <h3 className="text-sm font-semibold text-slate-900">Assigned Exercises</h3>
-            <Button asChild size="sm" variant="outline">
-              <Link href={`/therapist/patient/${patientId}/prescribe`}>
-                <FilePlus className="w-4 h-4 mr-2" /> Assign New
-              </Link>
-            </Button>
+    <AppShell title={name} showBackNav backHref="/therapist?tab=patients" maxWidth="wide">
+      <header className="flex flex-col gap-4 pb-6 sm:flex-row sm:items-start sm:justify-between">
+        <div className="flex items-start gap-4">
+          <PatientAvatar name={name} src={data.user?.imageUrl} className="size-14" />
+          <div className="min-w-0">
+            <h1 className="text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl">{name}</h1>
+            {data.user?.email && <p className="text-sm text-slate-600">{data.user.email}</p>}
+            {concerns.length > 0 && <p className="mt-1 text-sm text-slate-800">Reported concerns: <span className="font-medium">{concerns.join(", ")}</span></p>}
+            <p className="mt-2 text-sm">
+              <StatusMark kind={status.kind === "active" ? "done" : status.needsAttention ? "attention" : "pending"}>{status.label}</StatusMark>
+              <span className="text-slate-700"> · {status.reason}</span>
+            </p>
           </div>
-          
-          <div className="space-y-3">
-            {exerciseAssignments.length === 0 ? (
-              <p className="text-sm text-slate-500 italic">No active exercises assigned.</p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <Button asChild variant={data.unreadMessages ? "highlight" : "secondary"}>
+            <Link href={`/chat/${patientId}`}><MessageSquare className="size-4" aria-hidden="true" /> Message{data.unreadMessages ? ` (${data.unreadMessages})` : ""}</Link>
+          </Button>
+          <Button asChild><Link href={`/therapist/patient/${patientId}/prescribe`}><Pencil className="size-4" aria-hidden="true" /> {data.plan ? "Revise plan" : "Create plan"}</Link></Button>
+        </div>
+      </header>
+
+      <div className="grid gap-x-12 gap-y-10 lg:grid-cols-[minmax(0,1fr)_minmax(0,24rem)]">
+        <div className="min-w-0 space-y-10">
+          <PlanSection patientId={patientId} patientName={name} plan={data.plan} history={data.planHistory ?? []} onChanged={() => void load()} />
+
+          <section aria-label="Sessions">
+            <SectionHeading title="Sessions" description="Camera measurements are automated. Add your own assessment beside them." />
+            {sessions.length === 0 ? (
+              <EmptyState className="mt-3" title="No sessions recorded yet">When this patient finishes an exercise, the session and its measurements appear here for your review.</EmptyState>
             ) : (
-              exerciseAssignments.map((ea: ExerciseAssignmentItem) => {
-                const ex = getExerciseById(ea.exerciseId);
-                return (
-                  <Card key={ea._id}>
-                    <CardContent className="p-4">
-                      <h4 className="text-sm font-semibold text-slate-900">{ex?.name || ea.exerciseId}</h4>
-                      <p className="text-xs text-slate-500 mt-1">
-                        {ea.targetSets} sets × {ea.targetReps} reps • {ea.type === "assigned" ? "Assigned" : "Suggested"}
-                      </p>
-                    </CardContent>
-                  </Card>
-                );
-              })
-            )}
-          </div>
-        </section>
+              <ul>
+                {sessions.slice(0, 20).map((s) => (
+                  <li key={s.id} className="border-b border-slate-300 py-4">
+                    <div className="flex flex-wrap items-baseline justify-between gap-2">
+                      <p className="font-bold text-slate-900">{s.exerciseName}</p>
+                      <time dateTime={s.date} className="text-sm text-slate-600">
+                        {new Date(s.date).toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" })} · {new Date(s.date).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })}
+                      </time>
+                    </div>
 
-        {/* Recent Sessions */}
-        <section className="space-y-3 pb-6">
-          <h3 className="text-sm font-semibold text-slate-900">Recent Sessions</h3>
-          {sessions.length === 0 ? (
-            <p className="text-sm text-slate-500 italic">No sessions recorded yet.</p>
-          ) : (
-            <div className="space-y-3">
-              {sessions.map((s: PatientSession) => (
-                <Card key={s.id}>
-                  <CardContent className="p-4">
-                    <div className="flex justify-between items-start mb-3">
-                      <span className="text-sm font-semibold text-slate-900">{s.exerciseName}</span>
-                      <span className="text-xs text-slate-500">
-                        {new Date(s.date).toLocaleDateString()}
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-4 text-xs font-medium text-slate-600">
-                      <div className="flex items-center gap-1.5">
-                        <CheckCircle2 className="w-4 h-4 text-emerald-500" /> 
-                        {s.completedReps} Reps
+                    <div className="mt-2 grid gap-3 sm:grid-cols-2">
+                      <div>
+                        <Authorship by="automated" />
+                        <div className="mt-1.5"><TickRow total={Math.min(s.targetReps, 20)} done={Math.min(s.completedReps, 20)} size={14} label={`${s.completedReps} of ${s.targetReps} reps`} /></div>
+                        <p className="mt-1 text-sm text-slate-800">
+                          <span className="font-mono font-semibold tabular">{s.completedReps}/{s.targetReps}</span> reps
+                          {s.rom > 0 && <> · <span className="font-mono font-semibold tabular">{Math.round(s.rom)}°</span> range</>}
+                          {s.durationSeconds > 0 && <> · <span className="font-mono tabular">{Math.floor(s.durationSeconds / 60)}:{String(s.durationSeconds % 60).padStart(2, "0")}</span></>}
+                        </p>
                       </div>
-                      <div className="flex items-center gap-1.5">
-                        <Activity className="w-4 h-4 text-blue-500" /> 
-                        {s.rom}&deg; ROM
+                      <div>
+                        <Authorship by="therapist" name="you" />
+                        {s.therapistAssessment || s.therapistNote ? (
+                          <div className="mt-1.5">
+                            {s.therapistAssessment && <StatusMark kind={reviewedBadge(s.therapistAssessment)}>{ASSESSMENT_LABEL[s.therapistAssessment]}</StatusMark>}
+                            {s.therapistNote && <p className="hand mt-1">“{s.therapistNote}”</p>}
+                            <button type="button" onClick={() => setReviewing(s)} className="mt-1 text-sm font-semibold text-emerald-700 underline underline-offset-4">Edit assessment</button>
+                          </div>
+                        ) : (
+                          <div className="mt-1.5">
+                            <p className="text-sm text-slate-600">Not reviewed yet.</p>
+                            <Button size="sm" variant="outline" className="mt-1.5" onClick={() => setReviewing(s)}>Add assessment</Button>
+                          </div>
+                        )}
                       </div>
                     </div>
-                  </CardContent>
-                </Card>
-              ))}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+        </div>
+
+        <aside className="min-w-0 space-y-10">
+          <section aria-label="Adherence">
+            <SectionHeading title="Last 28 days" description="Days with at least one tracked session." />
+            <div className="mt-4"><AdherenceGrid days={28} doneKeys={doneKeys} /></div>
+            <p className="mt-3 text-sm text-slate-700">Last session: <span className="font-semibold">{relativeDay(sessions[0]?.date)}</span></p>
+          </section>
+
+          <section aria-label="Range of motion">
+            <SectionHeading title="Range of motion" description="Measured by the camera, not a clinical measurement." />
+            {exercisesDone.length > 1 && (
+              <div className="mt-3">
+                <Select aria-label="Exercise" value={activeRomExercise} onChange={(e) => setRomExercise(e.target.value)} className="h-9 w-auto">
+                  {exercisesDone.map(([id, n]) => <option key={id} value={id}>{n}</option>)}
+                </Select>
+              </div>
+            )}
+            <div className="mt-3">
+              {romPoints.length === 0 ? <EmptyState title="No readings yet">Range-of-motion readings appear after tracked sessions.</EmptyState> : <RomChart points={romPoints} />}
             </div>
-          )}
-        </section>
+          </section>
+        </aside>
       </div>
+
+      {reviewing && (
+        <SessionReviewDialog
+          key={reviewing.id}
+          open
+          onClose={() => setReviewing(null)}
+          exerciseName={reviewing.exerciseName}
+          initialAssessment={reviewing.therapistAssessment}
+          initialNote={reviewing.therapistNote}
+          onSave={saveReview}
+        />
+      )}
     </AppShell>
   );
 }

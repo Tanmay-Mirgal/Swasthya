@@ -1,6 +1,7 @@
 // Server Component — exports generateStaticParams for static export.
 // Client UI is in LiveExerciseClient.tsx (has "use client").
 
+import { Suspense } from "react";
 import LiveExerciseClient from "./LiveExerciseClient";
 
 // Required for Next.js static export: tells the build which exerciseId params to pre-render.
@@ -18,5 +19,9 @@ interface PageProps {
 }
 
 export default function LiveExercisePage({ params }: PageProps) {
-  return <LiveExerciseClient params={params} />;
+  return (
+    <Suspense fallback={null}>
+      <LiveExerciseClient params={params} />
+    </Suspense>
+  );
 }

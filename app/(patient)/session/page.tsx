@@ -2,51 +2,53 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import AppShell from "@/components/layout/AppShell";
 import SessionSummary from "@/components/session/SessionSummary";
-import { getLatestSession } from "@/lib/session/sessionStore";
+import { Button, EmptyState } from "@/components/ui";
+import { getLatestSession, getSessionHistory } from "@/lib/session/sessionStore";
 import { SessionRecord } from "@/lib/exercises/types";
 
 export default function SessionSummaryPage() {
   const [session, setSession] = useState<SessionRecord | null>(null);
+  const [previous, setPrevious] = useState<SessionRecord | null>(null);
+  const [ready, setReady] = useState(false);
 
   useEffect(() => {
-    // Try reading from sessionStorage (just completed) or fall back to latest in localStorage
-    if (typeof window !== "undefined") {
+    let current: SessionRecord | null = null;
+    try {
       const stored = sessionStorage.getItem("last_completed_session");
-      if (stored) {
-        try {
-          setSession(JSON.parse(stored));
-          return;
-        } catch {
-          // fallback
-        }
-      }
+      if (stored) current = JSON.parse(stored) as SessionRecord;
+    } catch {
+      /* fall back to the newest saved session */
     }
-    setSession(getLatestSession());
+    current = current ?? getLatestSession();
+    setSession(current);
+    if (current) {
+      const history = getSessionHistory();
+      setPrevious(history.find((s) => s.exerciseId === current!.exerciseId && s.id !== current!.id) ?? null);
+    }
+    setReady(true);
   }, []);
 
-  if (!session) {
-    return (
-      <AppShell title="Session Summary">
-        <div className="flex flex-col items-center justify-center flex-1 py-12 text-center space-y-4">
-          <p className="text-sm text-slate-500">No session record found.</p>
-          <a
-            href="/exercise"
-            className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-semibold shadow-sm transition-colors"
-          >
-            Start an Exercise
-          </a>
-        </div>
-      </AppShell>
-    );
-  }
-
   return (
-    <AppShell hideNav>
-      <div className="pt-4 h-full flex flex-col flex-1">
-        <SessionSummary session={session} />
-      </div>
+    <AppShell title="Session summary" showBackNav backHref="/progress">
+      {!ready ? null : session ? (
+        <SessionSummary session={session} previous={previous} />
+      ) : (
+        <div className="mx-auto w-full max-w-xl pt-4">
+          <EmptyState
+            title="No session to show"
+            action={
+              <Button asChild size="sm">
+                <Link href="/exercise">Start an exercise</Link>
+              </Button>
+            }
+          >
+            Once you finish a tracked exercise, its summary appears here.
+          </EmptyState>
+        </div>
+      )}
     </AppShell>
   );
 }

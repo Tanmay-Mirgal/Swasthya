@@ -10,58 +10,32 @@ interface ConsultationHeaderProps {
   isCompleted: boolean;
   callActive: boolean;
   onBack: () => void;
-  onOpenPrescriptionModal?: () => void;
+  /** Where the therapist writes the rehabilitation plan. Opens in a new tab so the call stays up. */
+  planHref?: string;
 }
 
-export default function ConsultationHeader({
-  peerName,
-  activeRole,
-  onlineUsers,
-  isCompleted,
-  onBack,
-  onOpenPrescriptionModal,
-}: ConsultationHeaderProps) {
+/** Who you're with and whether they are here. Solid bar, no overlay gradient. */
+export default function ConsultationHeader({ peerName, activeRole, onlineUsers, isCompleted, onBack, planHref }: ConsultationHeaderProps) {
+  const status = isCompleted ? "Completed" : onlineUsers > 1 ? "In the room" : "Waiting for them";
   return (
-    <div className="absolute top-0 left-0 right-0 z-10 flex items-center justify-between px-5 pt-5 pb-12 bg-gradient-to-b from-[#0B0C10]/80 via-[#0B0C10]/40 to-transparent pointer-events-none">
-      <div className="flex items-center gap-4 pointer-events-auto">
-        <button
-          onClick={onBack}
-          className="text-white/80 hover:text-white hover:bg-white/10 rounded-lg p-2 transition-colors flex items-center justify-center -ml-2"
-        >
-          <ChevronLeft className="w-6 h-6" />
+    <div className="absolute inset-x-0 top-0 z-10 flex items-center justify-between gap-3 border-b border-slate-700 bg-slate-900 px-3 py-2">
+      <div className="flex min-w-0 items-center gap-2">
+        <button onClick={onBack} aria-label="Leave consultation" className="flex size-11 items-center justify-center rounded-lg text-slate-100 hover:bg-slate-700">
+          <ChevronLeft className="size-6" />
         </button>
-        <div>
-          <h1 className="text-[17px] font-semibold text-white tracking-tight leading-tight">
-            {peerName || (activeRole === "patient" ? "Doctor" : "Patient")}
-          </h1>
-          <div className="flex items-center gap-1.5 mt-0.5">
-            <div
-              className={`w-1.5 h-1.5 rounded-full ${
-                onlineUsers > 1 ? "bg-emerald-500" : "bg-amber-500 opacity-60"
-              }`}
-            />
-            <span className="text-[13px] font-medium text-slate-300">
-              {isCompleted
-                ? "Completed"
-                : onlineUsers > 1
-                ? "Connected"
-                : "Waiting..."}
-            </span>
-          </div>
+        <div className="min-w-0">
+          <h1 className="truncate text-base font-semibold leading-tight text-white">{peerName || (activeRole === "patient" ? "Doctor" : "Patient")}</h1>
+          <p className="flex items-center gap-1.5 text-sm text-slate-300">
+            <span className={`inline-block size-2 rounded-full ${onlineUsers > 1 && !isCompleted ? "bg-emerald-400" : "border border-slate-400"}`} aria-hidden="true" />
+            {status}
+          </p>
         </div>
       </div>
-
-      <div className="flex items-center gap-3 pointer-events-auto">
-        {activeRole === "doctor" && !isCompleted && onOpenPrescriptionModal && (
-          <button
-            onClick={onOpenPrescriptionModal}
-            className="hidden md:flex items-center gap-2 bg-[#1A1C23]/90 hover:bg-[#252830] text-white px-4 py-2 rounded-lg text-[13px] font-medium border border-white/10 transition-colors shadow-sm backdrop-blur-md"
-          >
-            <FileText className="w-4 h-4 text-slate-300" />
-            Write Prescription
-          </button>
-        )}
-      </div>
+      {activeRole === "doctor" && !isCompleted && planHref && (
+        <a href={planHref} target="_blank" rel="noopener noreferrer" className="hidden h-10 items-center gap-2 rounded-lg border border-slate-500 px-3 text-sm font-semibold text-white hover:bg-slate-700 md:flex">
+          <FileText className="size-4" aria-hidden="true" /> Create plan<span className="sr-only"> (opens in a new tab)</span>
+        </a>
+      )}
     </div>
   );
 }

@@ -1,35 +1,29 @@
-/* eslint-disable react-hooks/immutability */
-/* eslint-disable react-hooks/exhaustive-deps */
 /* eslint-disable react-hooks/set-state-in-effect */
 "use client";
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { useRouter } from "next/navigation";
-import {
-  ChevronLeft,
-  User,
-  ShieldCheck,
-  Stethoscope,
-  Bell,
-  Volume2,
-  Lock,
-  LogOut,
-  ChevronRight,
-  Flame,
-  Loader2,
-} from "lucide-react";
+import { LogOut } from "lucide-react";
 import { useUser, useClerk, useAuth } from "@clerk/react";
 import AppShell from "@/components/layout/AppShell";
+import { Button, EmptyState, PageHeader, SectionHeading, Switch, useToast } from "@/components/ui";
 import { getAggregateStats } from "@/lib/session/sessionStore";
+import { getVoiceCoachPreference, setVoiceCoachPreference } from "@/lib/preferences";
 
 interface ProfileDashboardData {
   profile?: { concerns?: string[] };
-  assignment?: { status: string };
   therapist?: { professionalName: string; clerkUserId: string; specialization?: string };
-  pendingRequest?: boolean;
-  requestedTherapist?: { professionalName: string };
   stats?: { totalSessions: number; totalReps: number; avgRom: number };
+}
+
+interface MedicationRecord {
+  prescriptionId: string;
+  prescribedBy?: string;
+  prescribedAt: string;
+  status: string;
+  medicines: { name: string; dosage?: string; frequency?: string; duration?: string; instructions?: string }[];
 }
 
 export default function ProfilePage() {
@@ -37,14 +31,13 @@ export default function ProfilePage() {
   const { user } = useUser();
   const { getToken } = useAuth();
   const { signOut } = useClerk();
+  const toast = useToast();
+  const [emailReminders, setEmailReminders] = useState<boolean | null>(null);
+  const [timezone, setTimezone] = useState<string | null>(null);
+  const [medications, setMedications] = useState<MedicationRecord[] | null>(null);
 
-  // Settings toggles
-  const [audioFeedback, setAudioFeedback] = useState(true);
-  const [dailyReminders, setDailyReminders] = useState(true);
-
-  // DB Data states
-  const [isLoading, setIsLoading] = useState(true);
-  const [dashboardData, setDashboardData] = useState<ProfileDashboardData | null>(null);
+  const [voice, setVoice] = useState(true);
+  const [data, setData] = useState<ProfileDashboardData | null>(null);
   const [stats, setStats] = useState({ totalSessions: 0, totalReps: 0, avgRom: 0 });
 
   useEffect(() => {
@@ -52,273 +45,191 @@ export default function ProfilePage() {
       router.replace("/therapist?tab=profile");
       return;
     }
-
-    // Initial local stats
-    const localStats = getAggregateStats();
-    setStats(localStats);
-
-    fetchProfileData();
-  }, [user, router]);
-
-  const fetchProfileData = async () => {
-    try {
-      setIsLoading(true);
-      const token = await getToken();
-      if (!token) return;
-
-      const res = await fetch("/api/patient/dashboard", {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
-
-      if (res.ok) {
-        const json = await res.json();
-        if (json.success && json.data) {
-          setDashboardData(json.data);
-          if (json.data.stats && (json.data.stats.totalSessions > 0 || stats.totalSessions === 0)) {
-            setStats(json.data.stats);
-          }
+    setVoice(getVoiceCoachPreference());
+    setStats(getAggregateStats());
+    let cancelled = false;
+    (async () => {
+      try {
+        const token = await getToken();
+        if (!token) return;
+        const headers = { Authorization: `Bearer ${token}` };
+        const [notif, meds] = await Promise.all([
+          fetch("/api/patient/notifications", { headers }).then((r) => (r.ok ? r.json() : null)).catch(() => null),
+          fetch("/api/patient/medications", { headers }).then((r) => (r.ok ? r.json() : null)).catch(() => null),
+        ]);
+        if (!cancelled && notif?.success) {
+          setEmailReminders(notif.data.emailReminders);
+          setTimezone(notif.data.timezone);
         }
+        if (!cancelled && meds?.success) setMedications(meds.data);
+        const res = await fetch("/api/patient/dashboard", { headers });
+        if (!res.ok) return;
+        const json = await res.json();
+        if (!cancelled && json.success && json.data) {
+          setData(json.data);
+          if (json.data.stats && json.data.stats.totalSessions > 0) setStats(json.data.stats);
+        }
+      } catch {
+        /* the page still shows what is stored on this device */
       }
-    } catch (err) {
-      console.error("Failed to load profile data:", err);
-    } finally {
-      setIsLoading(false);
-    }
-  };
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [user, router, getToken]);
 
-  const handleSignOut = async () => {
-    await signOut();
-    router.push("/");
-  };
-
-  const profile = dashboardData?.profile;
-  const therapist = dashboardData?.therapist;
-  const assignment = dashboardData?.assignment;
-  const concerns =
-    profile?.concerns && profile.concerns.length > 0
-      ? profile.concerns
-      : ["Neck", "Lower Back", "Shoulder Mobility", "Knee Rehabilitation"];
+  const concerns = data?.profile?.concerns ?? [];
+  const therapist = data?.therapist;
 
   return (
-    <AppShell title="Profile" showBackNav backHref="/" hideHeader>
-      <div className="flex flex-col space-y-5 pb-10 pt-2 px-2 sm:px-0 bg-[#F8FAFC]">
-        
-        {/* ── Top Header with Back button ──────────────────────────────── */}
-        <div className="flex items-center justify-between pt-1">
-          <Link
-            href="/"
-            className="size-9 rounded-full bg-white border border-slate-200 shadow-2xs flex items-center justify-center text-slate-700 hover:text-slate-900 hover:bg-slate-50 transition-colors"
-          >
-            <ChevronLeft className="size-5" />
-          </Link>
-          <h1 className="text-lg font-bold text-slate-900">Health Profile</h1>
-          <div className="size-9" /> {/* Spacer */}
-        </div>
+    <AppShell title="Profile" maxWidth="default">
+      <div className="mx-auto w-full max-w-2xl">
+        <PageHeader title="Profile" />
 
-        {/* ── Patient Identity Card ─────────────────────────────────────── */}
-        <div className="bg-white rounded-2xl border border-slate-200/80 p-5 shadow-[0_2px_12px_rgba(15,23,42,0.04)] flex items-center gap-4">
-          <div className="relative size-16 rounded-full bg-slate-100 border-2 border-white shadow-sm overflow-hidden flex items-center justify-center shrink-0">
-            {user?.imageUrl ? (
-              <img src={user.imageUrl} alt="Profile" className="w-full h-full object-cover" />
-            ) : (
-              <User className="size-8 text-slate-400" />
-            )}
-            <span className="absolute bottom-0 right-0 size-3 rounded-full bg-emerald-500 border-2 border-white" />
-          </div>
-
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2">
-              <h2 className="text-lg font-bold text-slate-900 truncate">
-                {user?.fullName || user?.firstName || "Patient"}
-              </h2>
-              <span className="text-[10px] font-bold text-emerald-800 bg-emerald-50 border border-emerald-200/60 px-1.5 py-0.5 rounded">
-                Verified
-              </span>
-            </div>
-            <p className="text-xs text-slate-500 truncate mt-0.5">
-              {user?.primaryEmailAddress?.emailAddress || "patient@swasthya.health"}
-            </p>
-            <p className="text-[11px] font-medium text-slate-400 mt-1">
-              Member ID: #SW-9482 • Active Plan
-            </p>
+        <div className="flex items-center gap-4 border-t-2 border-slate-900 pt-4">
+          {user?.imageUrl ? (
+            <Image src={user.imageUrl} alt="" width={64} height={64} unoptimized className="size-16 rounded-full border border-slate-300 object-cover" />
+          ) : (
+            <div aria-hidden="true" className="size-16 rounded-full border border-slate-300 bg-slate-100" />
+          )}
+          <div className="min-w-0">
+            <p className="truncate text-xl font-bold text-slate-900">{user?.fullName || user?.firstName || "Your account"}</p>
+            <p className="truncate text-sm text-slate-600">{user?.primaryEmailAddress?.emailAddress}</p>
           </div>
         </div>
 
-        {/* ── Quick Health Snapshot (4 Metrics from DB) ───────────────── */}
-        <div className="grid grid-cols-4 gap-2 bg-white p-3.5 rounded-2xl border border-slate-200/80 shadow-[0_2px_12px_rgba(15,23,42,0.04)] text-center">
-          <div>
-            <span className="text-lg font-extrabold text-slate-900">{stats.totalSessions}</span>
-            <span className="text-[10px] text-slate-400 block font-medium">Sessions</span>
-          </div>
-          <div className="border-l border-slate-100">
-            <span className="text-lg font-extrabold text-slate-900">{stats.totalReps}</span>
-            <span className="text-[10px] text-slate-400 block font-medium">Reps</span>
-          </div>
-          <div className="border-l border-slate-100">
-            <span className="text-lg font-extrabold text-slate-900">{stats.avgRom}&deg;</span>
-            <span className="text-[10px] text-slate-400 block font-medium">Avg ROM</span>
-          </div>
-          <div className="border-l border-slate-100 flex flex-col items-center">
-            <span className="text-lg font-extrabold text-amber-900 flex items-center gap-0.5">
-              5 <Flame className="size-3.5 fill-amber-500 text-amber-500" />
-            </span>
-            <span className="text-[10px] text-slate-400 block font-medium">Streak</span>
-          </div>
-        </div>
-
-        {/* ── Active Care Plan & Specialist (from DB) ───────────────────── */}
-        <div className="bg-white rounded-2xl border border-slate-200/80 p-5 shadow-[0_2px_12px_rgba(15,23,42,0.04)] flex flex-col gap-3">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <div className="size-8 rounded-full bg-emerald-50 text-emerald-700 flex items-center justify-center">
-                <Stethoscope className="size-4" />
-              </div>
-              <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500">
-                Connected Specialist
-              </h3>
-            </div>
-            <span className="text-[10px] font-semibold uppercase tracking-wider text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200/50">
-              {therapist ? "Care Active" : "Available"}
-            </span>
-          </div>
-
-          <div className="flex items-center justify-between pt-1">
+        <section aria-label="Your totals" className="mt-8">
+          <SectionHeading title="Your totals" description="From your saved sessions." />
+          <dl className="mt-3 grid grid-cols-3 gap-4">
             <div>
-              <p className="text-sm font-bold text-slate-900">
-                {therapist?.professionalName || "No specialist connected yet"}
-              </p>
-              <p className="text-xs text-slate-500">
-                {therapist?.specialization || "Connect with a doctor for a personalized plan"}
-              </p>
-            </div>
-            <Link
-              href="/discover"
-              className="text-xs font-semibold text-emerald-700 hover:text-emerald-800 flex items-center gap-1"
-            >
-              <span>{therapist ? "Manage" : "Browse"}</span>
-              <ChevronRight className="size-3.5" />
-            </Link>
-          </div>
-        </div>
-
-        {/* ── Recovery Focus Areas / Reported Concerns ─────────────────── */}
-        <div className="bg-white rounded-2xl border border-slate-200/80 p-5 shadow-[0_2px_12px_rgba(15,23,42,0.04)] flex flex-col gap-3">
-          <div className="flex items-center justify-between">
-            <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500">
-              Recovery Focus Areas
-            </h3>
-            <span className="text-[11px] font-medium text-slate-400">4 Active</span>
-          </div>
-
-          <div className="flex flex-wrap gap-2 pt-1">
-            {concerns.map((item: string) => (
-              <span
-                key={item}
-                className="text-xs font-semibold px-3 py-1.5 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200/60"
-              >
-                {item}
-              </span>
-            ))}
-          </div>
-        </div>
-
-        {/* ── App Preferences & Camera Settings ─────────────────────────── */}
-        <div className="bg-white rounded-2xl border border-slate-200/80 p-5 shadow-[0_2px_12px_rgba(15,23,42,0.04)] flex flex-col gap-4">
-          <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500">
-            Therapy Preferences
-          </h3>
-
-          {/* Toggle 1: Voice Guidance */}
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="size-8 rounded-lg bg-slate-100 flex items-center justify-center text-slate-600">
-                <Volume2 className="size-4" />
-              </div>
-              <div>
-                <p className="text-sm font-semibold text-slate-900">Voice Rep Guidance</p>
-                <p className="text-[11px] text-slate-500">Audio cues for form correction</p>
-              </div>
-            </div>
-            <button
-              type="button"
-              role="switch"
-              aria-checked={audioFeedback}
-              onClick={() => setAudioFeedback(!audioFeedback)}
-              className={`relative inline-flex h-6 w-11 min-h-0 min-w-0 shrink-0 cursor-pointer rounded-full p-0.5 transition-colors duration-200 ease-in-out focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 focus-visible:ring-offset-2 ${
-                audioFeedback ? "bg-emerald-600" : "bg-slate-300"
-              }`}
-            >
-              <span
-                aria-hidden="true"
-                className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-sm ring-0 transition duration-200 ease-in-out ${
-                  audioFeedback ? "translate-x-5" : "translate-x-0"
-                }`}
-              />
-            </button>
-          </div>
-
-          {/* Toggle 2: Daily Reminders */}
-          <div className="flex items-center justify-between pt-2 border-t border-slate-100">
-            <div className="flex items-center gap-3">
-              <div className="size-8 rounded-lg bg-slate-100 flex items-center justify-center text-slate-600">
-                <Bell className="size-4" />
-              </div>
-              <div>
-                <p className="text-sm font-semibold text-slate-900">Session Reminders</p>
-                <p className="text-[11px] text-slate-500">Daily notification at 9:00 AM</p>
-              </div>
-            </div>
-            <button
-              type="button"
-              role="switch"
-              aria-checked={dailyReminders}
-              onClick={() => setDailyReminders(!dailyReminders)}
-              className={`relative inline-flex h-6 w-11 min-h-0 min-w-0 shrink-0 cursor-pointer rounded-full p-0.5 transition-colors duration-200 ease-in-out focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 focus-visible:ring-offset-2 ${
-                dailyReminders ? "bg-emerald-600" : "bg-slate-300"
-              }`}
-            >
-              <span
-                aria-hidden="true"
-                className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-sm ring-0 transition duration-200 ease-in-out ${
-                  dailyReminders ? "translate-x-5" : "translate-x-0"
-                }`}
-              />
-            </button>
-          </div>
-        </div>
-
-        {/* ── Privacy & Medical Security ───────────────────────────────── */}
-        <div className="bg-white rounded-2xl border border-slate-200/80 p-4 shadow-[0_2px_12px_rgba(15,23,42,0.04)] flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="size-8 rounded-lg bg-emerald-50 text-emerald-700 flex items-center justify-center">
-              <ShieldCheck className="size-4" />
+              <dt className="text-sm text-slate-600">Sessions</dt>
+              <dd className="font-mono text-2xl font-semibold tabular">{stats.totalSessions}</dd>
             </div>
             <div>
-              <p className="text-xs font-bold text-slate-900">HIPAA Compliant & Encrypted</p>
-              <p className="text-[11px] text-slate-500">Camera data processed on-device</p>
+              <dt className="text-sm text-slate-600">Reps</dt>
+              <dd className="font-mono text-2xl font-semibold tabular">{stats.totalReps}</dd>
             </div>
+            <div>
+              <dt className="text-sm text-slate-600">Average range</dt>
+              <dd className="font-mono text-2xl font-semibold tabular">{stats.totalSessions > 0 ? `${stats.avgRom}°` : "—"}</dd>
+            </div>
+          </dl>
+        </section>
+
+        <section aria-label="Recovery focus" className="mt-8">
+          <SectionHeading title="What you’re recovering from" />
+          {concerns.length === 0 ? (
+            <p className="mt-3 text-sm text-slate-600">You haven’t chosen any areas yet.</p>
+          ) : (
+            <ul className="mt-3 flex flex-wrap gap-1.5">
+              {concerns.map((c) => (
+                <li key={c} className="rounded border border-slate-300 px-2 py-0.5 text-sm font-medium">{c}</li>
+              ))}
+            </ul>
+          )}
+        </section>
+
+        <section aria-label="Your physiotherapist" className="mt-8">
+          <SectionHeading title="Your physiotherapist" />
+          {therapist ? (
+            <div className="mt-3 flex items-center justify-between gap-3">
+              <div>
+                <p className="font-semibold text-slate-900">{therapist.professionalName}</p>
+                {therapist.specialization && <p className="text-sm text-slate-600">{therapist.specialization}</p>}
+              </div>
+              <Button asChild variant="outline" size="sm"><Link href={`/therapist-profile/${therapist.clerkUserId}`}>View profile</Link></Button>
+            </div>
+          ) : (
+            <EmptyState className="mt-3" title="No physiotherapist yet" action={<Button asChild size="sm"><Link href="/discover">Find a physiotherapist</Link></Button>}>
+              Connect with one to get a prescribed exercise sheet.
+            </EmptyState>
+          )}
+        </section>
+
+        <section aria-label="Preferences" className="mt-8">
+          <SectionHeading title="Preferences" />
+          <div className="mt-4">
+            <Switch
+              id="voice-coach"
+              label="Voice coach"
+              description="Speaks each form tip during an exercise. Saved on this device."
+              checked={voice}
+              onChange={(next) => {
+                setVoice(next);
+                setVoiceCoachPreference(next);
+              }}
+            />
           </div>
-          <Lock className="size-4 text-slate-400" />
-        </div>
+          {emailReminders !== null && (
+            <div className="mt-5">
+              <Switch
+                id="email-reminders"
+                label="Email reminders"
+                description={`A daily reminder when exercises are due and a note on weekly review days. Changes to your plan are always emailed.${timezone ? ` Your day starts in ${timezone.replace(/_/g, " ")}.` : ""}`}
+                checked={emailReminders}
+                onChange={async (next) => {
+                  setEmailReminders(next);
+                  try {
+                    const token = await getToken();
+                    const res = await fetch("/api/patient/notifications", { method: "PATCH", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }, body: JSON.stringify({ emailReminders: next }) });
+                    if (!res.ok) throw new Error("save");
+                  } catch {
+                    setEmailReminders(!next);
+                    toast("We couldn’t save that. Please try again.", "danger");
+                  }
+                }}
+              />
+            </div>
+          )}
+        </section>
 
-        {/* ── Sign Out Button ──────────────────────────────────────────── */}
-        <div className="pt-2">
-          <button
-            onClick={handleSignOut}
-            className="w-full h-12 rounded-xl flex items-center justify-center gap-2 font-semibold text-red-600 text-sm bg-red-50/70 hover:bg-red-100/70 border border-red-200/60 active:scale-[0.98] transition-all cursor-pointer"
+        <section aria-label="Medication" id="medications" className="mt-8 scroll-mt-20">
+          <SectionHeading title="Medication from your therapist" description="Exactly as your therapist recorded it. Swasthya never suggests or changes medication." />
+          {medications === null ? null : medications.length === 0 ? (
+            <p className="mt-3 text-sm text-slate-600">Your therapist hasn’t recorded any medication for you.</p>
+          ) : (
+            <div className="mt-3 space-y-5">
+              {medications.map((rec) => (
+                <div key={rec.prescriptionId}>
+                  <p className="text-sm text-slate-600">
+                    {rec.prescribedBy ? `${rec.prescribedBy}, ` : ""}
+                    {new Date(rec.prescribedAt).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" })}
+                    {rec.status === "completed" || rec.status === "cancelled" ? " · earlier plan" : ""}
+                  </p>
+                  <ul className="mt-1 border-t border-slate-900">
+                    {rec.medicines.map((m, i) => (
+                      <li key={i} className="border-b border-slate-300 py-2.5 text-sm">
+                        <p className="font-semibold text-slate-900">{m.name}</p>
+                        <p className="text-slate-700">{[m.dosage, m.frequency, m.duration].filter(Boolean).join(" · ")}</p>
+                        {m.instructions && <p className="text-slate-600">{m.instructions}</p>}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ))}
+              <p className="text-xs text-slate-600">Ask your therapist or pharmacist if you are unsure about anything here.</p>
+            </div>
+          )}
+        </section>
+
+        <section aria-label="Privacy" className="mt-8">
+          <SectionHeading title="Privacy" />
+          <p className="mt-3 max-w-prose text-sm leading-relaxed text-slate-700">
+            Your camera video is analysed on this device and is not uploaded. The only exception is a short clip you choose to record when your therapist asks for one at a weekly review; only you and your therapist can watch it, and you can delete it before it is reviewed. Swasthya saves the results of each session, such as reps and range of motion, to your account.
+          </p>
+        </section>
+
+        <div className="mt-10 border-t border-slate-300 pt-6">
+          <Button
+            variant="outline"
+            onClick={async () => {
+              await signOut();
+              router.push("/");
+            }}
           >
-            <LogOut className="size-4" />
-            <span>Sign Out</span>
-          </button>
+            <LogOut className="size-4" aria-hidden="true" /> Sign out
+          </Button>
         </div>
-
-        {/* App Version Info */}
-        <p className="text-center text-[11px] text-slate-400 pt-2">
-          Swasthya v1.0 • Clinical Motion Intelligence
-        </p>
-
       </div>
     </AppShell>
   );

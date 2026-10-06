@@ -1,7 +1,7 @@
 "use client";
 
 import React from "react";
-import { Loader2 } from "lucide-react";
+import { AlertCircle, Loader2, MicOff, ShieldAlert } from "lucide-react";
 
 interface VideoCallAreaProps {
   callActive: boolean;
@@ -16,9 +16,17 @@ interface VideoCallAreaProps {
   remoteVideoRef: React.RefObject<HTMLVideoElement | null>;
   isMuted: boolean;
   isVideoDisabled: boolean;
+  isFallbackMedia?: boolean;
+  /** Replaces "Connecting securely..." while a call is ringing/negotiating (e.g. "Calling Dr. Sharma…"). */
+  statusText?: string;
+  /** Transient message: call ended/declined, connection problems, permission errors. */
+  notice?: string | null;
+  /** Realtime connection hint, shown when not fully connected. */
+  connectionLabel?: string | null;
   onStartCall: () => void;
 }
 
+/** The call window: solid ink ground, hairline-bordered self view, plain status messages. */
 export default function VideoCallArea({
   callActive,
   callConnecting,
@@ -26,54 +34,70 @@ export default function VideoCallArea({
   isCompleted,
   peerName,
   onlineUsers,
+  callDuration,
+  formatTime,
   localVideoRef,
   remoteVideoRef,
   isMuted,
   isVideoDisabled,
+  isFallbackMedia = false,
+  statusText,
+  notice,
+  connectionLabel,
   onStartCall,
 }: VideoCallAreaProps) {
+  const initial = peerName ? peerName.charAt(0).toUpperCase() : "?";
   return (
-    <div className="absolute inset-0 z-0 bg-[#0B0C10] flex items-center justify-center overflow-hidden">
-      {!callActive && !callConnecting && (
-        <div className="relative z-10 flex flex-col items-center justify-center text-center px-6 max-w-sm">
-          <div className="relative mb-6">
-            <div className="w-24 h-24 rounded-full bg-slate-800/50 flex items-center justify-center overflow-hidden border border-slate-700/50 shadow-sm">
-              <span className="text-3xl font-medium text-slate-400">
-                {peerName ? peerName.charAt(0).toUpperCase() : "?"}
-              </span>
-            </div>
-            {onlineUsers > 1 && (
-              <div className="absolute bottom-1 right-1 w-4 h-4 bg-emerald-500 rounded-full border-[3px] border-[#0B0C10]" />
-            )}
-          </div>
-          <h2 className="text-[22px] font-semibold text-white mb-2 tracking-tight">
-            {peerName || "Participant"}
-          </h2>
-          <p className="text-[15px] text-slate-400 mb-8 leading-relaxed">
-            {onlineUsers > 1
-              ? "is ready for the consultation."
-              : "Waiting for participant to join..."}
-          </p>
-          {!isCompleted && (
-            <button
-              onClick={onStartCall}
-              className="bg-white hover:bg-slate-100 text-black px-6 py-2.5 rounded-lg text-[15px] font-medium transition-colors shadow-sm active:scale-[0.98]"
-            >
-              Join Call
-            </button>
+    <div className="absolute inset-0 z-0 flex items-center justify-center overflow-hidden bg-slate-950">
+      {isFallbackMedia && (
+        <div role="alert" className="absolute left-1/2 top-16 z-30 flex max-w-[92%] -translate-x-1/2 items-start gap-2 rounded-md border border-amber-400 bg-amber-50 px-3 py-2 text-sm text-[var(--ink)]">
+          <ShieldAlert className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
+          <span>Your camera and microphone are blocked. Allow them from the icon in your browser’s address bar, then rejoin.</span>
+        </div>
+      )}
+
+      {(notice || connectionLabel) && (
+        <div role="status" aria-live="polite" className="absolute left-1/2 top-28 z-30 flex max-w-[92%] -translate-x-1/2 flex-col items-center gap-2">
+          {connectionLabel && (
+            <p className="flex items-center gap-2 rounded-md border border-slate-600 bg-slate-900 px-3 py-1.5 text-sm text-slate-100">
+              <Loader2 className="size-3.5 animate-spin" aria-hidden="true" /> {connectionLabel}
+            </p>
           )}
-          {isCompleted && (
-            <div className="text-sm text-slate-400 font-medium px-4 py-2 bg-slate-900/50 rounded-lg">
-              Consultation completed.
+          {notice && (
+            <p className="flex items-start gap-2 rounded-md border border-slate-600 bg-slate-900 px-3.5 py-2 text-center text-sm text-slate-100">
+              <AlertCircle className="mt-0.5 size-4 shrink-0" aria-hidden="true" /> {notice}
+            </p>
+          )}
+        </div>
+      )}
+
+      {!callActive && !callConnecting && (
+        <div className="relative z-10 flex max-w-sm flex-col items-center px-6 text-center">
+          <div className="relative mb-5">
+            <div className="flex size-24 items-center justify-center rounded-full border border-slate-600 bg-slate-900">
+              <span className="text-3xl font-semibold text-slate-200">{initial}</span>
             </div>
+            <span
+              className={`absolute bottom-1 right-1 size-4 rounded-full border-2 border-slate-950 ${onlineUsers > 1 ? "bg-emerald-400" : "bg-slate-500"}`}
+              aria-hidden="true"
+            />
+          </div>
+          <h2 className="mb-1 text-2xl font-semibold text-white">{peerName || "Participant"}</h2>
+          <p className="mb-7 text-base leading-relaxed text-slate-300">{onlineUsers > 1 ? "is in the room and ready." : "Waiting for them to join…"}</p>
+          {!isCompleted ? (
+            <button onClick={onStartCall} className="h-12 rounded-lg bg-emerald-500 px-7 text-base font-semibold text-[var(--ink)] hover:bg-emerald-400">
+              {onlineUsers > 1 ? "Start the call" : "Call anyway"}
+            </button>
+          ) : (
+            <p className="rounded-md border border-slate-600 px-4 py-2 text-sm text-slate-300">This consultation is completed.</p>
           )}
         </div>
       )}
 
       {callConnecting && !callActive && (
-        <div className="flex flex-col items-center justify-center text-slate-300">
-          <Loader2 className="w-6 h-6 animate-spin text-slate-400 mb-4" />
-          <p className="text-[15px] font-medium text-slate-400">Connecting securely...</p>
+        <div className="flex flex-col items-center text-slate-200" role="status" aria-live="polite">
+          <Loader2 className="mb-4 size-6 animate-spin" aria-hidden="true" />
+          <p className="text-base font-medium">{statusText || "Connecting securely..."}</p>
         </div>
       )}
 
@@ -81,51 +105,38 @@ export default function VideoCallArea({
         ref={remoteVideoRef}
         autoPlay
         playsInline
-        className={`absolute inset-0 w-full h-full object-cover transition-opacity duration-700 ease-in-out ${
-          callActive && hasRemoteStream ? "opacity-100" : "opacity-0 pointer-events-none"
-        }`}
+        aria-label={peerName ? `${peerName}'s video` : "Remote video"}
+        className={`absolute inset-0 size-full object-cover transition-opacity duration-500 ${callActive && hasRemoteStream ? "opacity-100" : "pointer-events-none opacity-0"}`}
       />
 
       {callActive && !hasRemoteStream && (
-        <div className="absolute inset-0 flex flex-col items-center justify-center bg-[#0B0C10]">
-          <div className="w-20 h-20 rounded-full bg-slate-800/30 flex items-center justify-center mb-5 animate-pulse border border-slate-700/50">
-            <span className="text-2xl text-slate-500">
-              {peerName ? peerName.charAt(0).toUpperCase() : "?"}
-            </span>
+        <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-950" role="status">
+          <div className="mb-4 flex size-20 items-center justify-center rounded-full border border-slate-600 bg-slate-900">
+            <span className="text-2xl text-slate-300">{initial}</span>
           </div>
-          <p className="text-[15px] text-slate-400">
-            Waiting for {peerName}&apos;s camera...
-          </p>
+          <p className="text-base text-slate-300">Waiting for {peerName}’s camera…</p>
         </div>
       )}
 
+      {callActive && (
+        <p className="absolute left-4 top-20 z-20 rounded-md bg-slate-900 px-2.5 py-1 font-mono text-sm tabular text-slate-100">{formatTime(callDuration)}</p>
+      )}
+
       <div
-        className={`absolute top-6 right-6 z-20 w-32 h-44 md:w-[220px] md:h-[160px] bg-[#1A1C23] rounded-xl overflow-hidden shadow-[0_8px_30px_rgb(0,0,0,0.4)] border border-white/10 transition-all duration-500 ${
-          callActive || callConnecting
-            ? "opacity-100 translate-y-0"
-            : "opacity-0 translate-y-4 pointer-events-none"
-        }`}
+        className={`absolute right-4 top-20 z-20 h-44 w-32 overflow-hidden rounded-lg border border-slate-600 bg-slate-900 md:h-40 md:w-56 ${callActive || callConnecting ? "opacity-100" : "pointer-events-none opacity-0"}`}
       >
-        <video
-          ref={localVideoRef}
-          autoPlay
-          playsInline
-          muted
-          className={`w-full h-full ${isVideoDisabled ? "hidden" : "block"} object-cover scale-x-[-1]`}
-        />
+        <video ref={localVideoRef} autoPlay playsInline muted aria-label="Your camera" className={`size-full scale-x-[-1] object-cover ${isVideoDisabled ? "hidden" : "block"}`} />
         {isVideoDisabled && (
-          <div className="absolute inset-0 flex items-center justify-center bg-[#1A1C23]">
-            <span className="text-slate-500 text-sm font-medium">Camera Off</span>
+          <div className="absolute inset-0 flex items-center justify-center bg-slate-900">
+            <span className="text-sm font-medium text-slate-300">Camera off</span>
           </div>
         )}
-        <div className="absolute bottom-2 left-2 flex gap-1.5 pointer-events-none">
-          <div className="bg-black/60 backdrop-blur-md px-2 py-1 rounded text-[11px] text-white font-medium">
-            You
-          </div>
+        <div className="absolute bottom-2 left-2 flex gap-1.5">
+          <span className="rounded bg-slate-900 px-2 py-0.5 text-xs font-medium text-white">You</span>
           {isMuted && (
-            <div className="bg-red-500/90 backdrop-blur-md px-1.5 py-1 rounded flex items-center justify-center">
-               <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="2" y1="2" x2="22" y2="22"></line><path d="M18.89 13.23A7.12 7.12 0 0 0 19 12v-2"></path><path d="M5 10v2a7 7 0 0 0 12 5l-1.5-1.5a5 5 0 0 1-9-3.5v-2"></path><path d="M9 9v3a3 3 0 0 0 5.12 2.12l-1.5-1.5A1 1 0 0 1 10 12V9.88l-1-1z"></path></svg>
-            </div>
+            <span className="flex items-center gap-1 rounded bg-red-600 px-1.5 py-0.5 text-xs font-medium text-white">
+              <MicOff className="size-3" aria-hidden="true" /> Muted
+            </span>
           )}
         </div>
       </div>

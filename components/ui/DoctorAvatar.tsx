@@ -48,7 +48,7 @@ export default function DoctorAvatar({
   return (
     <div
       className={cn(
-        "relative shrink-0 rounded-2xl overflow-hidden border border-slate-200/80 shadow-2xs select-none",
+        "relative shrink-0 rounded-lg overflow-hidden border border-slate-300 select-none",
         sizeClasses,
         className
       )}
@@ -62,7 +62,7 @@ export default function DoctorAvatar({
           className="w-full h-full object-cover"
         />
       ) : (
-        <div className="w-full h-full bg-gradient-to-br from-emerald-100 via-teal-50 to-emerald-200/70 text-emerald-800 flex flex-col items-center justify-center font-bold tracking-tight">
+        <div className="w-full h-full bg-emerald-100 text-emerald-800 flex flex-col items-center justify-center font-bold tracking-tight">
           <span>{initials}</span>
         </div>
       )}

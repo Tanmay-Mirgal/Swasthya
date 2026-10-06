@@ -7,6 +7,9 @@ import PatientProfile from "@/models/PatientProfile";
 import Prescription from "@/models/Prescription";
 import ChatMessage from "@/models/ChatMessage";
 import User, { IUser } from "@/models/User";
+import { publish } from "@/lib/realtime/server/bus";
+import { RealtimeEvent } from "@/lib/realtime/protocol/events";
+import { Rooms } from "@/lib/realtime/protocol/rooms";
 import { canJoinConsultation, getAppointmentTimeStatus } from "@/types/appointment";
 
 export const dynamic = "force-dynamic";
@@ -205,9 +208,9 @@ export async function PATCH(
     const body = await req.json();
     const updateFields: Record<string, unknown> = {};
 
-    if (body.callStatus) updateFields.callStatus = body.callStatus;
-    if (body.roomStatus) updateFields.roomStatus = body.roomStatus;
-    if (body.duration !== undefined) updateFields.duration = body.duration;
+    // callStatus is owned by the realtime call state machine (lib/realtime/server/callService.ts)
+    // and can no longer be set by clients.
+    if (body.duration !== undefined && Number.isFinite(Number(body.duration))) updateFields.duration = Number(body.duration);
     if (body.patientNote) updateFields.patientNote = body.patientNote;
     if (body.doctorNotes && isDoctor) updateFields.doctorNotes = body.doctorNotes;
 
@@ -236,6 +239,18 @@ export async function PATCH(
       { $set: updateFields },
       { returnDocument: "after" }
     );
+
+    // Tell everyone in the room (e.g. the patient) that the consultation was concluded.
+    if (body.status === "COMPLETED") {
+      const cid = consultation._id.toString();
+      await publish({
+        roomId: Rooms.consultation(cid),
+        event: RealtimeEvent.CALL_END,
+        payload: { consultationId: cid, reason: "hangup", consultationCompleted: true },
+        from: { userId: callerClerkUserId, role: "doctor" },
+        excludeUserId: callerClerkUserId,
+      });
+    }
 
     return NextResponse.json({
       success: true,

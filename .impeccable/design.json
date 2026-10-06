@@ -1,0 +1,140 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-10-06T00:00:00Z",
+  "title": "Design System: Swasthya",
+  "extensions": {
+    "colorMeta": {
+      "toner-ink": { "role": "neutral", "displayName": "Toner Ink", "canonical": "#1a1f1d", "tonalRamp": ["#0f1311", "#1a1f1d", "#262b27", "#383e37", "#4d544a", "#636b5f", "#8d9588", "#c3c8bd"] },
+      "photocopy-white": { "role": "neutral", "displayName": "Photocopy White", "canonical": "#fbfbf8", "tonalRamp": ["#c3c8bd", "#dde0d7", "#eceee8", "#f6f7f3", "#fbfbf8", "#fdfdfb", "#fefefd", "#ffffff"] },
+      "swasthya-green": { "role": "primary", "displayName": "Swasthya Green", "canonical": "#1f6b4f", "tonalRamp": ["#08201a", "#0e3327", "#134333", "#185540", "#1f6b4f", "#348a64", "#5ba37f", "#bbdbc8"] },
+      "highlighter": { "role": "secondary", "displayName": "Highlighter", "canonical": "#f6d44b", "tonalRamp": ["#443505", "#594507", "#735809", "#9a770f", "#c99f18", "#e8bf2b", "#f6d44b", "#fef9df"] },
+      "coral": { "role": "tertiary", "displayName": "Coral", "canonical": "#b93f2b", "tonalRamp": ["#5e2217", "#7a2a1c", "#983321", "#b93f2b", "#cc5440", "#da7258", "#e79b88", "#fcefeb"] }
+    },
+    "typographyMeta": {
+      "display": { "displayName": "Display", "purpose": "Page-defining titles such as the patient Today heading." },
+      "headline": { "displayName": "Headline", "purpose": "Page titles via PageHeader." },
+      "title": { "displayName": "Title", "purpose": "Exercise names, section headings, dialog titles." },
+      "body": { "displayName": "Body", "purpose": "Working text size across the app." },
+      "label": { "displayName": "Label", "purpose": "Meta, status marks, hints, badges." },
+      "numeral": { "displayName": "Numeral", "purpose": "Reps, angles, times, row numbers; tabular." },
+      "pen": { "displayName": "Pen", "purpose": "Therapist-written notes only; 16px minimum." }
+    },
+    "shadows": [
+      { "name": "shadow-md", "value": "0 2px 6px -2px rgb(26 31 29 / 0.14)", "purpose": "Toasts only." },
+      { "name": "shadow-xl", "value": "0 16px 32px -16px rgb(26 31 29 / 0.28)", "purpose": "Modal dialog only." }
+    ],
+    "motion": [
+      { "name": "tick-draw", "value": "260ms cubic-bezier(0.22, 1, 0.36, 1)", "purpose": "The one authored moment: a tick is drawn onto its box." },
+      { "name": "color-transition", "value": "150ms", "purpose": "Button and nav state changes." },
+      { "name": "reduced-motion", "value": "durations collapse to 0.001ms", "purpose": "prefers-reduced-motion removes animation and smooth scroll." }
+    ],
+    "breakpoints": [
+      { "name": "sm", "value": "640px" },
+      { "name": "md", "value": "768px (side rail replaces bottom bar)" },
+      { "name": "lg", "value": "1024px (two-column home, camera plus side panel)" }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "custom",
+      "refersTo": "button-primary",
+      "description": "The single next action on a screen.",
+      "html": "<button class=\"ds-btn-primary\">Start exercise</button>",
+      "css": ".ds-btn-primary { display: inline-flex; align-items: center; justify-content: center; gap: 8px; height: 40px; padding: 0 16px; border: 0; border-radius: 6px; background: #1f6b4f; color: #fff; font: 600 14px/1 var(--font-sans, system-ui, sans-serif); cursor: pointer; transition: background-color 150ms; } .ds-btn-primary:hover { background: #185540; } .ds-btn-primary:active { transform: translateY(1px); } .ds-btn-primary:focus-visible { outline: 2px solid #1f6b4f; outline-offset: 2px; }"
+    },
+    {
+      "name": "Secondary Button",
+      "kind": "custom",
+      "refersTo": "button-secondary",
+      "description": "Supporting action in a toner outline.",
+      "html": "<button class=\"ds-btn-secondary\">Message</button>",
+      "css": ".ds-btn-secondary { display: inline-flex; align-items: center; justify-content: center; height: 40px; padding: 0 16px; border: 1px solid #1a1f1d; border-radius: 6px; background: #fff; color: #1a1f1d; font: 600 14px/1 var(--font-sans, system-ui, sans-serif); cursor: pointer; transition: background-color 150ms; } .ds-btn-secondary:hover { background: #eceee8; } .ds-btn-secondary:focus-visible { outline: 2px solid #1f6b4f; outline-offset: 2px; }"
+    },
+    {
+      "name": "Highlight Button",
+      "kind": "custom",
+      "refersTo": "button-highlight",
+      "description": "Rare needs-attention call to action.",
+      "html": "<button class=\"ds-btn-highlight\">Review session</button>",
+      "css": ".ds-btn-highlight { display: inline-flex; align-items: center; justify-content: center; height: 40px; padding: 0 16px; border: 0; border-radius: 6px; background: #f6d44b; color: #1a1f1d; font: 600 14px/1 var(--font-sans, system-ui, sans-serif); cursor: pointer; transition: background-color 150ms; } .ds-btn-highlight:hover { background: #e8bf2b; } .ds-btn-highlight:focus-visible { outline: 2px solid #1f6b4f; outline-offset: 2px; }"
+    },
+    {
+      "name": "Text Field",
+      "kind": "input",
+      "refersTo": "input",
+      "description": "Label above, 40px control, hint below.",
+      "html": "<div class=\"ds-field\"><label for=\"ds-n\">Full name</label><input id=\"ds-n\" class=\"ds-input\" placeholder=\"Asha Rao\"><p>As your therapist knows you.</p></div>",
+      "css": ".ds-field { display: flex; flex-direction: column; gap: 6px; max-width: 320px; font-family: var(--font-sans, system-ui, sans-serif); } .ds-field label { font-size: 14px; font-weight: 600; color: #1a1f1d; } .ds-field p { margin: 0; font-size: 12px; color: #4d544a; } .ds-input { height: 40px; padding: 0 12px; border: 1px solid #c3c8bd; border-radius: 6px; background: #fff; color: #1a1f1d; font-size: 14px; } .ds-input::placeholder { color: #636b5f; } .ds-input:hover { border-color: #636b5f; } .ds-input:focus-visible { border-color: #1f6b4f; outline: 2px solid #1f6b4f; outline-offset: 2px; }"
+    },
+    {
+      "name": "Sets x Reps Tick Boxes",
+      "kind": "custom",
+      "refersTo": "tick-box-done",
+      "description": "The signature glyph: one row per set, one pen-ticked box per rep.",
+      "html": "<div class=\"ds-sets\" role=\"img\" aria-label=\"4 of 6 reps done across 2 sets of 3\"><div class=\"ds-row\"><span class=\"ds-n\">1</span><span class=\"ds-box ds-done\"><svg viewBox=\"0 0 20 20\" width=\"16\" height=\"16\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2.2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M4.5 10.5l3.6 3.6L15.5 5.5\"/></svg></span><span class=\"ds-box ds-done\"><svg viewBox=\"0 0 20 20\" width=\"16\" height=\"16\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2.2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M4.5 10.5l3.6 3.6L15.5 5.5\"/></svg></span><span class=\"ds-box ds-done\"><svg viewBox=\"0 0 20 20\" width=\"16\" height=\"16\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2.2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M4.5 10.5l3.6 3.6L15.5 5.5\"/></svg></span></div><div class=\"ds-row\"><span class=\"ds-n\">2</span><span class=\"ds-box ds-done\"><svg viewBox=\"0 0 20 20\" width=\"16\" height=\"16\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2.2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M4.5 10.5l3.6 3.6L15.5 5.5\"/></svg></span><span class=\"ds-box\"></span><span class=\"ds-box\"></span></div></div>",
+      "css": ".ds-sets { display: inline-flex; flex-direction: column; gap: 4px; } .ds-row { display: flex; align-items: center; gap: 4px; } .ds-n { width: 20px; font: 500 11px var(--font-mono, ui-monospace, monospace); color: #636b5f; } .ds-box { display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; border: 1px solid #8d9588; border-radius: 3px; background: #fff; color: transparent; } .ds-box.ds-done { border-color: #1f6b4f; background: #eef6f1; color: #185540; }"
+    },
+    {
+      "name": "Therapist Note",
+      "kind": "custom",
+      "refersTo": "typography.pen",
+      "description": "Handwritten therapist note with a toner signature; pen = a person wrote it.",
+      "html": "<p class=\"ds-hand\">Keep the knee soft on the way down.<span class=\"ds-sig\">Dr. Rao</span></p>",
+      "css": ".ds-hand { max-width: 56ch; margin: 0; font-family: var(--font-kalam, 'Segoe Print', cursive); font-size: 17px; line-height: 1.45; color: #185540; } .ds-sig { margin-left: 8px; font: 600 12px var(--font-sans, system-ui, sans-serif); color: #4d544a; }"
+    },
+    {
+      "name": "Side Rail Item",
+      "kind": "nav",
+      "refersTo": "side-rail",
+      "description": "Desktop rail: green ground, active item inverted to paper, highlighter count badge.",
+      "html": "<nav class=\"ds-rail\"><a class=\"ds-item\" href=\"#\">Today</a><a class=\"ds-item ds-active\" href=\"#\">Progress</a><a class=\"ds-item\" href=\"#\">Messages <span class=\"ds-badge\">2</span></a></nav>",
+      "css": ".ds-rail { display: flex; flex-direction: column; gap: 2px; width: 216px; padding: 12px; background: #0e3327; font-family: var(--font-sans, system-ui, sans-serif); } .ds-item { display: flex; align-items: center; justify-content: space-between; padding: 10px 12px; border-radius: 6px; color: #dcede3; font-size: 14px; font-weight: 600; text-decoration: none; transition: background-color 150ms; } .ds-item:hover { background: #134333; } .ds-item:focus-visible { outline: 2px solid #fff; outline-offset: 2px; } .ds-active { background: #fbfbf8; color: #1a1f1d; } .ds-badge { padding: 0 6px; border-radius: 4px; background: #f6d44b; color: #1a1f1d; font-size: 11px; font-weight: 700; }"
+    },
+    {
+      "name": "Notice",
+      "kind": "card",
+      "refersTo": "colors.highlighter-wash",
+      "description": "Inline message with a plain-language title and next step; attention tone shown.",
+      "html": "<div class=\"ds-notice\" role=\"alert\"><p class=\"ds-t\">Camera not found</p><p>Plug in or allow a camera, then try again.</p></div>",
+      "css": ".ds-notice { max-width: 360px; padding: 12px 14px; border: 1px solid #e8bf2b; border-radius: 6px; background: #fef9df; color: #443505; font: 14px/1.5 var(--font-sans, system-ui, sans-serif); } .ds-notice p { margin: 0; } .ds-t { font-weight: 600; }"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Physio's Handout",
+    "overview": "Every screen is a working sheet a physiotherapist might hand over: toner-black type on warm photocopy white, separated by hairline rules rather than boxed in cards. Density is that of a task list, not a dashboard; the next action is the largest, greenest thing on the page. The world supplies type, palette and exactly one move: a row of pen-ticked boxes is the product's only glyph for progress, adherence and completion.\n\nAuthorship is visible. Typed Geist toner means automated (camera counts, computed summaries); Kalam handwriting in green means a therapist wrote it. The two never swap. Yellow highlighter appears only where something needs a person's attention, and coral appears only for stop and danger.\n\nThe stock Tailwind palettes (slate, zinc, gray, emerald, green, teal, blue, indigo, red, rose, amber, yellow, orange) are all re-pointed in app/globals.css to this one palette. Class names in source are legacy; the token meanings are the system.",
+    "keyCharacteristics": [
+      "Flat and ruled: 1px hairlines and one 2px ink rule above section headings; no card shadows.",
+      "One green, one highlighter, one coral. Nothing is a one-off hex.",
+      "Status is always a shape (tick, dash, cross) plus a word; colour only reinforces.",
+      "Geist Mono tabular numerals for reps, angles, times.",
+      "Camera surfaces keep solid bars around the video so nothing is drawn over the body or skeleton."
+    ],
+    "rules": [
+      { "name": "The Highlighter Rule", "body": "Yellow means a person needs to look at this. Never decorative, never a brand fill, never for success.", "section": "colors" },
+      { "name": "The Authorship Rule", "body": "Pen (Kalam, green) = a therapist wrote it; toner (Geist) = automated. Never set machine output in the handwriting face.", "section": "colors" },
+      { "name": "The Shape-Plus-Word Rule", "body": "State is a tick, dash, cross or empty box plus a label; colour alone never carries meaning.", "section": "colors" },
+      { "name": "The Pen-Is-A-Person Rule", "body": "Kalam is only for words a therapist wrote, attributed with a small sans signature.", "section": "typography" },
+      { "name": "The Tabular Rule", "body": "Any number that changes or aligns (reps, degrees, time) is tabular.", "section": "typography" },
+      { "name": "The Ruled-Not-Floating Rule", "body": "Surfaces are separated by rules, never lifted. A shadow is permitted only on a layer that actually floats above the page.", "section": "elevation" }
+    ],
+    "dos": [
+      "Do show every progress, adherence and completion state as a row of tick boxes with a spoken label.",
+      "Do keep one primary green button per screen and make it the next action.",
+      "Do set therapist-written text in Kalam (Pen) at 17px, attributed; set machine output in Geist.",
+      "Do reserve highlighter yellow for needs-attention (badges, one highlight swipe, the highlight button) and coral for stop and danger.",
+      "Do separate content with 1px rules and a 2px ink rule above section headings.",
+      "Do use Geist Mono with tabular numerals for reps, angles and times.",
+      "Do keep solid bars around the camera so nothing is drawn over the body.",
+      "Do write empty states as a dashed outline with what belongs there and the one next step."
+    ],
+    "donts": [
+      "Don't build a card-grid of metrics; lists, rows and rules carry the data.",
+      "Don't lift surfaces with shadows or float cards over the page ground.",
+      "Don't use colour alone for state; always pair with a shape and a word.",
+      "Don't use yellow for success or decoration, or green for danger.",
+      "Don't set automated assessments in handwriting, or therapist notes in toner.",
+      "Don't use stock Tailwind palette names as design intent; they are re-pointed aliases of the tokens above."
+    ]
+  }
+}

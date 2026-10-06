@@ -14,64 +14,38 @@ interface VideoControlsProps {
   onOpenChat: () => void;
 }
 
-export default function VideoControls({
-  callActive,
-  connectionStatus,
-  isMuted,
-  isVideoDisabled,
-  onToggleMute,
-  onToggleVideo,
-  onEndCall,
-  onOpenChat,
-}: VideoControlsProps) {
+const base = "flex h-12 min-w-12 items-center justify-center gap-2 rounded-lg px-3 text-sm font-semibold";
+
+/** Call controls: solid ink bar, labelled for screen readers, state shown by icon and fill. */
+export default function VideoControls({ callActive, isMuted, isVideoDisabled, onToggleMute, onToggleVideo, onEndCall, onOpenChat }: VideoControlsProps) {
   if (!callActive) return null;
 
   return (
-    <div className="absolute bottom-6 md:bottom-8 left-0 right-0 z-20 flex justify-center pointer-events-none px-4">
-      <div className="flex items-center gap-3 md:gap-4 bg-[#1A1C23]/90 backdrop-blur-xl px-4 py-3 md:px-5 md:py-3.5 rounded-2xl border border-white/10 shadow-[0_8px_30px_rgb(0,0,0,0.4)] pointer-events-auto">
+    <div className="pointer-events-none absolute inset-x-0 bottom-5 z-20 flex justify-center px-4 md:bottom-7">
+      <div className="pointer-events-auto flex items-center gap-2 rounded-lg border border-slate-600 bg-slate-900 p-2">
         <button
           onClick={onToggleMute}
           title={isMuted ? "Unmute microphone" : "Mute microphone"}
-          className={`w-11 h-11 md:w-12 md:h-12 rounded-xl flex items-center justify-center transition-all ${
-            isMuted
-              ? "bg-red-500/20 text-red-500 hover:bg-red-500/30"
-              : "bg-white/10 text-white hover:bg-white/20"
-          }`}
+          aria-label={isMuted ? "Unmute microphone" : "Mute microphone"}
+          aria-pressed={isMuted}
+          className={`${base} ${isMuted ? "bg-red-600 text-white hover:bg-red-500" : "bg-slate-700 text-white hover:bg-slate-600"}`}
         >
-          {isMuted ? <MicOff className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
+          {isMuted ? <MicOff className="size-5" /> : <Mic className="size-5" />}
         </button>
-
         <button
           onClick={onToggleVideo}
           title={isVideoDisabled ? "Turn on camera" : "Turn off camera"}
-          className={`w-11 h-11 md:w-12 md:h-12 rounded-xl flex items-center justify-center transition-all ${
-            isVideoDisabled
-              ? "bg-red-500/20 text-red-500 hover:bg-red-500/30"
-              : "bg-white/10 text-white hover:bg-white/20"
-          }`}
+          aria-label={isVideoDisabled ? "Turn on camera" : "Turn off camera"}
+          aria-pressed={isVideoDisabled}
+          className={`${base} ${isVideoDisabled ? "bg-red-600 text-white hover:bg-red-500" : "bg-slate-700 text-white hover:bg-slate-600"}`}
         >
-          {isVideoDisabled ? <VideoOff className="w-5 h-5" /> : <Video className="w-5 h-5" />}
+          {isVideoDisabled ? <VideoOff className="size-5" /> : <Video className="size-5" />}
         </button>
-
-        <div className="w-[1px] h-8 bg-white/10 mx-1 hidden md:block" />
-
-        <button
-          onClick={onEndCall}
-          title="End call"
-          className="w-16 h-11 md:w-20 md:h-12 rounded-xl bg-red-600 hover:bg-red-500 text-white flex items-center justify-center transition-all"
-        >
-          <Phone className="w-5 h-5 transform rotate-[135deg]" />
+        <button onClick={onEndCall} title="End call" aria-label="End call" className={`${base} bg-red-600 px-5 text-white hover:bg-red-500`}>
+          <Phone className="size-5 rotate-[135deg]" /> <span className="hidden sm:inline">End</span>
         </button>
-
-        <div className="w-[1px] h-8 bg-white/10 mx-1 block md:hidden" />
-
-        {/* Mobile Chat Toggle */}
-        <button
-          onClick={onOpenChat}
-          title="Open conversation"
-          className="md:hidden w-11 h-11 rounded-xl bg-white/10 text-white hover:bg-white/20 flex items-center justify-center transition-all"
-        >
-          <MessageSquare className="w-5 h-5" />
+        <button onClick={onOpenChat} title="Open conversation" aria-label="Open conversation" className={`${base} bg-slate-700 text-white hover:bg-slate-600 md:hidden`}>
+          <MessageSquare className="size-5" />
         </button>
       </div>
     </div>

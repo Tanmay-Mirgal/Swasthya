@@ -61,44 +61,51 @@ export default function PoseCanvas({
     if (landmarks && landmarks.length > 0) {
       const connections = PoseLandmarker.POSE_CONNECTIONS as ReadonlyArray<{ start: number; end: number }>;
       
-      // Draw smooth connections
-      ctx.beginPath();
-      for (const conn of connections) {
-        const a = landmarks[conn.start];
-        const b = landmarks[conn.end];
-        if (!a || !b) continue;
+      // Dark under-stroke keeps the skeleton legible over any background, then the bone line.
+      ctx.lineCap = "round";
+      const drawBones = (color: string, width: number) => {
+        ctx.beginPath();
+        for (const conn of connections) {
+          const a = landmarks[conn.start];
+          const b = landmarks[conn.end];
+          if (!a || !b) continue;
+          ctx.moveTo(a.x * W, a.y * H);
+          ctx.lineTo(b.x * W, b.y * H);
+        }
+        ctx.lineWidth = width;
+        ctx.strokeStyle = color;
+        ctx.stroke();
+      };
+      drawBones("rgba(10, 14, 12, 0.55)", 7);
+      drawBones("rgba(255, 255, 255, 0.92)", 3.5);
 
-        const isError = incorrectSet.has(conn.start) || incorrectSet.has(conn.end);
-        
-        ctx.moveTo(a.x * W, a.y * H);
-        ctx.lineTo(b.x * W, b.y * H);
-      }
-      ctx.lineWidth = 3;
-      // Use a subtle white line with low opacity if no error, otherwise red
-      ctx.strokeStyle = hasErrors ? "#F43F5E" : "rgba(255, 255, 255, 0.4)";
-      ctx.stroke();
-
-      // Draw subtle landmark dots
+      // Joints with a form problem are drawn larger with a ring and a cross, not only a different colour.
       for (let i = 0; i < landmarks.length; i++) {
         const lm = landmarks[i];
         if (!lm) continue;
         const isError = incorrectSet.has(i);
+        const isLow = lowConfSet.has(i);
+        const x = lm.x * W;
+        const y = lm.y * H;
 
         ctx.beginPath();
-        ctx.arc(lm.x * W, lm.y * H, isError ? 5 : 3.5, 0, Math.PI * 2);
-        
-        if (isError) {
-          ctx.fillStyle = "#F43F5E";
-          ctx.strokeStyle = "rgba(244, 63, 94, 0.3)";
-          ctx.lineWidth = 4;
-        } else {
-          ctx.fillStyle = "#FFFFFF";
-          ctx.strokeStyle = "rgba(16, 185, 129, 0.8)"; // Subtle emerald halo
-          ctx.lineWidth = 2;
-        }
-        
+        ctx.arc(x, y, isError ? 8 : 5, 0, Math.PI * 2);
+        ctx.fillStyle = isError ? "#F2A18F" : "#FFFFFF";
+        ctx.strokeStyle = isError ? "#B93F2B" : isLow ? "#F6D44B" : "#1F6B4F";
+        ctx.lineWidth = isError ? 4 : 3;
         ctx.fill();
         ctx.stroke();
+
+        if (isError) {
+          ctx.beginPath();
+          ctx.moveTo(x - 4, y - 4);
+          ctx.lineTo(x + 4, y + 4);
+          ctx.moveTo(x + 4, y - 4);
+          ctx.lineTo(x - 4, y + 4);
+          ctx.lineWidth = 2;
+          ctx.strokeStyle = "#7A2A1C";
+          ctx.stroke();
+        }
       }
     }
 
@@ -113,13 +120,7 @@ export default function PoseCanvas({
           const lmB = hand[b];
           if (!lmA || !lmB) continue;
 
-          let color = "#A78BFA";
-          if ([0,1,2,3,4].includes(a) && [0,1,2,3,4].includes(b)) color = "#FACC15";
-          else if ([5,6,7,8].includes(a) || [5,6,7,8].includes(b)) color = "#38BDF8";
-          else if ([9,10,11,12].includes(a) || [9,10,11,12].includes(b)) color = "#4ADE80";
-          else if ([13,14,15,16].includes(a) || [13,14,15,16].includes(b)) color = "#FB923C";
-          else if ([17,18,19,20].includes(a) || [17,18,19,20].includes(b)) color = "#F472B6";
-
+          const color = "#BBDBC8";
           ctx.beginPath();
           ctx.strokeStyle = color;
           ctx.moveTo(lmA.x * W, lmA.y * H);
@@ -136,17 +137,8 @@ export default function PoseCanvas({
           ctx.beginPath();
           ctx.arc(lm.x * W, lm.y * H, isTip ? 6 : isWrist ? 7 : 4, 0, Math.PI * 2);
 
-          if (isWrist) {
-            ctx.fillStyle = "#FFFFFF";
-            ctx.strokeStyle = "#10B981";
-          } else if (isTip) {
-            const tipColors: Record<number, string> = { 4: "#FACC15", 8: "#38BDF8", 12: "#4ADE80", 16: "#FB923C", 20: "#F472B6" };
-            ctx.fillStyle = tipColors[i] || "#FFFFFF";
-            ctx.strokeStyle = "#000000";
-          } else {
-            ctx.fillStyle = "#FFFFFF";
-            ctx.strokeStyle = "#6B7280";
-          }
+          ctx.fillStyle = isWrist || isTip ? "#FFFFFF" : "#DCEDE3";
+          ctx.strokeStyle = "#134333";
 
           ctx.lineWidth = 1.5;
           ctx.fill();

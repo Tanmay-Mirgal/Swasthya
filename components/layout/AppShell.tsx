@@ -2,9 +2,10 @@
 
 import { ReactNode } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { ChevronLeft } from "lucide-react";
 import { SignInButton, SignUpButton, UserButton, useAuth } from "@clerk/react";
-import DesktopNavbar from "./DesktopNavbar";
+import SideRail from "./SideRail";
 import BottomNav from "./BottomNav";
 import { cn } from "@/lib/utils";
 
@@ -19,6 +20,10 @@ interface AppShellProps {
   maxWidth?: "default" | "full" | "wide";
 }
 
+/**
+ * Shared frame: green rail on desktop, labelled bottom bar on phones, a quiet top bar with the
+ * page title and account on phones. Content width is predictable: 64rem default, 80rem wide.
+ */
 export default function AppShell({
   children,
   title,
@@ -31,103 +36,71 @@ export default function AppShell({
 }: AppShellProps) {
   const { isLoaded, isSignedIn } = useAuth();
 
-  const getMaxWidthClass = () => {
-    switch (maxWidth) {
-      case "full":
-        return "md:max-w-none md:px-6";
-      case "wide":
-        return "md:max-w-7xl md:px-6";
-      case "default":
-      default:
-        return "md:max-w-6xl";
-    }
-  };
+  const width = maxWidth === "full" ? "max-w-none" : maxWidth === "wide" ? "max-w-[80rem]" : "max-w-5xl";
 
   return (
-    <div className="w-full max-w-full min-h-screen min-h-dvh bg-[#F8FAFC] flex flex-col items-center justify-start text-slate-900 antialiased overflow-x-hidden">
-      {/* Desktop Platform Top Navbar (Hidden on mobile) */}
-      {!hideNav && <DesktopNavbar />}
+    <div className="min-h-dvh w-full bg-[var(--paper)] text-slate-900">
+      {!hideNav && <SideRail />}
 
-      {/* App Container Shell: 100% on mobile, max 440px on tablet, expands on desktop */}
-      <div className={cn(
-        "w-full max-w-full sm:max-w-[440px] min-h-screen min-h-dvh bg-[#F8FAFC] sm:border-x md:border-x-0 sm:border-slate-200 flex flex-col relative z-10 overflow-x-hidden",
-        hideNav ? "pb-0 md:pb-0" : "pb-24 md:pb-8",
-        getMaxWidthClass()
-      )}>
-        
-        {/* Mobile Header: Exact original on mobile, hidden on desktop */}
+      <div className={cn("flex min-h-dvh flex-col", !hideNav && "md:pl-60")}>
         {!hideHeader && (
           <header
-            className={cn(
-              "md:hidden sticky top-0 z-40 bg-slate-50/80 backdrop-blur-md border-b border-slate-200 px-4 flex items-center justify-between transition-all",
-              !title && !showBackNav && !rightAction && hideNav && "hidden"
-            )}
-            style={{
-              paddingTop: "calc(env(safe-area-inset-top, 0px) + 0px)",
-              height: "calc(env(safe-area-inset-top, 0px) + 56px)",
-            }}
+            className="sticky top-0 z-40 flex h-14 items-center gap-2 border-b border-slate-300 bg-[var(--paper)] px-3 md:hidden"
+            style={{ paddingTop: "env(safe-area-inset-top, 0px)", height: "calc(env(safe-area-inset-top, 0px) + 56px)" }}
           >
-            <div className="flex items-center flex-1">
-              {showBackNav && (
-                <Link
-                  href={backHref}
-                  className="text-slate-500 hover:text-slate-900 p-2 -ml-2 rounded-xl transition-colors flex items-center justify-center"
-                >
-                  <ChevronLeft className="w-5 h-5" />
-                </Link>
-              )}
-            </div>
-
-            {title && (
-              <h1 className="text-base font-semibold tracking-tight text-slate-900 truncate max-w-[200px] text-center flex-1">
-                {title}
-              </h1>
+            {showBackNav ? (
+              <Link href={backHref} aria-label="Back" className="-ml-1 flex size-10 items-center justify-center rounded-lg text-slate-700 hover:bg-slate-100">
+                <ChevronLeft className="size-5" />
+              </Link>
+            ) : (
+              <Link href="/" className="flex items-center gap-2 pr-1" aria-label="Swasthya home">
+                <Image src="/swasthya-logo-icon.png" alt="" width={28} height={28} className="size-7 object-contain" />
+              </Link>
             )}
-
-            <div className="flex items-center justify-end flex-1 gap-2">
+            {title ? (
+              <h1 className="min-w-0 flex-1 truncate text-base font-bold">{title}</h1>
+            ) : (
+              <span className="flex-1 text-base font-bold">Swasthya</span>
+            )}
+            <div className="flex items-center gap-2">
               {rightAction}
               {isLoaded && !isSignedIn && (
                 <>
                   <SignInButton mode="modal">
-                    <button className="text-sm font-medium text-slate-700 hover:text-slate-900">Sign in</button>
+                    <button className="px-2 text-sm font-semibold text-slate-700">Sign in</button>
                   </SignInButton>
                   <SignUpButton mode="modal">
-                    <button className="text-sm font-semibold text-blue-600 hover:text-blue-700">Sign up</button>
+                    <button className="rounded-lg bg-emerald-600 px-3 py-1.5 text-sm font-semibold text-white">Sign up</button>
                   </SignUpButton>
                 </>
               )}
-              {isLoaded && isSignedIn && (
-                <UserButton />
-              )}
+              {isLoaded && isSignedIn && <UserButton />}
             </div>
           </header>
         )}
 
-        {/* Screen Main Content */}
-        <main className="w-full max-w-full min-w-0 flex-1 flex flex-col p-3 sm:p-4 md:px-8 md:py-6 overflow-x-hidden">
-          {/* Desktop Back button if needed */}
+        <main
+          id="main"
+          className={cn(
+            "mx-auto flex w-full min-w-0 flex-1 flex-col px-4 py-5 sm:px-6 md:px-8 md:py-8",
+            width,
+            !hideNav && "pb-24 md:pb-8"
+          )}
+        >
           {showBackNav && (
-            <div className="hidden md:flex items-center mb-6">
+            <div className="mb-5 hidden items-center gap-3 md:flex">
               <Link
                 href={backHref}
-                className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-500 hover:text-slate-900 bg-white hover:bg-slate-100 px-3 py-1.5 rounded-lg border border-slate-200 transition-colors shadow-2xs"
+                className="inline-flex items-center gap-1 text-sm font-semibold text-slate-700 underline-offset-4 hover:underline"
               >
-                <ChevronLeft className="w-4 h-4 stroke-[2.5]" />
-                <span>Back</span>
+                <ChevronLeft className="size-4" aria-hidden="true" /> Back
               </Link>
-              {title && (
-                <div className="ml-4 pl-4 border-l border-slate-200">
-                  <h1 className="text-lg font-semibold tracking-tight text-slate-900">
-                    {title}
-                  </h1>
-                </div>
-              )}
+              {title && <h1 className="border-l border-slate-300 pl-3 text-lg font-bold">{title}</h1>}
             </div>
           )}
           {children}
         </main>
 
-        {/* Bottom Navigation (Hidden on desktop via md:hidden inside BottomNav) */}
         {!hideNav && <BottomNav />}
       </div>
     </div>

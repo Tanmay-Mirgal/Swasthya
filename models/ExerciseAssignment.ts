@@ -13,6 +13,13 @@ export interface IExerciseAssignment extends Document {
   targetReps: number;
   frequency?: string;
   instructions?: string;
+  /** Target range of motion in degrees. */
+  targetRom?: number;
+  holdSeconds?: number;
+  /** Seconds per repetition the therapist wants. */
+  tempoSeconds?: number;
+  /** Patient-specific modifications (e.g. limit range, use a chair with arms). */
+  modifications?: string;
   assignedAt: Date;
 }
 
@@ -67,6 +74,10 @@ const ExerciseAssignmentSchema = new Schema(
     instructions: {
       type: String,
     },
+    targetRom: { type: Number },
+    holdSeconds: { type: Number },
+    tempoSeconds: { type: Number },
+    modifications: { type: String, maxlength: 1000 },
     assignedAt: {
       type: Date,
       default: Date.now,

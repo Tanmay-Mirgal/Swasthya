@@ -75,7 +75,7 @@ export default function Logo({
         alt="Swasthya Icon"
         width={120}
         height={120}
-        className="w-full h-full object-contain drop-shadow-xs"
+        className="w-full h-full object-contain "
         priority
       />
     </div>
@@ -95,7 +95,7 @@ export default function Logo({
           >
             Swasthya
           </span>
-          <span className="size-2 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.7)] animate-pulse" />
+          <span aria-hidden="true" className="size-2 rounded-full bg-emerald-600" />
         </div>
       )}
     </div>

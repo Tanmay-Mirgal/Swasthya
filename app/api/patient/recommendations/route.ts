@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import connectToDatabase from "@/lib/mongodb";
 import PatientProfile from "@/models/PatientProfile";
-import ExerciseAssignment from "@/models/ExerciseAssignment";
+import Prescription from "@/models/Prescription";
 import ExerciseSession from "@/models/ExerciseSession";
 import { getClinicalRecommendations } from "@/lib/recommendations/recommendationEngine";
 
@@ -32,15 +32,11 @@ export async function GET(req: Request) {
         concerns = profile.concerns;
       }
 
-      const assignments = await ExerciseAssignment.find({
-        patientId: clerkUserId,
-        status: "active",
-      }).lean();
-
-      activePrescriptions = assignments.map((a: any) => ({
-        exerciseId: a.exerciseId,
-        targetSets: a.targetSets,
-        targetReps: a.targetReps,
+      const live = await Prescription.findOne({ patientId: clerkUserId, status: { $in: ["active", "paused"] } }).lean();
+      activePrescriptions = (live?.exercises ?? []).map((e: any) => ({
+        exerciseId: e.exerciseId,
+        targetSets: e.sets,
+        targetReps: e.reps,
       }));
 
       const recentSessions = await ExerciseSession.find({ patientId: clerkUserId })

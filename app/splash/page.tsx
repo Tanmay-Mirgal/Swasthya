@@ -1,10 +1,10 @@
-import SplashScreen from "@/components/splash/SplashScreen";
+import LandingPage from "@/components/landing/LandingPage";
 
 export const metadata = {
-  title: "Swasthya - AI Physical Therapy",
-  description: "Next-generation computer vision for physical rehabilitation.",
+  title: "Swasthya: rehabilitation at home, with your therapist in the loop",
+  description: "Your physiotherapist prescribes your exercises. Swasthya counts your reps on your device and shows your therapist how each week went.",
 };
 
 export default function SplashPage() {
-  return <SplashScreen launchHref="/onboarding" signInHref="/sign-in" />;
+  return <LandingPage />;
 }

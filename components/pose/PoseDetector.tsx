@@ -34,10 +34,18 @@ interface PoseDetectorProps {
   exerciseId?: string;
   bodySegment?: "lower" | "upper" | "neck";
   children?: ReactNode;
-  forceFullScreen?: boolean;
-  onFullScreenChange?: (isFullScreen: boolean) => void;
+  /** While true, frames are ignored: no tracking, no rep counting. */
+  paused?: boolean;
   incorrectLandmarkIndices?: number[];
   lowConfidenceLandmarkIndices?: number[];
+  /**
+   * Changing this restarts the rep counter and range-of-motion tracker (with `targetReps`
+   * as the new target) without touching the camera or the model. Used to count one chunk
+   * of a prescribed set at a time.
+   */
+  chunkKey?: string | number;
+  /** Receives the camera stream once it opens, and null when it closes. */
+  onStream?: (stream: MediaStream | null) => void;
 }
 
 export default function PoseDetector({
@@ -47,10 +55,11 @@ export default function PoseDetector({
   exerciseId = "seated-knee-extension",
   bodySegment = "lower",
   children,
-  forceFullScreen = false,
-  onFullScreenChange,
+  paused = false,
   incorrectLandmarkIndices = [],
   lowConfidenceLandmarkIndices = [],
+  chunkKey,
+  onStream,
 }: PoseDetectorProps) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
 
@@ -88,10 +97,27 @@ export default function PoseDetector({
     onFrameUpdateRef.current = onFrameUpdate;
   }, [onFrameUpdate]);
 
-  const propsRef = useRef({ targetReps, exerciseId, bodySegment });
+  const onStreamRef = useRef(onStream);
   useEffect(() => {
-    propsRef.current = { targetReps, exerciseId, bodySegment };
-  }, [targetReps, exerciseId, bodySegment]);
+    onStreamRef.current = onStream;
+  }, [onStream]);
+
+  // A new chunk starts a fresh count toward the (possibly smaller) remaining target.
+  const firstChunkRef = useRef(true);
+  useEffect(() => {
+    if (firstChunkRef.current) {
+      firstChunkRef.current = false;
+      return;
+    }
+    repStateRef.current = createRepCounterState(targetReps);
+    romTrackerRef.current = createROMTracker();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [chunkKey]);
+
+  const propsRef = useRef({ targetReps, exerciseId, bodySegment, paused });
+  useEffect(() => {
+    propsRef.current = { targetReps, exerciseId, bodySegment, paused };
+  }, [targetReps, exerciseId, bodySegment, paused]);
 
   // ── Fast Non-Blocking Model Initializer ─────────────────────────────────
   const initPoseLandmarker = useCallback(async () => {
@@ -151,6 +177,11 @@ export default function PoseDetector({
     const landmarker = poseLandmarkerRef.current;
 
     if (!video || !landmarker || video.paused || video.ended) {
+      return;
+    }
+
+    if (propsRef.current.paused) {
+      animationFrameIdRef.current = requestAnimationFrame(processFrame);
       return;
     }
 
@@ -286,6 +317,7 @@ export default function PoseDetector({
     if (streamRef.current) {
       streamRef.current.getTracks().forEach((t) => t.stop());
       streamRef.current = null;
+      onStreamRef.current?.(null);
     }
 
     if (videoRef.current) {
@@ -314,6 +346,7 @@ export default function PoseDetector({
       });
 
       streamRef.current = mediaStream;
+      onStreamRef.current?.(mediaStream);
 
       if (videoRef.current) {
         videoRef.current.srcObject = mediaStream;
@@ -359,8 +392,6 @@ export default function PoseDetector({
       videoDimensions={videoDimensions}
       errorMessage={errorMessage}
       onRetryCamera={startCamera}
-      forceFullScreen={forceFullScreen}
-      onFullScreenChange={onFullScreenChange}
       incorrectLandmarkIndices={incorrectLandmarkIndices}
       lowConfidenceLandmarkIndices={lowConfidenceLandmarkIndices}
     >

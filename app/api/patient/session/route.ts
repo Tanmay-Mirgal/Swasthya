@@ -81,8 +81,8 @@ export async function POST(req: Request) {
       completedReps: body.completedReps || 0,
       targetReps: body.targetReps || 10,
       rom: body.rom || 0,
-      targetRom: body.targetRom || 90,
-      formAccuracy: body.formAccuracy || 95,
+      targetRom: Number(body.targetRom) > 0 ? Number(body.targetRom) : undefined,
+      formAccuracy: Number.isFinite(Number(body.formAccuracy)) && body.formAccuracy !== undefined ? Number(body.formAccuracy) : undefined,
       targetMet: body.targetMet || false,
       date: body.date ? new Date(body.date) : new Date(),
     });

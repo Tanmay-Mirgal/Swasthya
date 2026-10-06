@@ -42,28 +42,8 @@ export async function POST(req: Request) {
       { upsert: true, returnDocument: "after" }
     );
 
-    // Rule-based Exercise Suggestions
-    if (concerns && concerns.length > 0) {
-       const ExerciseAssignment = (await import("@/models/ExerciseAssignment")).default;
-       
-       const suggestions: any[] = [];
-       
-       if (concerns.includes("Neck")) {
-          suggestions.push({ patientId: clerkUserId, exerciseId: "neck-rotation", type: "suggested", status: "active", targetSets: 2, targetReps: 10 });
-       }
-       if (concerns.includes("Shoulder") || concerns.includes("Arm / Elbow")) {
-          suggestions.push({ patientId: clerkUserId, exerciseId: "seated-bicep-curl", type: "suggested", status: "active", targetSets: 3, targetReps: 12 });
-       }
-       if (concerns.includes("Knee")) {
-          suggestions.push({ patientId: clerkUserId, exerciseId: "seated-knee-extension", type: "suggested", status: "active", targetSets: 3, targetReps: 10 });
-       }
-
-       if (suggestions.length > 0) {
-          // Delete existing suggestions to replace them
-          await ExerciseAssignment.deleteMany({ patientId: clerkUserId, type: "suggested" });
-          await ExerciseAssignment.insertMany(suggestions);
-       }
-    }
+    // No exercises are assigned here. A plan comes only from the patient's therapist;
+    // practice suggestions are computed on read from the concerns saved above.
 
     user.onboardingCompleted = true;
     await user.save();

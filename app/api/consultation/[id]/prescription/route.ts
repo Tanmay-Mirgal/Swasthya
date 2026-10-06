@@ -1,165 +1,30 @@
 import { NextResponse } from "next/server";
-import connectToDatabase from "@/lib/mongodb";
-import Consultation from "@/models/Consultation";
 import Prescription from "@/models/Prescription";
-import ExerciseAssignment from "@/models/ExerciseAssignment";
-import ChatMessage from "@/models/ChatMessage";
-import TherapistProfile from "@/models/TherapistProfile";
+import { HttpError, errorResponse, requireIdentity } from "@/lib/rehab/auth";
+import { resolveConsultation } from "@/lib/realtime/auth/verifier";
+import { serializePrescription } from "@/lib/rehab/sessionService";
 
 export const dynamic = "force-dynamic";
 
-export async function POST(
-  req: Request,
-  { params }: { params: Promise<{ id: string }> }
-) {
+/**
+ * The rehabilitation plan written after this consultation, for the two people in it.
+ * Plans are created through POST /api/prescriptions (the plan builder), not here.
+ */
+export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params;
-    if (!id) {
-      return NextResponse.json({ error: "Consultation ID is required" }, { status: 400 });
+    const me = await requireIdentity(req);
+    const consultation = await resolveConsultation(id);
+    if (!consultation || (consultation.patientId !== me.userId && consultation.doctorId !== me.userId)) {
+      throw new HttpError(403, "Forbidden");
     }
-
-    const body = await req.json();
-    const { medicines = [], healthyTips = [], exercises = [], doctorNotes = "" } = body;
-
-    await connectToDatabase();
-
-    let consultation = null;
-    if (id.match(/^[0-9a-fA-F]{24}$/)) {
-      consultation = await Consultation.findById(id);
-    }
-    if (!consultation) {
-      consultation = await Consultation.findOne({ appointmentId: id });
-    }
-
-    if (!consultation) {
-      return NextResponse.json({ error: "Consultation not found" }, { status: 404 });
-    }
-
-interface PrescribedExerciseInput {
-  exerciseId: string;
-  name?: string;
-  sets?: number | string;
-  reps?: number | string;
-  frequency?: string;
-  instructions?: string;
-}
-
-interface DoctorProfileDoc {
-  professionalName?: string;
-  specialization?: string;
-}
-
-    const doctorProfile = await TherapistProfile.findOne({
-      clerkUserId: consultation.doctorId,
-    }).lean() as DoctorProfileDoc | null;
-
-    const doctorName = doctorProfile?.professionalName || "Dr. Aarti Sharma";
-    const doctorSpecialization = doctorProfile?.specialization || "Knee Rehabilitation";
-
-    // 1. Create or replace Prescription
-    const prescription = await Prescription.create({
-      consultationId: consultation._id,
-      patientId: consultation.patientId,
-      doctorId: consultation.doctorId,
-      doctorName,
-      doctorSpecialization,
-      medicines,
-      healthyTips,
-      exercises,
-      doctorNotes,
-    });
-
-    // 2. Link prescription to consultation and mark status completed
-    consultation.prescriptionId = prescription._id;
-    consultation.status = "COMPLETED";
-    consultation.endedAt = new Date();
-    await consultation.save();
-
-    // 3. SYNCHRONIZE WITH USER'S RECOVERY PLAN:
-    // Create/update active ExerciseAssignment for each prescribed exercise
-    const assignmentPromises = (exercises as PrescribedExerciseInput[]).map(async (ex) => {
-      return ExerciseAssignment.findOneAndUpdate(
-        {
-          patientId: consultation.patientId,
-          exerciseId: ex.exerciseId,
-        },
-        {
-          $set: {
-            patientId: consultation.patientId,
-            therapistId: consultation.doctorId,
-            consultationId: consultation._id.toString(),
-            prescriptionId: prescription._id.toString(),
-            exerciseId: ex.exerciseId,
-            exerciseName: ex.name,
-            status: "active",
-            type: "assigned",
-            targetSets: Number(ex.sets) || 3,
-            targetReps: Number(ex.reps) || 10,
-            frequency: ex.frequency || "Daily",
-            instructions: ex.instructions || `Assigned by ${doctorName}`,
-            assignedAt: new Date(),
-          },
-        },
-        { upsert: true, returnDocument: "after" }
-      );
-    });
-
-    await Promise.all(assignmentPromises);
-
-    // 4. Send structured Prescription message to Doctor Chat
-    const chatMsg = await ChatMessage.create({
-      consultationId: consultation._id.toString(),
-      senderId: consultation.doctorId,
-      senderRole: "doctor",
-      receiverId: consultation.patientId,
-      content: `${doctorName} has shared your post-consultation recovery plan & prescription.`,
-      type: "prescription",
-      prescriptionData: {
-        id: prescription._id.toString(),
-        doctorName,
-        doctorSpecialization,
-        medicines,
-        healthyTips,
-        exercises,
-        doctorNotes,
-        createdAt: prescription.createdAt,
-      },
-      read: false,
-    });
-
+    const doc = await Prescription.findOne({ consultationId: consultation._id }).sort({ createdAt: -1 });
+    if (!doc) throw new HttpError(404, "No plan has been written for this consultation yet.");
     return NextResponse.json({
       success: true,
-      data: {
-        prescription,
-        message: chatMsg,
-        assignedExercisesCount: exercises.length,
-      },
+      data: { ...serializePrescription(doc), medicines: doc.medicines, healthyTips: doc.healthyTips },
     });
   } catch (error) {
-    console.error("Error creating prescription:", error);
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
-  }
-}
-
-export async function GET(
-  req: Request,
-  { params }: { params: Promise<{ id: string }> }
-) {
-  try {
-    const { id } = await params;
-    await connectToDatabase();
-
-    const prescription = await Prescription.findOne({ consultationId: id }).lean();
-    if (!prescription) {
-      return NextResponse.json({ error: "No prescription found" }, { status: 404 });
-    }
-
-    return NextResponse.json({
-      success: true,
-      data: prescription,
-    });
-  } catch (error) {
-    console.error("Error fetching prescription:", error);
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    return errorResponse(error);
   }
 }

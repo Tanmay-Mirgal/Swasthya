@@ -9,6 +9,8 @@ export interface Message {
   type: "text" | "prescription" | "call_summary" | "exercise_card" | "system";
   prescriptionData?: PrescriptionData;
   read: boolean;
+  clientId?: string;
+  status?: "sending" | "sent" | "failed";
   createdAt: string | Date;
 }
 
@@ -32,6 +34,8 @@ export interface PrescriptionExercise {
 
 export interface PrescriptionData {
   doctorName?: string;
+  startDate?: string;
+  endDate?: string;
   medicines?: PrescriptionMedicine[];
   exercises?: PrescriptionExercise[];
   healthyTips?: string[];
@@ -41,7 +45,6 @@ export interface PrescriptionData {
 export interface IncomingCallData {
   callerName: string;
   callerRole: string;
-  offer: RTCSessionDescriptionInit;
 }
 
 export type ConsultationStatus =
@@ -68,7 +71,7 @@ export interface ConsultationDetails {
   issue: string;
   status: ConsultationStatus;
   roomStatus?: ConsultationRoomState;
-  callStatus: "idle" | "calling" | "connected" | "ended";
+  callStatus: "idle" | "calling" | "accepted" | "connected" | "ended";
   scheduledAt?: string | Date;
   requestedTime?: string;
   startedAt?: string | Date;

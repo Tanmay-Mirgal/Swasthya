@@ -1,31 +1,23 @@
+/* eslint-disable react-hooks/set-state-in-effect */
 "use client";
 
 import { useEffect, useState, useRef, use, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import {
-  Loader2,
-  AlertCircle,
-  Clock,
-  ArrowLeft,
-  Calendar, Dumbbell,
-  Play
-} from "lucide-react";
-import { Button } from "@/components/ui/Button";
+import { Loader2, Clock, ArrowLeft } from "lucide-react";
+import { Authorship, Button, Dialog, Notice, SectionHeading } from "@/components/ui";
 import { useAuth, useUser } from "@clerk/react";
-import { getSocket, joinConsultationRoom, joinUserRoom } from "@/lib/socket";
-import { DEFAULT_RTC_CONFIG, getMediaStreamWithFallback } from "@/lib/webrtc";
+import { useChat, useConsultation, useRealtime, type ConnectionStatus } from "@/lib/realtime/client";
+import { Rooms, RealtimeEvent, type ChatMessageDTO } from "@/lib/realtime/protocol";
 import {
   ConsultationHeader,
   IncomingCallModal,
   VideoCallArea,
   VideoControls,
   ChatPanel,
-  PrescriptionModal,
 } from "@/components/consultation";
 import {
   Message,
-  IncomingCallData,
   ConsultationDetails,
   DoctorDetails,
   PatientDetails,
@@ -33,6 +25,7 @@ import {
   PrescriptionExercise,
   PrescriptionData,
 } from "@/types/consultation";
+import { formatDateKey } from "@/lib/rehab/dates";
 
 export default function ConsultationPage({
   params,
@@ -63,628 +56,203 @@ export default function ConsultationPage({
   // Role
   const [activeRole, setActiveRole] = useState<"patient" | "doctor">("patient");
 
-  // Chat state
-  const [messages, setMessages] = useState<Message[]>([]);
+  // Chat UI state
   const [inputText, setInputText] = useState("");
-  const [peerTyping, setPeerTyping] = useState(false);
   const [isChatOpen, setIsChatOpen] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
-
-  // Video call state
-  const [callActive, setCallActive] = useState(false);
-  const [callConnecting, setCallConnecting] = useState(false);
-  const [hasRemoteStream, setHasRemoteStream] = useState(false);
-  const [incomingCall, setIncomingCall] = useState<IncomingCallData | null>(null);
-  const [callDuration, setCallDuration] = useState(0);
-  const [isMuted, setIsMuted] = useState(false);
-  const [isVideoDisabled, setIsVideoDisabled] = useState(false);
-  const [onlineUsers, setOnlineUsers] = useState(1);
-  const [connectionStatus, setConnectionStatus] = useState<
-    "connecting" | "connected" | "disconnected"
-  >("connecting");
-
-  // WebRTC & state synchronization refs
-  const incomingCallRef = useRef<IncomingCallData | null>(null);
-  const callActiveRef = useRef(false);
-  const callConnectingRef = useRef(false);
-  const activeRoleRef = useRef<"patient" | "doctor">("patient");
-
-  useEffect(() => {
-    incomingCallRef.current = incomingCall;
-  }, [incomingCall]);
-
-  useEffect(() => {
-    callActiveRef.current = callActive;
-  }, [callActive]);
-
-  useEffect(() => {
-    callConnectingRef.current = callConnecting;
-  }, [callConnecting]);
-
-  useEffect(() => {
-    activeRoleRef.current = activeRole;
-  }, [activeRole]);
 
   // End consultation confirmation modal
   const [showEndModal, setShowEndModal] = useState(false);
   const [isEnding, setIsEnding] = useState(false);
 
-  // WebRTC refs
-  const localVideoRef = useRef<HTMLVideoElement>(null);
-  const remoteVideoRef = useRef<HTMLVideoElement>(null);
-  const peerConnectionRef = useRef<RTCPeerConnection | null>(null);
-  const localStreamRef = useRef<MediaStream | null>(null);
-  const remoteStreamRef = useRef<MediaStream | null>(null);
-  const callTimerRef = useRef<NodeJS.Timeout | null>(null);
-  const iceCandidateQueueRef = useRef<RTCIceCandidateInit[]>([]);
+  const canonicalId = consultation?._id?.toString() ?? null;
+  const roomOpen = canJoinCall && !isCompleted && Boolean(canonicalId);
+  const realtimeEnabled = Boolean(canonicalId) && roomOpen;
+  const peerName = activeRole === "patient" ? doctor?.professionalName : patient?.name;
 
-  // Prescription modal state
-  const [showPrescriptionModal, setShowPrescriptionModal] = useState(false);
-  const [submittingPrescription, setSubmittingPrescription] = useState(false);
+  // ── Consultation record (REST, authoritative) ────────────────────────
+  const syncCallStateRef = useRef<(s: {
+    callStatus: string;
+    callInitiatorId?: string;
+    callUpdatedAt?: string | Date;
+    completed: boolean;
+  }) => void>(() => undefined);
 
-  // Prescription form fields
-  const [medicines, setMedicines] = useState<PrescriptionMedicine[]>([
-    {
-      name: "Aceclofenac + Paracetamol",
-      dosage: "1 tablet",
-      frequency: "Twice daily after meals",
-      duration: "5 days",
-      instructions: "Take with water.",
-    },
-  ]);
-  const [healthyTips, setHealthyTips] = useState<string[]>([
-    "Maintain correct upright seated posture",
-    "Apply cold gel pack for 10-15 minutes",
-  ]);
-  const [prescribedExercises, setPrescribedExercises] = useState<PrescriptionExercise[]>([
-    {
-      exerciseId: "seated-knee-extension",
-      name: "Seated Leg Extension",
-      sets: 3,
-      reps: 10,
-      duration: "10 mins",
-      frequency: "Daily",
-      instructions: "Hold top extension for 2 seconds.",
-    },
-    {
-      exerciseId: "neck-rotation",
-      name: "Neck Rotation",
-      sets: 3,
-      reps: 15,
-      duration: "5 mins",
-      frequency: "Daily",
-      instructions: "Gentle controlled rotation.",
-    },
-  ]);
-  const [doctorNotes, setDoctorNotes] = useState(
-    "Patient presented with cervical stiffness and range of motion restriction. Recommended daily mobility exercises."
-  );
-  const [hasLocalStream, setHasLocalStream] = useState(false);
-
-  // Set up local camera preview
-  const setupLocalMediaStream = async () => {
+  const fetchConsultation = useCallback(async () => {
     try {
-      if (localStreamRef.current) return;
-      const stream = await getMediaStreamWithFallback();
-      localStreamRef.current = stream;
-      if (stream) {
-        setHasLocalStream(true);
-        if (localVideoRef.current) {
-          localVideoRef.current.srcObject = stream;
-          localVideoRef.current.play().catch(() => {});
-        }
-      }
-    } catch (e) {
-      console.warn("Could not acquire camera for room preview:", e);
-    }
-  };
-
-  const cleanupCall = useCallback(() => {
-    setCallActive(false);
-    setCallConnecting(false);
-    setHasRemoteStream(false);
-    setHasLocalStream(false);
-    setIncomingCall(null);
-    setCallDuration(0);
-    if (callTimerRef.current) {
-      clearInterval(callTimerRef.current);
-      callTimerRef.current = null;
-    }
-    if (localStreamRef.current) {
-      localStreamRef.current.getTracks().forEach((t) => t.stop());
-      localStreamRef.current = null;
-    }
-    if (peerConnectionRef.current) {
-      peerConnectionRef.current.close();
-      peerConnectionRef.current = null;
-    }
-    remoteStreamRef.current = null;
-    iceCandidateQueueRef.current = [];
-    if (localVideoRef.current) localVideoRef.current.srcObject = null;
-    if (remoteVideoRef.current) remoteVideoRef.current.srcObject = null;
-  }, []);
-
-  // Sync streams with video elements even across re-renders
-  useEffect(() => {
-    if (remoteVideoRef.current && remoteStreamRef.current) {
-      if (remoteVideoRef.current.srcObject !== remoteStreamRef.current) {
-        remoteVideoRef.current.srcObject = remoteStreamRef.current;
-        remoteVideoRef.current.play().catch(() => {});
-      }
-    }
-  }, [hasRemoteStream, callActive]);
-
-  useEffect(() => {
-    if (localVideoRef.current && localStreamRef.current) {
-      if (localVideoRef.current.srcObject !== localStreamRef.current) {
-        localVideoRef.current.srcObject = localStreamRef.current;
-        localVideoRef.current.play().catch(() => {});
-      }
-    }
-  }, [hasLocalStream, callActive, callConnecting]);
-
-  const startVideoCall = async () => {
-    try {
-      setCallConnecting(true);
-      const activeConsultId = consultation?._id?.toString() || consultationId;
-      const socket = getSocket();
-
-      // Target the other participant for cross-room delivery
-      const targetUserId = activeRole === "patient"
-        ? (doctor?.clerkUserId || consultation?.doctorId)
-        : (patient?.patientId || consultation?.patientId);
-
-      if (peerConnectionRef.current) {
-        peerConnectionRef.current.close();
-        peerConnectionRef.current = null;
-      }
-      iceCandidateQueueRef.current = [];
-
-      const pc = new RTCPeerConnection(DEFAULT_RTC_CONFIG);
-      peerConnectionRef.current = pc;
-
-      if (!localStreamRef.current) {
-        localStreamRef.current = await getMediaStreamWithFallback();
-      }
-      const stream = localStreamRef.current;
-      if (stream) {
-        setHasLocalStream(true);
-        if (localVideoRef.current) {
-          localVideoRef.current.srcObject = stream;
-          localVideoRef.current.play().catch(() => {});
-        }
-        stream.getTracks().forEach((track) => {
-          pc.addTrack(track, stream);
-        });
-      }
-
-      pc.ontrack = (event) => {
-        const [remoteStream] = event.streams;
-        if (remoteStream) {
-          remoteStreamRef.current = remoteStream;
-          if (remoteVideoRef.current) {
-            remoteVideoRef.current.srcObject = remoteStream;
-            remoteVideoRef.current.play().catch(() => {});
-          }
-          setHasRemoteStream(true);
-        }
-      };
-
-      pc.onicecandidate = (event) => {
-        if (event.candidate) {
-          socket.emit("ice_candidate", {
-            consultationId: activeConsultId,
-            candidate: event.candidate,
-            targetUserId,
-          });
-        }
-      };
-
-      pc.onconnectionstatechange = () => {
-        console.log("[WebRTC] Caller connection state:", pc.connectionState);
-        if (pc.connectionState === "connected") {
-          setCallActive(true);
-          setCallConnecting(false);
-        } else if (pc.connectionState === "failed" || pc.connectionState === "closed") {
-          setCallConnecting(false);
-        }
-      };
-
-      const offer = await pc.createOffer();
-      await pc.setLocalDescription(offer);
-
-      const callerName =
-        activeRole === "patient"
-          ? (user?.fullName || patient?.name || "Patient")
-          : (doctor?.professionalName || "Doctor");
-
-      socket.emit("call_user", {
-        consultationId: activeConsultId,
-        offer,
-        callerName,
-        callerRole: activeRole,
-        targetUserId,
-      });
-
       const token = await getToken();
-      fetch(`/api/consultation/${activeConsultId}`, {
-        method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
-        body: JSON.stringify({ callStatus: "calling" }),
-      }).catch(console.warn);
-    } catch (err) {
-      console.error("Failed to start video call:", err);
-      setCallConnecting(false);
-      alert("Unable to access camera or microphone. Please check browser permissions.");
-    }
-  };
-
-  const acceptIncomingCall = async () => {
-    if (!incomingCallRef.current) return;
-    const currentOffer = incomingCallRef.current.offer;
-    const activeConsultId = consultation?._id?.toString() || consultationId;
-
-    try {
-      setCallConnecting(true);
-      setIncomingCall(null);
-      const socket = getSocket();
-
-      // Target the other participant for cross-room delivery
-      const targetUserId = activeRole === "patient"
-        ? (doctor?.clerkUserId || consultation?.doctorId)
-        : (patient?.patientId || consultation?.patientId);
-
-      if (peerConnectionRef.current) {
-        peerConnectionRef.current.close();
-        peerConnectionRef.current = null;
-      }
-
-      const pc = new RTCPeerConnection(DEFAULT_RTC_CONFIG);
-      peerConnectionRef.current = pc;
-
-      if (!localStreamRef.current) {
-        localStreamRef.current = await getMediaStreamWithFallback();
-      }
-      const stream = localStreamRef.current;
-      if (stream) {
-        setHasLocalStream(true);
-        if (localVideoRef.current) {
-          localVideoRef.current.srcObject = stream;
-          localVideoRef.current.play().catch(() => {});
-        }
-        stream.getTracks().forEach((track) => {
-          pc.addTrack(track, stream);
-        });
-      }
-
-      pc.ontrack = (event) => {
-        const [remoteStream] = event.streams;
-        if (remoteStream) {
-          remoteStreamRef.current = remoteStream;
-          if (remoteVideoRef.current) {
-            remoteVideoRef.current.srcObject = remoteStream;
-            remoteVideoRef.current.play().catch(() => {});
-          }
-          setHasRemoteStream(true);
-        }
-      };
-
-      pc.onicecandidate = (event) => {
-        if (event.candidate) {
-          socket.emit("ice_candidate", {
-            consultationId: activeConsultId,
-            candidate: event.candidate,
-            targetUserId,
-          });
-        }
-      };
-
-      pc.onconnectionstatechange = () => {
-        console.log("[WebRTC] Receiver connection state:", pc.connectionState);
-        if (pc.connectionState === "connected") {
-          setCallActive(true);
-          setCallConnecting(false);
-        }
-      };
-
-      await pc.setRemoteDescription(new RTCSessionDescription(currentOffer));
-
-      while (iceCandidateQueueRef.current.length > 0) {
-        const candidate = iceCandidateQueueRef.current.shift();
-        if (candidate) {
-          await pc.addIceCandidate(new RTCIceCandidate(candidate)).catch((e) =>
-            console.warn("Error adding queued ICE candidate:", e)
-          );
-        }
-      }
-
-      const answer = await pc.createAnswer();
-      await pc.setLocalDescription(answer);
-
-      socket.emit("call_accepted", { consultationId: activeConsultId, answer, targetUserId });
-      socket.emit("peer_answer", { consultationId: activeConsultId, answer, targetUserId });
-
-      setCallConnecting(false);
-      setCallActive(true);
-
-      const token = await getToken();
-      fetch(`/api/consultation/${activeConsultId}`, {
-        method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
-        body: JSON.stringify({ callStatus: "connected" }),
-      }).catch(console.warn);
-    } catch (err) {
-      console.error("Error accepting incoming call:", err);
-      setCallConnecting(false);
-      setIncomingCall(null);
-      alert("Error connecting to call. Please check camera and microphone permissions.");
-    }
-  };
-
-  const rejectIncomingCall = () => {
-    const activeConsultId = consultation?._id?.toString() || consultationId;
-    getSocket().emit("call_rejected", {
-      consultationId: activeConsultId,
-      reason: "User declined the call",
-    });
-    setIncomingCall(null);
-  };
-
-  // 1. Fetch initial consultation and validate access
-  useEffect(() => {
-    const fetchConsultation = async () => {
-      try {
-        const token = await getToken();
-        if (!token) {
-          setError("Please sign in to access this consultation.");
-          setLoading(false);
-          return;
-        }
-
-        const res = await fetch(`/api/consultation/${consultationId}`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        const json = await res.json();
-
-        if (!res.ok) {
-          if (json.status === "CANCELLED" || json.error === "APPOINTMENT_CANCELLED") {
-            setError("This consultation appointment was cancelled.");
-          } else {
-            setError(json.error || "You do not have access to this consultation.");
-          }
-          setLoading(false);
-          return;
-        }
-
-        if (json.success && json.data) {
-          const d = json.data;
-          setConsultation(d.consultation);
-          setDoctor(d.doctor);
-          if (d.patient) setPatient(d.patient);
-          if (d.messages) setMessages(d.messages);
-          if (d.prescription) {
-            setPrescription(d.prescription);
-          }
-          if (d.currentUserRole) setActiveRole(d.currentUserRole);
-
-          setCanJoinCall(Boolean(d.canJoinCall));
-          setIsCompleted(Boolean(d.isCompleted));
-          setTimeStatus(d.timeStatus || "IN_PROGRESS");
-          setWindowMessage(d.message || null);
-          if (d.scheduledAt) setScheduledAtTime(new Date(d.scheduledAt));
-
-          // If inside valid join window, auto-start camera for the room
-          if (d.canJoinCall && !d.isCompleted) {
-            setupLocalMediaStream();
-          }
-        }
-      } catch (err) {
-        console.error("Failed to load consultation:", err);
-        setError("Unable to load consultation details. Please try again.");
-      } finally {
+      if (!token) {
+        setError("Please sign in to access this consultation.");
         setLoading(false);
+        return null;
       }
-    };
 
-    fetchConsultation();
+      const res = await fetch(`/api/consultation/${consultationId}`, {
+        headers: { Authorization: `Bearer ${token}` },
+        cache: "no-store",
+      });
+      const json = await res.json();
+
+      if (!res.ok) {
+        if (json.status === "CANCELLED" || json.error === "APPOINTMENT_CANCELLED") {
+          setError("This consultation appointment was cancelled.");
+        } else {
+          setError(json.error || "You do not have access to this consultation.");
+        }
+        setLoading(false);
+        return null;
+      }
+
+      if (json.success && json.data) {
+        const d = json.data;
+        setConsultation(d.consultation);
+        setDoctor(d.doctor);
+        if (d.patient) setPatient(d.patient);
+        if (d.prescription) setPrescription(d.prescription);
+        if (d.currentUserRole) setActiveRole(d.currentUserRole);
+
+        setCanJoinCall(Boolean(d.canJoinCall));
+        setIsCompleted(Boolean(d.isCompleted));
+        setTimeStatus(d.timeStatus || "IN_PROGRESS");
+        setWindowMessage(d.message || null);
+        if (d.scheduledAt) setScheduledAtTime(new Date(d.scheduledAt));
+        return d;
+      }
+      return null;
+    } catch (err) {
+      console.error("Failed to load consultation:", err);
+      setError("Unable to load consultation details. Please try again.");
+      return null;
+    } finally {
+      setLoading(false);
+    }
   }, [consultationId, getToken]);
 
-  // 2. Real-time signaling & consultation room setup
-  useEffect(() => {
-    if (!canJoinCall || isCompleted) return;
+  // ── Realtime: chat + call (all socket/WebRTC logic lives in the hooks) ─
+  const chat = useChat({
+    room: roomOpen && canonicalId ? Rooms.consultation(canonicalId) : null,
+    selfId: user?.id,
+    selfRole: activeRole,
+    historyUrl: roomOpen ? `/api/consultation/${canonicalId}/messages` : null,
+    sendUrl: roomOpen ? `/api/consultation/${canonicalId}/messages` : null,
+    readUrl: roomOpen ? `/api/consultation/${canonicalId}/messages/read` : null,
+    extractMessages: (data) => (data as ChatMessageDTO[]) || [],
+    enabled: roomOpen,
+  });
 
-    const socket = getSocket();
-    const currentUserId = user?.id || "user";
-    const canonicalId = consultation?._id?.toString() || consultationId;
-
-    socket.on("connect", () => setConnectionStatus("connected"));
-    socket.on("connect_error", () => setConnectionStatus("disconnected"));
-    socket.on("disconnect", () => setConnectionStatus("disconnected"));
-
-    // Join room subscriptions
-    joinConsultationRoom(canonicalId, currentUserId, activeRole);
-    if (consultationId && consultationId !== canonicalId) {
-      joinConsultationRoom(consultationId, currentUserId, activeRole);
-    }
-    // Also join user's personal channel for cross-consultation message/call delivery
-    joinUserRoom(currentUserId);
-
-    const onPresence = (data: { activeUserCount: number }) => {
-      if (data.activeUserCount) {
-        setOnlineUsers(data.activeUserCount);
-      }
-    };
-
-    const onIncomingCall = (data: IncomingCallData & { callerRole?: string; consultationId?: string }) => {
-      if (data.callerRole && data.callerRole === activeRoleRef.current) return;
-      if (callActiveRef.current) return;
-
-      console.log("[WebRTC] Incoming call notification from:", data.callerName);
-      setIncomingCall({
-        callerName: data.callerName || (activeRoleRef.current === "patient" ? "Doctor" : "Patient"),
-        callerRole: data.callerRole || (activeRoleRef.current === "patient" ? "doctor" : "patient"),
-        offer: data.offer,
-      });
-    };
-
-    const onCallAccepted = async (data: { answer: RTCSessionDescriptionInit }) => {
-      console.log("[WebRTC] Call accepted by peer");
-      if (peerConnectionRef.current && data.answer) {
-        try {
-          if (peerConnectionRef.current.signalingState !== "stable") {
-            await peerConnectionRef.current.setRemoteDescription(
-              new RTCSessionDescription(data.answer)
-            );
+  const cs = useConsultation({
+    consultationId: realtimeEnabled ? canonicalId : null,
+    selfId: user?.id,
+    peerName,
+    enabled: realtimeEnabled,
+    loadCallState: async () => {
+      const d = await fetchConsultation();
+      return d
+        ? {
+            callStatus: d.consultation?.callStatus,
+            callInitiatorId: d.consultation?.callInitiatorId,
+            callUpdatedAt: d.consultation?.callUpdatedAt,
+            completed: Boolean(d.isCompleted),
           }
-          while (iceCandidateQueueRef.current.length > 0) {
-            const candidate = iceCandidateQueueRef.current.shift();
-            if (candidate) {
-              await peerConnectionRef.current
-                .addIceCandidate(new RTCIceCandidate(candidate))
-                .catch((e) => console.warn("Error adding queued candidate:", e));
-            }
-          }
-          setCallConnecting(false);
-          setCallActive(true);
-        } catch (err) {
-          console.error("Error handling call answer:", err);
-        }
-      }
-    };
-
-    const onIceCandidate = async (data: { candidate: RTCIceCandidateInit }) => {
-      if (!data.candidate) return;
-      if (
-        peerConnectionRef.current &&
-        peerConnectionRef.current.remoteDescription &&
-        peerConnectionRef.current.remoteDescription.type
-      ) {
-        try {
-          await peerConnectionRef.current.addIceCandidate(
-            new RTCIceCandidate(data.candidate)
-          );
-        } catch (err) {
-          console.warn("RTC addIceCandidate error:", err);
-        }
-      } else {
-        iceCandidateQueueRef.current.push(data.candidate);
-      }
-    };
-
-    const onCallRejected = (data: { reason?: string }) => {
-      console.log("[WebRTC] Call rejected:", data.reason);
-      setCallConnecting(false);
-      alert(data.reason || "Call was declined by participant.");
-    };
-
-    const onCallEnded = () => {
-      console.log("[WebRTC] Call ended by remote peer");
-      cleanupCall();
+        : null;
+    },
+    onConsultationCompleted: () => {
       setIsCompleted(true);
       setCanJoinCall(false);
-    };
+      void fetchConsultation();
+    },
+    onPrescription: (p) => {
+      if (p.message) chat.ingest(p.message);
+    },
+  });
 
-    const onPrescriptionReceived = (data: { prescription?: PrescriptionData; message?: Message }) => {
-      if (data.prescription) setPrescription(data.prescription);
-      if (data.message) {
-        setMessages((prev) => [...prev, data.message!]);
-      }
-    };
+  useEffect(() => {
+    syncCallStateRef.current = cs.syncServerCallState;
+  });
 
-    const onNewMessage = (msg: Message) => {
-      // Skip messages we sent ourselves (already added locally)
-      if (msg.senderId === currentUserId) return;
-      setMessages((prev) =>
-        prev.some((m) => m._id && m._id === msg._id) ? prev : [...prev, msg]
-      );
-    };
+  // The therapist saving the plan updates the summary the patient is looking at.
+  const { client: rtClient } = useRealtime();
+  useEffect(() => {
+    const off = rtClient.on(RealtimeEvent.RECOVERY_PLAN_UPDATED, () => void fetchConsultation());
+    return () => off();
+  }, [rtClient, fetchConsultation]);
 
-    const onTyping = (data: { role: string; isTyping: boolean }) => {
-      if (data.role !== activeRoleRef.current) setPeerTyping(data.isTyping);
-    };
+  useEffect(() => {
+    void fetchConsultation().then((d) => {
+      if (!d) return;
+      // A call may already be ringing for us (e.g. we opened the page after they dialled).
+      syncCallStateRef.current({
+        callStatus: d.consultation?.callStatus,
+        callInitiatorId: d.consultation?.callInitiatorId,
+        callUpdatedAt: d.consultation?.callUpdatedAt,
+        completed: Boolean(d.isCompleted),
+      });
+    });
+  }, [fetchConsultation]);
 
-    socket.on("presence_update", onPresence);
-    socket.on("incoming_call", onIncomingCall);
-    socket.on("peer_offer", onIncomingCall);
-    socket.on("call_accepted", onCallAccepted);
-    socket.on("peer_answer", onCallAccepted);
-    socket.on("call_rejected", onCallRejected);
-    socket.on("ice_candidate", onIceCandidate);
-    socket.on("call_ended", onCallEnded);
-    socket.on("prescription_received", onPrescriptionReceived);
-    socket.on("new_message", onNewMessage);
-    socket.on("typing_update", onTyping);
-
-    return () => {
-      socket.off("presence_update", onPresence);
-      socket.off("incoming_call", onIncomingCall);
-      socket.off("peer_offer", onIncomingCall);
-      socket.off("call_accepted", onCallAccepted);
-      socket.off("peer_answer", onCallAccepted);
-      socket.off("call_rejected", onCallRejected);
-      socket.off("ice_candidate", onIceCandidate);
-      socket.off("call_ended", onCallEnded);
-      socket.off("prescription_received", onPrescriptionReceived);
-      socket.off("new_message", onNewMessage);
-      socket.off("typing_update", onTyping);
-      socket.off("connect");
-      socket.off("connect_error");
-      socket.off("disconnect");
-    };
-  }, [consultationId, consultation?._id, canJoinCall, isCompleted, activeRole, user?.id, cleanupCall]);
+  // Camera preview as soon as the room is open (permission prompt happens before any call).
+  const { startPreview } = cs;
+  useEffect(() => {
+    if (roomOpen) void startPreview();
+  }, [roomOpen, startPreview]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, peerTyping, isChatOpen]);
+  }, [chat.messages, chat.peerTyping, isChatOpen]);
 
-  useEffect(() => {
-    if (callActive) {
-      callTimerRef.current = setInterval(() => setCallDuration((prev) => prev + 1), 1000);
-    }
-    return () => {
-      if (callTimerRef.current) clearInterval(callTimerRef.current);
-    };
-  }, [callActive]);
+  // Names kept for the view code below
+  const callActive = cs.call.phase === "CONNECTED";
+  const callConnecting = cs.call.phase === "CALL_REQUESTED" || cs.call.phase === "CALL_ACCEPTED" || cs.call.phase === "NEGOTIATING";
+  const incomingCall = cs.isIncomingRing
+    ? {
+        callerName: cs.incomingCallerName || peerName || (activeRole === "patient" ? "Doctor" : "Patient"),
+        callerRole: activeRole === "patient" ? "doctor" : "patient",
+      }
+    : null;
+  const connectionStatus: "connecting" | "connected" | "disconnected" = mapConnection(cs.connectionStatus);
+  const connectionLabel =
+    cs.connectionStatus === "connected"
+      ? null
+      : cs.connectionStatus === "auth_failed"
+      ? "Your session expired — please sign in again"
+      : cs.connectionStatus === "disconnected"
+      ? "Offline — trying to reconnect…"
+      : "Reconnecting to the consultation room…";
+  const statusText =
+    cs.call.phase === "CALL_REQUESTED" && cs.call.direction === "outgoing"
+      ? `Calling ${peerName || "participant"}…`
+      : cs.call.phase === "CALL_ACCEPTED" || cs.call.phase === "NEGOTIATING"
+      ? "Connecting securely..."
+      : undefined;
+  const notice = cs.error || (cs.call.phase === "ENDED" ? cs.call.message : null) || null;
 
   const formatTime = (secs: number) =>
     `${Math.floor(secs / 60)
       .toString()
       .padStart(2, "0")}:${(secs % 60).toString().padStart(2, "0")}`;
 
-  // Doctor concludes consultation (Rule 14)
+  // Doctor concludes consultation (Rule 14): realtime CALL_END(conclude) → server completes it.
   const handleConfirmEndConsultation = async () => {
     try {
       setIsEnding(true);
-      const token = await getToken();
-      const socket = getSocket();
-      const activeConsultId = consultation?._id?.toString() || consultationId;
+      cs.endCall({ concludeConsultation: true });
 
-      socket.emit("end_call", { consultationId: activeConsultId, duration: callDuration });
-      cleanupCall();
-
-      await fetch(`/api/consultation/${activeConsultId}`, {
-        method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
-        body: JSON.stringify({
-          status: "COMPLETED",
-          callStatus: "ended",
-          duration: callDuration,
-        }),
-      });
+      if (cs.connectionStatus !== "connected" && canonicalId) {
+        // Realtime is unavailable: fall back to the REST endpoint.
+        const token = await getToken();
+        await fetch(`/api/consultation/${canonicalId}`, {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json",
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
+          body: JSON.stringify({ status: "COMPLETED", duration: cs.callDuration }),
+        });
+      }
 
       setIsCompleted(true);
       setCanJoinCall(false);
       setShowEndModal(false);
-      setShowPrescriptionModal(true);
     } catch (err) {
       console.error("Error completing consultation:", err);
     } finally {
@@ -693,376 +261,221 @@ export default function ConsultationPage({
   };
 
   const handlePatientLeave = () => {
-    const activeConsultId = consultation?._id?.toString() || consultationId;
-    getSocket().emit("end_call", { consultationId: activeConsultId, duration: callDuration });
-    cleanupCall();
+    cs.endCall();
     router.push("/appointments");
-  };
-
-  const toggleMute = () => {
-    if (localStreamRef.current) {
-      const track = localStreamRef.current.getAudioTracks()[0];
-      if (track) {
-        track.enabled = !track.enabled;
-        setIsMuted(!track.enabled);
-      }
-    }
-  };
-
-  const toggleVideo = () => {
-    if (localStreamRef.current) {
-      const track = localStreamRef.current.getVideoTracks()[0];
-      if (track) {
-        track.enabled = !track.enabled;
-        setIsVideoDisabled(!track.enabled);
-      }
-    }
   };
 
   const handleInputChange = (text: string) => {
     setInputText(text);
-    const activeConsultId = consultation?._id?.toString() || consultationId;
-    getSocket().emit("typing", {
-      consultationId: activeConsultId,
-      userId: user?.id,
-      role: activeRole,
-      isTyping: text.trim().length > 0,
-    });
+    chat.notifyTyping(text.trim().length > 0);
   };
 
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!inputText.trim()) return;
-    const text = inputText.trim();
+    const text = inputText;
+    if (!text.trim()) return;
     setInputText("");
-
-    const activeConsultId = consultation?._id?.toString() || consultationId;
-
-    getSocket().emit("typing", {
-      consultationId: activeConsultId,
-      userId: user?.id,
-      role: activeRole,
-      isTyping: false,
-    });
-
-    // Determine receiver ID for cross-room delivery
-    const receiverUserId = activeRole === "patient"
-      ? (doctor?.clerkUserId || consultation?.doctorId)
-      : (patient?.patientId || consultation?.patientId);
-
-    const newMsg: Message = {
-      _id: `msg-${Date.now()}`,
-      consultationId: activeConsultId,
-      senderId: user?.id || "user",
-      senderRole: activeRole,
-      content: text,
-      type: "text",
-      read: false,
-      createdAt: new Date().toISOString(),
-    };
-
-    setMessages((prev) => [...prev, newMsg]);
-
-    const socket = getSocket();
-    socket.emit("send_message", {
-      ...newMsg,
-      consultationId: activeConsultId,
-      receiverId: receiverUserId,
-    });
-    if (consultationId && consultationId !== activeConsultId) {
-      socket.emit("send_message", {
-        ...newMsg,
-        consultationId,
-        receiverId: receiverUserId,
-      });
-    }
-
-    fetch(`/api/consultation/${activeConsultId}/messages`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(newMsg),
-    }).catch(console.warn);
-  };
-
-  const handleSubmitPrescription = async () => {
-    setSubmittingPrescription(true);
-    try {
-      const token = await getToken();
-      const res = await fetch(`/api/consultation/${consultationId}/prescription`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
-        body: JSON.stringify({
-          medicines,
-          healthyTips,
-          exercises: prescribedExercises,
-          doctorNotes,
-        }),
-      });
-      const json = await res.json();
-      if (json.success) {
-        setShowPrescriptionModal(false);
-        if (json.data.prescription) setPrescription(json.data.prescription);
-        getSocket().emit("prescription_published", {
-          consultationId,
-          prescription: json.data.prescription,
-          message: json.data.message,
-        });
-      }
-    } catch {
-      alert("Error saving prescription.");
-    } finally {
-      setSubmittingPrescription(false);
-    }
+    const ok = await chat.send(text);
+    if (!ok) setInputText((current) => current || text);
   };
 
   if (loading) {
     return (
-      <div className="fixed inset-0 w-screen h-screen bg-slate-900 flex flex-col items-center justify-center space-y-3">
-        <Loader2 className="size-8 animate-spin text-slate-400" />
-        <p className="text-xs text-slate-400 font-medium">Verifying consultation access...</p>
+      <div className="fixed inset-0 flex flex-col items-center justify-center gap-3 bg-[var(--paper)]" role="status" aria-live="polite">
+        <Loader2 className="size-7 animate-spin text-emerald-600" aria-hidden="true" />
+        <p className="text-sm font-medium text-slate-700">Checking your access to this consultation…</p>
       </div>
     );
   }
 
   if (error) {
     return (
-      <div className="fixed inset-0 w-screen h-screen bg-[#F8FAFC] flex flex-col items-center justify-center p-6 text-center">
-        <div className="max-w-md w-full bg-white rounded-2xl border border-slate-200 p-8 shadow-xs space-y-4">
-          <AlertCircle className="size-10 text-slate-400 mx-auto" />
-          <h2 className="text-lg font-bold text-slate-900">Access Restricted</h2>
-          <p className="text-xs sm:text-sm text-slate-600 leading-relaxed">{error}</p>
-          <Button asChild className="w-full bg-slate-900 hover:bg-slate-800 text-white rounded-xl">
-            <Link href="/appointments">Return to Appointments</Link>
+      <div className="fixed inset-0 flex items-center justify-center bg-[var(--paper)] p-6">
+        <div className="w-full max-w-md">
+          <Notice tone="danger" title="You can’t open this consultation">{error}</Notice>
+          <Button asChild className="mt-4">
+            <Link href="/appointments">Back to appointments</Link>
           </Button>
         </div>
       </div>
     );
   }
 
-  // ── VIEW 1: BEFORE WINDOW / NOT YET OPEN ────────────────────────────
+  // ── VIEW 1: BEFORE THE ROOM OPENS ───────────────────────────────────
   if (!canJoinCall && !isCompleted && timeStatus === "BEFORE_WINDOW") {
     return (
-      <div className="fixed inset-0 w-screen h-screen bg-[#F8FAFC] flex flex-col items-center justify-center p-6">
-        <div className="max-w-md w-full bg-white rounded-2xl border border-slate-200/90 p-7 shadow-xs space-y-5 text-center">
-          <div className="size-12 rounded-2xl bg-slate-100 flex items-center justify-center mx-auto text-slate-700">
-            <Clock className="size-6" />
-          </div>
-
-          <div>
-            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
-              Upcoming Consultation
-            </span>
-            <h1 className="text-xl font-bold text-slate-900 mt-1">
-              Consultation Scheduled
-            </h1>
-            <p className="text-xs text-slate-500 mt-1.5 leading-relaxed">
-              With <strong>{doctor?.professionalName || "Physiotherapist"}</strong> for{" "}
-              {consultation?.issue || "Rehabilitation"}
-            </p>
-          </div>
-
-          <div className="p-4 rounded-xl bg-slate-50 border border-slate-100 text-xs text-slate-700 space-y-1">
-            <div className="font-semibold text-slate-900 flex items-center justify-center gap-1.5">
-              <Calendar className="size-3.5 text-slate-500" />
-              <span>
-                {scheduledAtTime?.toLocaleDateString(undefined, {
-                  weekday: "long",
-                  month: "short",
-                  day: "numeric",
-                })}
-              </span>
+      <div className="fixed inset-0 flex items-center justify-center overflow-y-auto bg-[var(--paper)] p-6">
+        <div className="w-full max-w-md">
+          <Clock className="size-6 text-emerald-700" aria-hidden="true" />
+          <h1 className="mt-3 text-3xl font-bold tracking-tight">Your consultation hasn’t started yet</h1>
+          <p className="mt-2 text-base text-slate-700">
+            With <strong>{doctor?.professionalName || "your physiotherapist"}</strong>
+            {consultation?.issue ? <> about {consultation.issue}</> : null}.
+          </p>
+          <dl className="mt-5 border-t-2 border-slate-900">
+            <div className="flex justify-between gap-4 border-b border-slate-300 py-3">
+              <dt className="text-slate-600">Date</dt>
+              <dd className="font-semibold">
+                {scheduledAtTime?.toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" })}
+              </dd>
             </div>
-            <p className="text-slate-500">
-              Starts at{" "}
-              <strong className="text-slate-800">
-                {consultation?.requestedTime ||
-                  scheduledAtTime?.toLocaleTimeString([], {
-                    hour: "2-digit",
-                    minute: "2-digit",
-                  })}
-              </strong>
-            </p>
-            <p className="text-[11px] text-slate-400 pt-1">
-              {windowMessage || "The consultation room opens 10 minutes prior to your scheduled time."}
-            </p>
-          </div>
-
-          <Button asChild variant="outline" className="w-full rounded-xl border-slate-200">
-            <Link href="/appointments">Back to Appointments</Link>
+            <div className="flex justify-between gap-4 border-b border-slate-300 py-3">
+              <dt className="text-slate-600">Starts</dt>
+              <dd className="font-semibold tabular">
+                {consultation?.requestedTime || scheduledAtTime?.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+              </dd>
+            </div>
+          </dl>
+          <p className="mt-3 text-sm text-slate-600">{windowMessage || "The room opens 10 minutes before the scheduled time."}</p>
+          <Button asChild variant="outline" className="mt-6">
+            <Link href="/appointments">Back to appointments</Link>
           </Button>
         </div>
       </div>
     );
   }
 
-  // ── VIEW 2: COMPLETED CONSULTATION SUMMARY ──────────────────────────
+  // ── VIEW 2: CONSULTATION SUMMARY ────────────────────────────────────
   if (isCompleted) {
     const rx = prescription;
+    const note = consultation?.doctorNotes || rx?.doctorNotes;
     return (
-      <div className="min-h-screen bg-[#F8FAFC] py-8 px-4 flex flex-col items-center">
-        <div className="max-w-2xl w-full space-y-6">
-          {/* Header */}
-          <div className="flex items-center justify-between">
-            <Button asChild variant="ghost" className="text-xs text-slate-500 hover:text-slate-900 p-0 h-auto">
-              <Link href="/appointments" className="flex items-center gap-1">
-                <ArrowLeft className="size-4" />
-                <span>Appointments</span>
-              </Link>
-            </Button>
-            <span className="text-[11px] font-bold text-slate-700 bg-slate-100 px-2.5 py-0.5 rounded-full">
-              Consultation Concluded
-            </span>
-          </div>
+      <div className="min-h-dvh overflow-y-auto bg-[var(--paper)] px-5 py-8">
+        <div className="mx-auto w-full max-w-2xl">
+          <Link href="/appointments" className="inline-flex items-center gap-1 text-sm font-semibold text-slate-800 underline-offset-4 hover:underline">
+            <ArrowLeft className="size-4" aria-hidden="true" /> Appointments
+          </Link>
 
-          <div className="bg-white rounded-2xl border border-slate-200/90 p-6 sm:p-7 shadow-xs space-y-5">
-            <div className="flex items-start justify-between gap-4 flex-wrap">
-              <div>
-                <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">
-                  Clinical Summary
-                </span>
-                <h1 className="text-2xl font-bold text-slate-900 mt-1">
-                  Rehabilitation Consultation
-                </h1>
-                <p className="text-xs text-slate-500 mt-1">
-                  Practitioner: <strong>{doctor?.professionalName || "Physiotherapist"}</strong> •{" "}
-                  {doctor?.clinicName || "Swasthya Care"}
-                </p>
+          <header className="mt-5 border-b border-slate-300 pb-5">
+            <h1 className="text-3xl font-bold tracking-tight">Consultation summary</h1>
+            <p className="mt-1 text-sm text-slate-700">
+              With {doctor?.professionalName || "your physiotherapist"}
+              {doctor?.clinicName ? ` · ${doctor.clinicName}` : ""} ·{" "}
+              {consultation?.endedAt
+                ? new Date(consultation.endedAt).toLocaleDateString(undefined, { month: "long", day: "numeric", year: "numeric" })
+                : "completed"}
+            </p>
+          </header>
+
+          {note && (
+            <section aria-label="Therapist note" className="mt-6">
+              <SectionHeading title="Your physiotherapist’s note" action={<Authorship by="therapist" name={doctor?.professionalName} />} />
+              <p className="hand mt-3 max-w-prose">“{note}”</p>
+            </section>
+          )}
+
+          {activeRole === "doctor" && (
+            <section aria-label="Rehabilitation plan" className="mt-8 border-t-2 border-slate-900 pt-5">
+              <SectionHeading title="Rehabilitation plan" description={rx ? "You wrote a plan after this consultation." : "Choose the exercises, sets and schedule. Your patient sees them on their sheet right away."} />
+              <div className="mt-3 flex flex-wrap gap-2">
+                <Button asChild size="lg">
+                  <Link href={`/therapist/patient/${consultation?.patientId}/prescribe?consultation=${canonicalId}`}>{rx ? "Revise the plan" : "Create rehabilitation plan"}</Link>
+                </Button>
+                <Button asChild size="lg" variant="outline"><Link href={`/therapist/patient/${consultation?.patientId}`}>Open patient</Link></Button>
               </div>
+            </section>
+          )}
 
-              <div className="text-xs text-slate-500 font-medium">
-                {consultation?.endedAt
-                  ? new Date(consultation.endedAt).toLocaleDateString(undefined, {
-                      month: "short",
-                      day: "numeric",
-                      year: "numeric",
-                    })
-                  : "Completed"}
-              </div>
-            </div>
-
-            {/* Doctor's Clinical Note */}
-            {(consultation?.doctorNotes || rx?.doctorNotes) && (
-              <div className="p-4 rounded-xl bg-slate-50 border border-slate-100 text-xs text-slate-700 leading-relaxed">
-                <span className="font-semibold text-slate-900 block mb-1">
-                  Doctor&apos;s Clinical Advice:
-                </span>
-                <p>&ldquo;{consultation?.doctorNotes || rx?.doctorNotes}&rdquo;</p>
-              </div>
-            )}
-
-            {/* Prescribed Exercises */}
-            {rx?.exercises && rx.exercises.length > 0 && (
-              <div className="space-y-2 pt-2">
-                <h2 className="text-xs font-semibold uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
-                  <Dumbbell className="size-3.5 text-slate-600" />
-                  <span>Assigned Exercises ({rx.exercises.length})</span>
-                </h2>
-                <div className="space-y-2">
-                  {rx.exercises.map((ex: PrescriptionExercise, idx: number) => (
-                    <div
-                      key={idx}
-                      className="p-3.5 rounded-xl border border-slate-100 bg-slate-50/70 flex items-center justify-between gap-3 text-xs"
-                    >
-                      <div>
-                        <p className="font-semibold text-slate-900">{ex.name}</p>
-                        <p className="text-[11px] text-slate-500">
-                          {ex.sets} sets · {ex.reps} reps · {ex.frequency || "Daily"}
-                        </p>
-                      </div>
-                      {ex.exerciseId && (
-                        <Button asChild size="sm" className="h-8 text-xs bg-slate-900 hover:bg-slate-800 text-white rounded-lg">
-                          <Link href={`/exercise/${ex.exerciseId}/setup`} className="flex items-center gap-1">
-                            <Play className="size-3" />
-                            <span>Practice</span>
-                          </Link>
-                        </Button>
-                      )}
+          {rx?.exercises && rx.exercises.length > 0 && (
+            <section aria-label="Prescribed exercises" className="mt-8">
+              <SectionHeading
+                title="Your rehabilitation plan"
+                description={rx.startDate && rx.endDate ? `${formatDateKey(rx.startDate, { day: "numeric", month: "short" })} to ${formatDateKey(rx.endDate, { day: "numeric", month: "short", year: "numeric" })}` : "Added to your daily sheet."}
+              />
+              <ol className="border-t border-slate-900">
+                {rx.exercises.map((ex: PrescriptionExercise, idx: number) => (
+                  <li key={idx} className="flex items-center justify-between gap-3 border-b border-slate-300 py-3">
+                    <div className="min-w-0">
+                      <p className="font-semibold text-slate-900"><span className="tabular text-slate-500">{idx + 1}.</span> {ex.name}</p>
+                      <p className="text-sm text-slate-600"><span className="tabular">{ex.sets} sets × {ex.reps} reps</span></p>
                     </div>
-                  ))}
-                </div>
-              </div>
-            )}
+                  </li>
+                ))}
+              </ol>
+              {activeRole === "patient" && (
+                <Button asChild className="mt-4"><Link href="/">See today’s exercises</Link></Button>
+              )}
+            </section>
+          )}
 
-            {/* Prescribed Medicines */}
-            {rx?.medicines && rx.medicines.length > 0 && (
-              <div className="space-y-2 pt-2">
-                <h2 className="text-xs font-semibold uppercase tracking-wider text-slate-500">
-                  Prescribed Medications
-                </h2>
-                <div className="space-y-1.5">
-                  {rx.medicines.map((med: PrescriptionMedicine, idx: number) => (
-                    <div key={idx} className="p-3 rounded-lg border border-slate-100 text-xs flex justify-between">
-                      <div>
-                        <p className="font-semibold text-slate-900">{med.name}</p>
-                        <p className="text-[11px] text-slate-500">{med.dosage} · {med.frequency}</p>
-                      </div>
-                      <span className="text-[11px] text-slate-400">{med.duration}</span>
+          {rx?.medicines && rx.medicines.length > 0 && (
+            <section aria-label="Medications" className="mt-8">
+              <SectionHeading title="Medication from your therapist" description="As written by your therapist. Swasthya does not suggest medication." />
+              <ul className="border-t border-slate-900">
+                {rx.medicines.map((med: PrescriptionMedicine, idx: number) => (
+                  <li key={idx} className="flex items-start justify-between gap-3 border-b border-slate-300 py-3">
+                    <div>
+                      <p className="font-semibold text-slate-900">{med.name}</p>
+                      <p className="text-sm text-slate-600">{[med.dosage, med.frequency].filter(Boolean).join(" · ")}</p>
+                      {med.instructions && <p className="text-sm text-slate-600">{med.instructions}</p>}
                     </div>
-                  ))}
-                </div>
-              </div>
-            )}
+                    {med.duration && <span className="text-sm text-slate-600">{med.duration}</span>}
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
 
-            <div className="pt-4 border-t border-slate-100 flex justify-end">
-              <Button asChild className="bg-slate-900 hover:bg-slate-800 text-white rounded-xl">
-                <Link href="/appointments">Return to Appointments</Link>
-              </Button>
-            </div>
-          </div>
+          {activeRole === "patient" && !rx && !note && (
+            <p className="mt-6 text-sm text-slate-600">Your physiotherapist hasn’t created your plan yet. It will appear here, and on Today, as soon as they do.</p>
+          )}
+
+          <Button asChild className="mt-8">
+            <Link href="/appointments">Back to appointments</Link>
+          </Button>
         </div>
       </div>
     );
   }
 
   // ── VIEW 3: LIVE CONSULTATION ROOM (INSIDE VALID WINDOW) ────────────
-  const peerName = activeRole === "patient" ? doctor?.professionalName : patient?.name;
-
   return (
-    <div className="fixed inset-0 w-screen h-screen bg-[#0B0C10] text-slate-100 overflow-hidden font-sans flex select-none">
+    <div className="fixed inset-0 w-screen h-screen bg-slate-950 text-slate-100 overflow-hidden font-sans flex">
       {/* === MAIN VIDEO AREA === */}
-      <div className="flex-1 h-full relative bg-[#0B0C10] overflow-hidden flex flex-col">
+      <div className="flex-1 h-full relative bg-slate-950 overflow-hidden flex flex-col">
         <IncomingCallModal
           incomingCall={incomingCall && !callActive ? incomingCall : null}
-          onAccept={acceptIncomingCall}
-          onReject={rejectIncomingCall}
+          onAccept={cs.acceptCall}
+          onReject={cs.rejectCall}
         />
 
         <VideoCallArea
           callActive={callActive}
           callConnecting={callConnecting}
-          hasRemoteStream={hasRemoteStream}
+          hasRemoteStream={cs.hasRemoteStream}
           isCompleted={isCompleted}
           peerName={peerName}
-          onlineUsers={onlineUsers}
-          callDuration={callDuration}
+          onlineUsers={cs.onlineUsers}
+          callDuration={cs.callDuration}
           formatTime={formatTime}
-          localVideoRef={localVideoRef}
-          remoteVideoRef={remoteVideoRef}
-          isMuted={isMuted}
-          isVideoDisabled={isVideoDisabled}
-          onStartCall={startVideoCall}
+          localVideoRef={cs.localVideoRef}
+          remoteVideoRef={cs.remoteVideoRef}
+          isMuted={cs.isMuted}
+          isVideoDisabled={cs.isVideoDisabled}
+          isFallbackMedia={cs.isFallbackMedia}
+          statusText={statusText}
+          notice={notice}
+          connectionLabel={connectionLabel}
+          onStartCall={cs.requestCall}
         />
 
         <ConsultationHeader
           peerName={peerName}
           activeRole={activeRole}
-          onlineUsers={onlineUsers}
+          onlineUsers={cs.onlineUsers}
           isCompleted={isCompleted}
           callActive={callActive}
           onBack={activeRole === "doctor" ? () => setShowEndModal(true) : handlePatientLeave}
-          onOpenPrescriptionModal={() => setShowPrescriptionModal(true)}
+          planHref={consultation?.patientId && canonicalId ? `/therapist/patient/${consultation.patientId}/prescribe?consultation=${canonicalId}` : undefined}
         />
 
         <VideoControls
-          callActive={callActive || hasLocalStream}
+          callActive={callActive || callConnecting || cs.hasLocalStream}
           connectionStatus={connectionStatus}
-          isMuted={isMuted}
-          isVideoDisabled={isVideoDisabled}
-          onToggleMute={toggleMute}
-          onToggleVideo={toggleVideo}
+          isMuted={cs.isMuted}
+          isVideoDisabled={cs.isVideoDisabled}
+          onToggleMute={cs.toggleMute}
+          onToggleVideo={cs.toggleVideo}
           onEndCall={activeRole === "doctor" ? () => setShowEndModal(true) : handlePatientLeave}
           onOpenChat={() => setIsChatOpen(true)}
         />
@@ -1072,63 +485,40 @@ export default function ConsultationPage({
       <ChatPanel
         isOpen={isChatOpen}
         onClose={() => setIsChatOpen(false)}
-        messages={messages}
+        messages={chat.messages as unknown as Message[]}
         activeRole={activeRole}
         doctorName={doctor?.professionalName}
         patientName={patient?.name}
-        peerTyping={peerTyping}
+        peerTyping={chat.peerTyping}
         inputText={inputText}
         onInputChange={handleInputChange}
         onSendMessage={handleSendMessage}
         messagesEndRef={messagesEndRef}
       />
 
-      {/* === DOCTOR PRESCRIPTION MODAL === */}
-      {activeRole === "doctor" && (
-        <PrescriptionModal
-          isOpen={showPrescriptionModal}
-          onClose={() => setShowPrescriptionModal(false)}
-          medicines={medicines}
-          setMedicines={setMedicines}
-          prescribedExercises={prescribedExercises}
-          setPrescribedExercises={setPrescribedExercises}
-          healthyTips={healthyTips}
-          setHealthyTips={setHealthyTips}
-          doctorNotes={doctorNotes}
-          setDoctorNotes={setDoctorNotes}
-          onSubmit={handleSubmitPrescription}
-          submitting={submittingPrescription}
-        />
-      )}
-
-      {/* === END CONSULTATION CONFIRMATION MODAL (DOCTOR ONLY) === */}
-      {showEndModal && (
-        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl p-6 max-w-sm w-full space-y-4 text-slate-900 shadow-xl">
-            <h3 className="text-base font-bold">End Consultation?</h3>
-            <p className="text-xs text-slate-600 leading-relaxed">
-              Conclude this session with {patient?.name || "the patient"}? The appointment will be marked completed and the room will close.
-            </p>
-            <div className="flex gap-2 pt-2">
-              <Button
-                variant="outline"
-                onClick={() => setShowEndModal(false)}
-                disabled={isEnding}
-                className="flex-1 rounded-xl"
-              >
-                Cancel
-              </Button>
-              <Button
-                onClick={handleConfirmEndConsultation}
-                disabled={isEnding}
-                className="flex-1 bg-red-600 hover:bg-red-700 text-white rounded-xl"
-              >
-                {isEnding ? <Loader2 className="size-4 animate-spin" /> : "End Session"}
-              </Button>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* === END CONSULTATION CONFIRMATION (DOCTOR ONLY) === */}
+      <Dialog
+        open={showEndModal}
+        onClose={() => !isEnding && setShowEndModal(false)}
+        title="End the consultation?"
+        description={`Conclude this session with ${patient?.name || "the patient"}? It will be marked completed and the room will close.`}
+        footer={
+          <>
+            <Button variant="outline" onClick={() => setShowEndModal(false)} disabled={isEnding}>Keep going</Button>
+            <Button variant="danger" onClick={handleConfirmEndConsultation} disabled={isEnding}>
+              {isEnding ? <Loader2 className="size-4 animate-spin" aria-hidden="true" /> : "End consultation"}
+            </Button>
+          </>
+        }
+      >
+        <p className="text-sm text-slate-700">You can create the rehabilitation plan right after.</p>
+      </Dialog>
     </div>
   );
+}
+
+function mapConnection(status: ConnectionStatus): "connecting" | "connected" | "disconnected" {
+  if (status === "connected") return "connected";
+  if (status === "connecting" || status === "reconnecting") return "connecting";
+  return "disconnected";
 }

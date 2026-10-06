@@ -1,11 +1,13 @@
 "use client";
 
 import { SignIn } from "@clerk/react";
+import AuthFrame from "@/components/auth/AuthFrame";
+import { clerkAppearance } from "@/components/auth/clerkAppearance";
 
 export default function SignInPage() {
   return (
-    <div className="flex min-h-screen items-center justify-center">
-      <SignIn routing="hash" />
-    </div>
+    <AuthFrame heading="Welcome back." body="Pick up your exercises where you left off.">
+      <SignIn routing="hash" appearance={clerkAppearance} />
+    </AuthFrame>
   );
 }

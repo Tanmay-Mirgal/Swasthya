@@ -15,7 +15,9 @@ export interface IConsultation extends Document {
     | "IN_PROGRESS"
     | "COMPLETED"
     | "EXPIRED";
-  callStatus: "idle" | "calling" | "connected" | "ended";
+  callStatus: "idle" | "calling" | "accepted" | "connected" | "ended";
+  callInitiatorId?: string;
+  callUpdatedAt?: Date;
   scheduledAt?: Date;
   requestedTime?: string;
   startedAt?: Date;
@@ -74,8 +76,15 @@ const ConsultationSchema = new Schema(
     },
     callStatus: {
       type: String,
-      enum: ["idle", "calling", "connected", "ended"],
+      enum: ["idle", "calling", "accepted", "connected", "ended"],
       default: "idle",
+    },
+    // Who rang (server-derived from the authenticated identity) and when the call state last changed
+    callInitiatorId: {
+      type: String,
+    },
+    callUpdatedAt: {
+      type: Date,
     },
     scheduledAt: {
       type: Date,

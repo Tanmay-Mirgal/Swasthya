@@ -1,180 +1,105 @@
 import Link from "next/link";
-import { SessionRecord } from "@/lib/exercises/types";
-import {
-  CheckCircle2,
-  Clock,
-  Activity,
-  AlertCircle,
-  Check,
-  TrendingUp,
-} from "lucide-react";
-import { Button } from "@/components/ui/Button";
-import { cn } from "@/lib/utils";
+import { ArrowRight } from "lucide-react";
+import { Authorship, Button, SectionHeading, TickRow } from "@/components/ui";
+import type { SessionRecord } from "@/lib/exercises/types";
 
 interface SessionSummaryProps {
   session: SessionRecord;
+  /** The previous saved session of the same exercise, for an honest comparison. */
+  previous?: SessionRecord | null;
 }
 
-export default function SessionSummary({ session }: SessionSummaryProps) {
-  // 1. Data Formatting
-  const repsCompleted = session.completedReps;
-  const targetReps = session.targetReps;
-  const isPerfectForm = session.goodFormCount >= repsCompleted && repsCompleted > 0;
-  
-  // Format ROM safely (no floating point messes)
-  const formattedRom = Math.round(session.rom || 0);
-  
-  // Format Tempo safely (e.g. 1.6s)
-  const formattedTempo = session.averageTempo > 0 ? (Math.round(session.averageTempo * 10) / 10).toFixed(1) : "--";
+function delta(now: number, before: number, unit = "") {
+  const d = Math.round(now - before);
+  if (d === 0) return `same as last time`;
+  return `${d > 0 ? "+" : "−"}${Math.abs(d)}${unit} vs last time`;
+}
 
+export default function SessionSummary({ session, previous }: SessionSummaryProps) {
+  const reps = session.completedReps;
+  const target = session.targetReps;
+  const complete = reps >= target && target > 0;
+  const rom = Math.round(session.rom || 0);
+  const tempo = session.averageTempo > 0 ? (Math.round(session.averageTempo * 10) / 10).toFixed(1) : null;
   const hints = session.warningCount;
+  const when = new Date(session.date);
 
-  // Date formatting (e.g. Oct 2 · 7:46 PM)
-  const dateObj = new Date(session.date);
-  const formattedDate = dateObj.toLocaleDateString(undefined, { month: "short", day: "numeric" });
-  const formattedTime = dateObj.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+  const headline =
+    reps === 0 ? "This session ended before any reps were counted" : complete ? `You completed all ${reps} reps` : `You completed ${reps} of ${target} reps`;
 
-  // 2. Dynamic Takeaway Message
-  let takeawayMessage = "";
-  if (repsCompleted === 0) {
-    takeawayMessage = "Session ended before any repetitions were completed.";
-  } else if (isPerfectForm) {
-    takeawayMessage = `All ${repsCompleted} repetitions were completed with excellent form. Great job!`;
-  } else if (hints > 0) {
-    takeawayMessage = `You completed ${repsCompleted} repetitions. Review your form hints to improve next time.`;
-  } else {
-    takeawayMessage = "Session completed successfully. Keep up the good work!";
-  }
+  const seconds = session.durationSeconds || 0;
 
   return (
-    <div className="w-full h-full flex flex-col justify-between px-4 pb-6 max-w-lg mx-auto">
-      
-      {/* 1. Hero Completion Area */}
-      <div className="flex flex-col items-center text-center mt-6 sm:mt-10 space-y-5">
-        
-        {/* Animated Checkmark */}
-        <div className="w-14 h-14 sm:w-16 sm:h-16 bg-emerald-100 rounded-full flex items-center justify-center mb-1 animate-in zoom-in duration-500 shadow-sm border border-emerald-200">
-          <Check className="w-7 h-7 sm:w-8 sm:h-8 text-emerald-600" strokeWidth={3} />
-        </div>
-
-        {/* Title */}
-        <div className="space-y-1.5 animate-in fade-in slide-in-from-bottom-2 duration-500 delay-150">
-          <h1 className="text-emerald-700 font-semibold tracking-wide uppercase text-xs sm:text-sm">
-            Session Complete
-          </h1>
-          <h2 className="text-2xl sm:text-3xl font-bold text-slate-900 tracking-tight leading-tight max-w-[280px] sm:max-w-xs mx-auto">
-            {session.exerciseName}
-          </h2>
-          <p className="text-xs sm:text-sm text-slate-500 font-medium">
-            {formattedDate} &middot; {formattedTime}
-          </p>
-        </div>
-
-        {/* Reps Visual */}
-        <div className="mt-6 mb-2 animate-in fade-in zoom-in-95 duration-500 delay-300">
-          <div className="inline-flex flex-col items-center justify-center p-8 bg-white border border-slate-200 rounded-full w-36 h-36 sm:w-40 sm:h-40 shadow-xl shadow-slate-200/50 relative overflow-hidden">
-             {/* Subtle success background gradient inside the circle */}
-             <div className="absolute inset-0 bg-gradient-to-b from-emerald-50/40 to-transparent pointer-events-none" />
-             <div className="relative z-10 flex flex-col items-center">
-               <div className="text-3xl sm:text-4xl font-bold text-slate-900 tracking-tighter">
-                 {repsCompleted} <span className="text-slate-400 text-xl sm:text-2xl font-semibold">/ {targetReps}</span>
-               </div>
-               <div className="text-[10px] sm:text-xs font-semibold uppercase tracking-widest text-slate-500 mt-1">
-                 Reps
-               </div>
-             </div>
-             
-             {/* Progress SVG Ring */}
-             <svg className="absolute inset-0 w-full h-full -rotate-90 pointer-events-none" viewBox="0 0 100 100">
-               <circle cx="50" cy="50" r="46" fill="none" stroke="#F1F5F9" strokeWidth="6" />
-               <circle 
-                 cx="50" 
-                 cy="50" 
-                 r="46" 
-                 fill="none" 
-                 stroke="#10B981" 
-                 strokeWidth="6" 
-                 strokeLinecap="round"
-                 strokeDasharray="289"
-                 strokeDashoffset={289 - (289 * Math.min(repsCompleted / Math.max(1, targetReps), 1))}
-                 className="transition-all duration-1000 ease-out"
-               />
-             </svg>
-          </div>
-        </div>
-
-        {/* Takeaway message */}
-        <p className="text-[14px] sm:text-[15px] text-slate-600 max-w-[280px] sm:max-w-sm leading-relaxed animate-in fade-in duration-500 delay-500">
-          {takeawayMessage}
+    <div className="mx-auto w-full max-w-2xl">
+      <header className="pb-6">
+        <h1 className="text-3xl font-bold tracking-tight text-slate-900 sm:text-4xl">{session.exerciseName}</h1>
+        <p className="mt-1 text-sm text-slate-600">
+          {when.toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" })} ·{" "}
+          {when.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })}
+          {seconds > 0 && <> · {Math.floor(seconds / 60)}:{String(seconds % 60).padStart(2, "0")}</>}
         </p>
+      </header>
 
-      </div>
-
-      {/* 2. Compact Metrics Section */}
-      <div className="mt-8 mb-6 animate-in fade-in slide-in-from-bottom-4 duration-500 delay-500 w-full">
-        <h3 className="text-[11px] font-bold text-slate-400 tracking-widest uppercase mb-3 px-1">
-          Session Details
-        </h3>
-        <div className="bg-white border border-slate-200 rounded-2xl shadow-sm divide-y divide-slate-100 overflow-hidden">
-          
-          <MetricRow 
-            icon={<CheckCircle2 className="w-4 h-4 text-emerald-500" />}
-            label="Good form reps"
-            value={`${session.goodFormCount} / ${repsCompleted}`}
-          />
-          
-          <MetricRow 
-            icon={<Activity className="w-4 h-4 text-blue-500" />}
-            label="Range of motion"
-            value={`${formattedRom}°`}
-          />
-          
-          <MetricRow 
-            icon={<Clock className="w-4 h-4 text-indigo-500" />}
-            label="Average tempo"
-            value={formattedTempo === "--" ? "--" : `${formattedTempo} sec`}
-          />
-
-          <MetricRow 
-            icon={<AlertCircle className={cn("w-4 h-4", hints > 0 ? "text-amber-500" : "text-slate-400")} />}
-            label="Form hints"
-            value={hints > 0 ? `${hints} hints` : "None"}
-            valueClass={hints > 0 ? "text-amber-600 font-semibold" : "text-slate-500"}
-          />
-
+      <section aria-label="Repetitions" className="border-t-2 border-slate-900 pt-4">
+        <p className="text-xl font-bold text-slate-900">{headline}</p>
+        <div className="mt-3">
+          <TickRow total={target} done={reps} size={22} label={`${reps} of ${target} reps done`} />
         </div>
-      </div>
+        {!complete && reps > 0 && (
+          <p className="mt-3 max-w-prose text-sm text-slate-700">
+            Stopping early is fine. Your reps are saved, and you can pick this exercise up again from Today.
+          </p>
+        )}
+      </section>
 
-      {/* 3. Action Area */}
-      <div className="space-y-3 mt-auto animate-in fade-in slide-in-from-bottom-2 duration-500 delay-700 w-full">
-        <Button asChild size="lg" className="w-full h-14 text-base font-semibold rounded-2xl shadow-md">
-          <Link href="/">
-            Done
-          </Link>
+      <section aria-label="What the camera measured" className="mt-8">
+        <SectionHeading title="What the camera measured" action={<Authorship by="automated" />} />
+        <dl className="divide-y divide-slate-200">
+          <div className="flex items-baseline justify-between gap-4 py-3">
+            <dt>
+              <span className="font-semibold text-slate-900">Range of motion</span>
+              <span className="block text-sm text-slate-600">How far you moved the joint, from smallest to largest angle.</span>
+            </dt>
+            <dd className="shrink-0 text-right">
+              <span className="font-mono text-2xl font-semibold tabular">{rom}°</span>
+              {previous && previous.rom > 0 && rom > 0 && <span className="block text-xs text-slate-600">{delta(rom, previous.rom, "°")}</span>}
+            </dd>
+          </div>
+          <div className="flex items-baseline justify-between gap-4 py-3">
+            <dt>
+              <span className="font-semibold text-slate-900">Rep speed</span>
+              <span className="block text-sm text-slate-600">Average time for one rep. Slow and steady is the aim.</span>
+            </dt>
+            <dd className="shrink-0 text-right">
+              <span className="font-mono text-2xl font-semibold tabular">{tempo ? `${tempo}s` : "—"}</span>
+            </dd>
+          </div>
+          <div className="flex items-baseline justify-between gap-4 py-3">
+            <dt>
+              <span className="font-semibold text-slate-900">Form reminders</span>
+              <span className="block text-sm text-slate-600">Times the camera suggested adjusting your position or movement.</span>
+            </dt>
+            <dd className="shrink-0 text-right">
+              <span className="font-mono text-2xl font-semibold tabular">{hints}</span>
+              <span className="block whitespace-nowrap text-xs text-slate-600">{hints === 0 ? "none came up" : "to work on"}</span>
+            </dd>
+          </div>
+        </dl>
+        <p className="mt-2 max-w-prose text-xs leading-relaxed text-slate-600">
+          These are movement measurements from your camera, not a medical assessment. Your physiotherapist decides what they mean for your recovery.
+        </p>
+      </section>
+
+      <div className="mt-8 flex flex-col gap-2 sm:flex-row">
+        <Button asChild size="lg" className="sm:min-w-44">
+          <Link href="/">Back to today</Link>
         </Button>
-        <Button asChild variant="ghost" size="lg" className="w-full h-12 text-slate-500 hover:text-slate-900 rounded-2xl">
+        <Button asChild size="lg" variant="outline">
           <Link href="/progress">
-            View Progress <TrendingUp className="w-4 h-4 ml-1.5" />
+            See your progress <ArrowRight className="size-4" aria-hidden="true" />
           </Link>
         </Button>
       </div>
-
-    </div>
-  );
-}
-
-function MetricRow({ icon, label, value, valueClass }: { icon: React.ReactNode; label: string; value: string; valueClass?: string }) {
-  return (
-    <div className="flex items-center justify-between p-3.5 sm:p-4">
-      <div className="flex items-center gap-3">
-        <div className="w-8 h-8 rounded-full bg-slate-50 flex items-center justify-center border border-slate-100 shrink-0">
-          {icon}
-        </div>
-        <span className="text-[13px] sm:text-sm font-medium text-slate-700">{label}</span>
-      </div>
-      <span className={cn("text-[13px] sm:text-sm font-semibold text-slate-900", valueClass)}>
-        {value}
-      </span>
     </div>
   );
 }
