@@ -1,10 +1,10 @@
-# RehabLens 🧘‍♂️📈
+# Swasthya🧘‍♂️📈
 
-RehabLens is a comprehensive, software-based rehabilitation assistant designed to help patients recover safely and efficiently from home. Utilizing a standard smartphone or laptop camera, RehabLens provides real-time movement feedback, counts repetitions, tracks progress, and bridges the gap between patients and healthcare professionals.
+Swasthya is a comprehensive, software-based rehabilitation assistant designed to help patients recover safely and efficiently from home. Utilizing a standard smartphone or laptop camera, RehabLens provides real-time movement feedback, counts repetitions, tracks progress, and bridges the gap between patients and healthcare professionals.
 
 ## 🌟 Problem Statement & Solution
 
-Patients recovering from injuries or physical conditions often perform rehabilitation exercises at home without professional supervision, leading to incorrect movements and slower recovery. **RehabLens** solves this by using advanced computer vision (MediaPipe) to track skeletal movements locally on the user's device. It ensures safe and meaningful movement feedback without making medical diagnoses, allows physiotherapists to monitor and review progress, and features an accessible, user-friendly interface.
+Patients recovering from injuries or physical conditions often perform rehabilitation exercises at home without professional supervision, leading to incorrect movements and slower recovery. **Swasthya** solves this by using advanced computer vision (MediaPipe) to track skeletal movements locally on the user's device. It ensures safe and meaningful movement feedback without making medical diagnoses, allows physiotherapists to monitor and review progress, and features an accessible, user-friendly interface.
 
 ---
 
@@ -13,6 +13,7 @@ Patients recovering from injuries or physical conditions often perform rehabilit
 RehabLens is divided into two primary experiences: the **Patient (User) Portal** and the **Therapist Portal**.
 
 ### 1. Patient (User) Portal
+
 Designed for ease of use, accessibility, and clear guidance during independent exercise sessions.
 
 - **Dashboard & Progress Tracking (`/progress`):**
@@ -30,6 +31,7 @@ Designed for ease of use, accessibility, and clear guidance during independent e
   - Alternatives provided for users unable to use camera-based tracking (e.g., manual logging options).
 
 ### 2. Therapist Portal
+
 Designed for physiotherapists to manage patients, prescribe routines, and review adherence remotely.
 
 - **Patient Management:**
@@ -50,6 +52,7 @@ Designed for physiotherapists to manage patients, prescribe routines, and review
 RehabLens leverages modern web technologies for a seamless, fast, and scalable experience.
 
 ### Tech Stack
+
 - **Frontend & Framework:** [Next.js](https://nextjs.org/) (App Router), [React](https://react.dev/), [Tailwind CSS](https://tailwindcss.com/)
 - **Computer Vision:** [MediaPipe Tasks Vision](https://developers.google.com/mediapipe/solutions/vision/pose_landmarker) (Client-side, privacy-preserving pose detection)
 - **Authentication:** [Clerk](https://clerk.com/) for secure user and therapist logins
@@ -58,6 +61,7 @@ RehabLens leverages modern web technologies for a seamless, fast, and scalable e
 - **Icons & UI:** [Lucide React](https://lucide.dev/), Shadcn UI components
 
 ### How the Exercise Engine Works
+
 1. **Video Feed:** Captured via the browser's native MediaDevices API.
 2. **Pose Estimation:** Frames are processed locally in the browser via MediaPipe's WebAssembly models to generate 33 3D skeletal landmarks. (No video data is sent to the server).
 3. **Biomechanics Engine (in `/lib` & `/hooks`):** Calculates angles between joints (e.g., shoulder, elbow, wrist for a bicep curl).
@@ -69,6 +73,7 @@ RehabLens leverages modern web technologies for a seamless, fast, and scalable e
 ## 🛠️ Development & Local Setup
 
 ### Prerequisites
+
 - Node.js (v18+)
 - npm or yarn
 - MongoDB URI and Clerk API Keys (Must be set in a `.env.local` file)
@@ -88,26 +93,31 @@ The application and realtime gateway are served together at `http://localhost:30
 For local realtime testing you can enable test identities (never honoured in production) with `REALTIME_DEV_AUTH=1`; see `scripts/test_realtime_e2e.ts` (`npm run test:realtime`).
 
 ### Building for Production
+
 ```bash
 npm run build
 npm run start   # unified server, production mode
 ```
 
 ### Deploying to Vercel
+
 Deploy the repository as one Next.js project (no servers of your own). Set `MONGODB_URI`, the Clerk keys and `CLERK_WEBHOOK_SECRET`. For the rehabilitation workflow also set the SMTP variables (`SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `EMAIL_FROM`), `APP_URL`, `CRON_SECRET` (Vercel Cron reads `vercel.json` and calls `/api/cron/daily` with it) and, for weekly-review recordings, create a **private** Vercel Blob store (it sets `BLOB_READ_WRITE_TOKEN`). See `.env.example`. Realtime uses `app/api/ws/route.ts` (`experimental_upgradeWebSocket`), so WebSocket Functions must be enabled for your Vercel project. MongoDB must be a replica set (Atlas) so change streams work; a standalone `mongod` falls back to polling.
 
 ### Realtime architecture
+
 ```
 Browser ──WebSocket──▶ /api/ws (Next.js) ──▶ MongoDB (RealtimeSignal bus, presence, consultations, messages)
    ▲                                              │
    └── peer-to-peer WebRTC media (never via the server) ◀──┘
 ```
+
 - Identity comes only from a verified Clerk JWT; rooms (`user:`, `conversation:`, `consultation:`) are authorized server-side on join and every later packet must target a joined room.
 - Chat: `POST` (authenticated, authorized, idempotent) → saved in MongoDB → published → delivered over WebSocket. History and missed messages are re-fetched from MongoDB after any reconnect.
 - Calls: `CALL_CREATE → CALL_ACCEPT → WEBRTC_OFFER → WEBRTC_ANSWER → ICE`, with the call state kept on the `Consultation` document. The server only relays signaling.
 - Instances never rely on process memory: every fan-out goes through the `RealtimeSignal` collection (change stream, polling fallback) so a patient and therapist on different serverless instances still hear each other.
 
 ### Rehabilitation workflow
+
 ```
 Consultation ends ─▶ therapist writes a plan ─▶ Prescription (MongoDB, versioned)
                                                         │
@@ -117,6 +127,7 @@ Consultation ends ─▶ therapist writes a plan ─▶ Prescription (MongoDB, v
                 │
    daily cron ─▶ reminder emails · review-day notice · weekly report ─▶ therapist review
 ```
+
 - **Plan:** `models/Prescription.ts` is the single source of truth: lifecycle `draft → active → paused → completed | cancelled`, immutable versions (a change creates version N+1 and closes N), optional weekly review and a medication *record* (never generated by the app).
 - **Today is derived, not stored:** `lib/rehab/schedule.ts` turns the plan and the stored set logs into today's exercises, set progress, missed days and review days. Dates are calendar days in the patient's timezone.
 - **Rep chunking:** the prescription fixes reps per set; the patient only splits a set into chunks. `lib/rehab/chunking.ts` enforces order, caps at the prescribed reps and ignores a chunk id it has already counted, so retries and double submits never double count. Chunks are saved as each one ends (with a browser outbox for dropped connections).
@@ -133,7 +144,9 @@ Consultation ends ─▶ therapist writes a plan ─▶ Prescription (MongoDB, v
 Here is a comprehensive breakdown of the project files, why they exist, what they do, and the core libraries used.
 
 ### 1. `/app` (Next.js App Router)
+
 This directory handles all the routing and server-side/client-side page rendering.
+
 - **`/(auth)`**: Contains the Clerk authentication routes (Sign In, Sign Up).
 - **`/(patient)`**: The core patient experience routes, including the user dashboard, exercise list, and progress tracking pages.
 - **`/(therapist)`**: The professional portal routes where therapists can view their assigned patients and prescribe routines.
@@ -144,7 +157,9 @@ This directory handles all the routing and server-side/client-side page renderin
 - **`/onboarding` & `/splash`**: Initial welcome screens and user setup workflows.
 
 ### 2. `/components` (Modular UI)
+
 Reusable React components organized by domain. Built with **Tailwind CSS**, **Lucide-React** (icons), and **Radix UI** primitives (`clsx`, `tailwind-merge`).
+
 - **`auth/` & `brand/`**: Reusable branding and login components.
 - **`consultation/`**: Video player components, mute/unmute buttons, and WebRTC stream wrappers.
 - **`dashboard/`**: Graphs and metric cards for both Patient and Therapist views.
@@ -153,10 +168,13 @@ Reusable React components organized by domain. Built with **Tailwind CSS**, **Lu
 - **`ui/`**: Base UI elements (Buttons, Inputs, Dialogs) typically styled via Shadcn.
 
 ### 3. `/hooks` (Business Logic)
+
 - **`useExerciseEngine.ts`**: The core state machine. It takes the live camera feed, pipes it into the MediaPipe pose landmarker, extracts the 33 3D coordinates, passes them to the biomechanics engine to calculate angles, and counts repetitions dynamically in real-time.
 
 ### 4. `/lib` (Core Engines & Utilities)
+
 The brain of the application.
+
 - **`/biomechanics` & `/engine`**: Contains the mathematical formulas (trigonometry) to calculate angles between joints (e.g., shoulder, elbow, wrist).
 - **`/pose`**: Wrapper for initializing `@mediapipe/tasks-vision`.
 - **`/realtime`**: Unified Next.js realtime engine:
@@ -168,12 +186,15 @@ The brain of the application.
 - **`mongodb.ts`**: The database connection string and Mongoose connection caching logic.
 
 ### 5. `/models` (Database)
+
 - Contains **Mongoose schemas** for Users (Patients/Therapists), Exercises, Prescriptions, Consultations, ChatMessages, and Session Logs.
 
 ### 6. `/electron`
+
 - Contains wrappers (`offline.html`, etc.) for potentially packaging the web application into a desktop app using Electron.js.
 
 ### 7. `server.ts` (Unified Local Dev Server)
+
 - Single unified development server hosting both the Next.js App Router and the WebSocket gateway on port 3000 in a single process (`npm run dev`).
 
 ---
