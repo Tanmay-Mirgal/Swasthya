@@ -1,4 +1,3 @@
-Swashtya
 
 .is a comprehensive rehabilitation and exercise tracking web application designed to assist users in performing physical therapy exercises correctly using real-time pose detection and AI feedback. The application is built using modern web technologies on Next.js.
 
