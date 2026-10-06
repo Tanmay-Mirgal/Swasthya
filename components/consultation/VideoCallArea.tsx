@@ -16,7 +16,8 @@ interface VideoCallAreaProps {
   remoteVideoRef: React.RefObject<HTMLVideoElement | null>;
   isMuted: boolean;
   isVideoDisabled: boolean;
-  isFallbackMedia?: boolean;
+  /** Joined without a camera (blocked or missing). */
+  isAudioOnly?: boolean;
   /** Replaces "Connecting securely..." while a call is ringing/negotiating (e.g. "Calling Dr. Sharma…"). */
   statusText?: string;
   /** Transient message: call ended/declined, connection problems, permission errors. */
@@ -40,7 +41,7 @@ export default function VideoCallArea({
   remoteVideoRef,
   isMuted,
   isVideoDisabled,
-  isFallbackMedia = false,
+  isAudioOnly = false,
   statusText,
   notice,
   connectionLabel,
@@ -49,10 +50,10 @@ export default function VideoCallArea({
   const initial = peerName ? peerName.charAt(0).toUpperCase() : "?";
   return (
     <div className="absolute inset-0 z-0 flex items-center justify-center overflow-hidden bg-slate-950">
-      {isFallbackMedia && (
+      {isAudioOnly && (
         <div role="alert" className="absolute left-1/2 top-16 z-30 flex max-w-[92%] -translate-x-1/2 items-start gap-2 rounded-md border border-amber-400 bg-amber-50 px-3 py-2 text-sm text-[var(--ink)]">
           <ShieldAlert className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
-          <span>Your camera and microphone are blocked. Allow them from the icon in your browser’s address bar, then rejoin.</span>
+          <span>You’re joining with audio only because your camera is blocked or unavailable. Allow it from the icon in your browser’s address bar to share video.</span>
         </div>
       )}
 

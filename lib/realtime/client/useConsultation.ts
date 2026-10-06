@@ -1,54 +1,40 @@
 /**
  * lib/realtime/client/useConsultation.ts
  *
- * Orchestrates one consultation room: realtime room membership, presence, the call
- * lifecycle (callMachine) and WebRTC signaling (offer/answer/ICE) on top of useWebRTC.
- * Components render from the returned state and call requestCall/acceptCall/endCall;
- * they never touch sockets or RTCPeerConnection.
+ * Thin React wrapper around CallController for one consultation: it creates the controller,
+ * feeds it signaling events, and exposes its state plus the media (video elements, mute,
+ * camera). Chat/presence room membership lives here too, but is deliberately separate from
+ * the call: calls are routed to each person's private channel and the controller outlives
+ * the `enabled` flag, so leaving a room, a reconnect, or the join window changing can never
+ * tear down or swallow a live call.
  *
- * Authority lives on the server (callService.ts). This hook only reflects it and
- * cleans up locally when the server or peer says the call is over.
+ * Components render from the returned state and call requestCall/acceptCall/endCall; they
+ * never touch sockets or RTCPeerConnection.
  */
 
 "use client";
 
-import { useCallback, useEffect, useReducer, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useAuth } from "@clerk/react";
 import { RealtimeEvent } from "../protocol/events";
 import { Rooms } from "../protocol/rooms";
-import type { CallEndPayload, PrescriptionReceivedPayload } from "../protocol/packets";
-import {
-  CallAction,
-  CallEndReason,
-  CallState,
-  callReducer,
-  END_MESSAGES,
-  initialCallState,
-  isBusy,
-} from "@/lib/webrtc/callMachine";
+import type { PrescriptionReceivedPayload } from "../protocol/packets";
+import { CallController, type CallSnapshot, type ServerCallState } from "@/lib/webrtc/callController";
+import { initialCallState, isConnecting, isIncomingRing, type CallState } from "@/lib/webrtc/callMachine";
+import { fetchRtcConfig } from "@/lib/webrtc/config";
 import { PeerSession } from "@/lib/webrtc/peerSession";
-import { useWebRTC, UseWebRTCResult } from "@/lib/webrtc/useWebRTC";
-import { ConnectionStatus } from "./realtimeClient";
+import { useWebRTC, type UseWebRTCResult } from "@/lib/webrtc/useWebRTC";
+import type { ConnectionStatus } from "./realtimeClient";
 import { useRealtime } from "./useRealtime";
 
-const RING_TIMEOUT_MS = 45_000;
-const INCOMING_RING_MS = 60_000;
-const PEER_GONE_GRACE_MS = 15_000;
-const ICE_DISCONNECT_GRACE_MS = 8_000;
-const ENDED_BANNER_MS = 6_000;
-
-export interface ServerCallState {
-  callStatus: string;
-  callInitiatorId?: string;
-  callUpdatedAt?: string | Date;
-  completed: boolean;
-}
+export type { ServerCallState } from "@/lib/webrtc/callController";
 
 export interface UseConsultationOptions {
   /** Canonical consultation _id. Null until the consultation has loaded. */
   consultationId: string | null;
   selfId: string | undefined;
   peerName?: string;
-  /** False when the room is closed (outside the join window / completed). */
+  /** False when the room is closed (outside the join window / completed): no new calls, no chat room. */
   enabled: boolean;
   /** Loads the server-side call state (used to reconcile after a reconnect). */
   loadCallState?: () => Promise<ServerCallState | null>;
@@ -56,9 +42,12 @@ export interface UseConsultationOptions {
   onPrescription?: (payload: PrescriptionReceivedPayload) => void;
 }
 
-export interface UseConsultationResult extends Omit<UseWebRTCResult, "prepareMedia" | "startSession" | "getSession" | "releaseCall"> {
+export interface UseConsultationResult
+  extends Omit<UseWebRTCResult, "prepareMedia" | "setRemoteStream" | "release"> {
   call: CallState;
   isIncomingRing: boolean;
+  /** Accepted, waiting for media to connect (ACCEPTING / CONNECTING). */
+  isConnecting: boolean;
   incomingCallerName?: string;
   callDuration: number;
   connectionStatus: ConnectionStatus;
@@ -67,438 +56,200 @@ export interface UseConsultationResult extends Omit<UseWebRTCResult, "prepareMed
   error: string | null;
   clearError: () => void;
   consultationCompleted: boolean;
+  /** Dev-only debug panel data. */
+  debug: CallSnapshot;
   /** Camera preview before/without a call. */
   startPreview: () => Promise<boolean>;
   requestCall: () => Promise<void>;
   acceptCall: () => Promise<void>;
   rejectCall: () => void;
-  /** Hang up / cancel / decline as appropriate for the current phase. */
-  endCall: (opts?: { concludeConsultation?: boolean }) => void;
+  /** Hang up / cancel / decline as appropriate. Returns false if the signal could not be sent. */
+  endCall: (opts?: { concludeConsultation?: boolean }) => boolean;
   /** Apply the server-side call state fetched with the consultation (e.g. a call already ringing). */
   syncServerCallState: (state: ServerCallState) => void;
 }
 
+const CALL_EVENTS = [
+  RealtimeEvent.CALL_CREATED,
+  RealtimeEvent.CALL_CREATE,
+  RealtimeEvent.CALL_ACCEPT,
+  RealtimeEvent.CALL_REJECT,
+  RealtimeEvent.CALL_CANCEL,
+  RealtimeEvent.CALL_END,
+  RealtimeEvent.WEBRTC_OFFER,
+  RealtimeEvent.WEBRTC_ANSWER,
+  RealtimeEvent.WEBRTC_ICE_CANDIDATE,
+] as const;
+
+const EMPTY_SNAPSHOT: CallSnapshot = { call: initialCallState, duration: 0, pc: { connection: "new", ice: "new", signaling: "stable" }, pendingIce: 0 };
+
 export function useConsultation(options: UseConsultationOptions): UseConsultationResult {
   const { consultationId, enabled } = options;
   const { client, status } = useRealtime();
+  const { getToken } = useAuth();
   const media = useWebRTC();
 
-  const [call, setCall] = useReducer(
-    (s: CallState, a: CallAction | { type: "SET"; state: CallState }) => ("state" in a ? a.state : callReducer(s, a)),
-    initialCallState
-  );
-  const [callDuration, setCallDuration] = useState(0);
+  const [snap, setSnap] = useState<CallSnapshot>(EMPTY_SNAPSHOT);
+  const [notice, setNotice] = useState<string | null>(null);
   const [peerOnline, setPeerOnline] = useState(false);
   const [onlineUsers, setOnlineUsers] = useState(1);
-  const [error, setError] = useState<string | null>(null);
   const [consultationCompleted, setConsultationCompleted] = useState(false);
 
-  // Synchronous mirrors for use inside async handlers.
-  const callRef = useRef<CallState>(initialCallState);
+  // Latest values for callbacks that outlive a render.
   const optsRef = useRef(options);
   const mediaRef = useRef(media);
-  const durationRef = useRef(0);
-  const connectedAtRef = useRef<number | null>(null);
-  const pendingIce = useRef<RTCIceCandidateInit[]>([]);
-  const peerWasOnline = useRef(false);
-
-  const timers = useRef<{
-    ring?: ReturnType<typeof setTimeout>;
-    peerGone?: ReturnType<typeof setTimeout>;
-    iceDown?: ReturnType<typeof setTimeout>;
-    duration?: ReturnType<typeof setInterval>;
-    ended?: ReturnType<typeof setTimeout>;
-  }>({});
-
+  const getTokenRef = useRef(getToken);
   useEffect(() => {
     optsRef.current = options;
     mediaRef.current = media;
+    getTokenRef.current = getToken;
   });
 
-  const apply = useCallback((action: CallAction) => {
-    const next = callReducer(callRef.current, action);
-    callRef.current = next;
-    setCall({ type: "SET", state: next });
-    return next;
-  }, []);
+  const controllerRef = useRef<CallController | null>(null);
+  /** Server state fetched before the controller exists; applied the moment it does. */
+  const pendingSync = useRef<ServerCallState | null>(null);
+  const peerWasOnline = useRef(false);
 
-  const clearTimers = useCallback(() => {
-    const t = timers.current;
-    if (t.ring) clearTimeout(t.ring);
-    if (t.peerGone) clearTimeout(t.peerGone);
-    if (t.iceDown) clearTimeout(t.iceDown);
-    if (t.duration) clearInterval(t.duration);
-    t.ring = t.peerGone = t.iceDown = t.duration = undefined;
-    connectedAtRef.current = null;
-  }, []);
-
-  const send = useCallback(
-    (event: (typeof RealtimeEvent)[keyof typeof RealtimeEvent], payload: Record<string, unknown>): boolean => {
-      const consultation = optsRef.current.consultationId;
-      if (!consultation) return false;
-      return client.emit(event, { consultationId: consultation, ...payload }, Rooms.consultation(consultation));
-    },
-    [client]
-  );
-
-  /** Tear down media/timers and show the end state; optionally tell the peer. */
-  const finish = useCallback(
-    (reason: CallEndReason, opts?: { notify?: CallEndPayload["reason"]; message?: string }) => {
-      const wasBusy = isBusy(callRef.current);
-      if (opts?.notify && wasBusy) {
-        send(RealtimeEvent.CALL_END, { duration: durationRef.current, reason: opts.notify });
-      }
-      clearTimers();
-      mediaRef.current.releaseCall();
-      pendingIce.current = [];
-      if (wasBusy) {
-        apply({ type: "END", reason, message: opts?.message });
-        if (timers.current.ended) clearTimeout(timers.current.ended);
-        timers.current.ended = setTimeout(() => apply({ type: "RESET" }), ENDED_BANNER_MS);
-      }
-      durationRef.current = 0;
-      setCallDuration(0);
-    },
-    [apply, clearTimers, send]
-  );
-
-  const makeSession = useCallback((): PeerSession => {
-    return mediaRef.current.startSession({
-      onIceCandidate: (candidate) => {
-        send(RealtimeEvent.WEBRTC_ICE_CANDIDATE, { candidate });
+  // ── The call controller: one per consultation, independent of `enabled` ───────────────
+  useEffect(() => {
+    if (!consultationId) return;
+    const ctrl = new CallController({
+      consultationId,
+      get selfId() {
+        return optsRef.current.selfId;
       },
-      onRemoteStream: () => undefined,
-      onConnectionState: (state) => {
-        if (state === "connected") {
-          if (timers.current.iceDown) clearTimeout(timers.current.iceDown);
-          if (callRef.current.phase !== "CONNECTED") {
-            apply({ type: "PEER_CONNECTED" });
-            connectedAtRef.current = Date.now();
-            timers.current.duration = setInterval(() => {
-              const secs = connectedAtRef.current ? Math.floor((Date.now() - connectedAtRef.current) / 1000) : 0;
-              durationRef.current = secs;
-              setCallDuration(secs);
-            }, 1000);
-          }
-        } else if (state === "disconnected") {
-          if (timers.current.iceDown) clearTimeout(timers.current.iceDown);
-          timers.current.iceDown = setTimeout(() => {
-            const s = mediaRef.current.getSession()?.connectionState;
-            if (s !== "connected") finish("connection_lost", { notify: "timeout" });
-          }, ICE_DISCONNECT_GRACE_MS);
-        } else if (state === "failed") {
-          const wasConnected = callRef.current.phase === "CONNECTED";
-          finish(wasConnected ? "connection_lost" : "negotiation_failed", { notify: "negotiation_failed" });
-        }
+      get peerName() {
+        return optsRef.current.peerName;
+      },
+      send: (event, payload) => client.emit(event, { consultationId, ...payload }),
+      signalingUp: () => client.connected,
+      prepareMedia: () => mediaRef.current.prepareMedia(),
+      releaseMedia: () => mediaRef.current.release(),
+      createPeer: async (handlers) => new PeerSession(handlers, await fetchRtcConfig(() => getTokenRef.current())),
+      onRemoteStream: (stream) => mediaRef.current.setRemoteStream(stream),
+      onChange: setSnap,
+      onNotice: setNotice,
+      onConsultationCompleted: () => {
+        setConsultationCompleted(true);
+        optsRef.current.onConsultationCompleted?.();
       },
     });
-  }, [apply, finish, send]);
-
-  const flushPendingIce = useCallback(async (session: PeerSession) => {
-    const queued = pendingIce.current;
-    pendingIce.current = [];
-    for (const c of queued) await session.addIceCandidate(c);
-  }, []);
-
-  // ── Local actions ─────────────────────────────────────────────────────────
-
-  const startPreview = useCallback(() => mediaRef.current.prepareMedia(), []);
-
-  const requestCall = useCallback(async () => {
-    setError(null);
-    if (!enabled || !optsRef.current.consultationId) return;
-    if (isBusy(callRef.current)) return;
-    if (!client.connected) {
-      setError("You're reconnecting to the consultation room. Please try again in a moment.");
-      return;
+    controllerRef.current = ctrl;
+    if (pendingSync.current) {
+      ctrl.syncServerCallState(pendingSync.current);
+      pendingSync.current = null;
     }
-    if (!(await mediaRef.current.prepareMedia())) {
-      setError("We couldn't access a camera or microphone. Check your browser permissions and try again.");
-      return;
-    }
-    if (timers.current.ended) clearTimeout(timers.current.ended);
-    apply({ type: "LOCAL_REQUEST" });
-    if (!send(RealtimeEvent.CALL_CREATE, {})) {
-      finish("connection_lost", { message: "Couldn't reach the consultation room. Please try again." });
-      return;
-    }
-    timers.current.ring = setTimeout(() => {
-      if (callRef.current.phase === "CALL_REQUESTED") {
-        send(RealtimeEvent.CALL_CANCEL, {});
-        finish("missed");
-      }
-    }, RING_TIMEOUT_MS);
-  }, [apply, client, enabled, finish, send]);
 
-  const acceptCall = useCallback(async () => {
-    setError(null);
-    const cur = callRef.current;
-    if (cur.phase !== "CALL_REQUESTED" || cur.direction !== "incoming") return;
-    if (timers.current.ring) clearTimeout(timers.current.ring);
-    apply({ type: "LOCAL_ACCEPT" });
-    try {
-      if (!(await mediaRef.current.prepareMedia())) throw new Error("media");
-      const session = makeSession();
-      await flushPendingIce(session);
-      if (!send(RealtimeEvent.CALL_ACCEPT, {})) throw new Error("send");
-    } catch {
-      finish("negotiation_failed", { notify: "negotiation_failed" });
-    }
-  }, [apply, finish, flushPendingIce, makeSession, send]);
+    const offs = [
+      ...CALL_EVENTS.map((ev) =>
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        client.on(ev, ((payload: any, packet: any) => ctrl.handle(ev, payload, packet)) as never)
+      ),
+      client.on(RealtimeEvent.ERROR, (p) => {
+        if (p.roomId) return; // join errors are handled by joinRoom()
+        if (p.code === "CALL_STATE" || p.code === "CALL_NOT_ALLOWED") ctrl.handleServerError(p.code, p.message);
+        else if (p.code !== "RATE_LIMITED") setNotice(p.message);
+      }),
+      client.onReady(({ reconnected }) => {
+        ctrl.flushPending();
+        if (!reconnected) return;
+        const load = optsRef.current.loadCallState;
+        if (load) void load().then((s) => s && ctrl.syncServerCallState(s));
+      }),
+    ];
 
-  const rejectCall = useCallback(() => {
-    if (callRef.current.phase !== "CALL_REQUESTED" || callRef.current.direction !== "incoming") return;
-    send(RealtimeEvent.CALL_REJECT, { reason: "The call was declined." });
-    clearTimers();
-    mediaRef.current.releaseCall();
-    apply({ type: "RESET" });
-  }, [apply, clearTimers, send]);
+    const onPageHide = () => ctrl.notifyLeaving();
+    window.addEventListener("pagehide", onPageHide);
 
-  const endCall = useCallback(
-    (opts?: { concludeConsultation?: boolean }) => {
-      const cur = callRef.current;
-      if (cur.phase === "CALL_REQUESTED" && cur.direction === "outgoing") {
-        send(RealtimeEvent.CALL_CANCEL, {});
-        clearTimers();
-        mediaRef.current.releaseCall();
-        apply({ type: "RESET" });
-        if (!opts?.concludeConsultation) return;
-      } else if (cur.phase === "CALL_REQUESTED") {
-        rejectCall();
-        return;
-      }
-      const sent = send(RealtimeEvent.CALL_END, {
-        duration: durationRef.current,
-        concludeConsultation: opts?.concludeConsultation === true,
-        reason: "hangup",
-      });
-      if (opts?.concludeConsultation && !sent) {
-        // Realtime is down: the page falls back to the REST endpoint.
-        setError("You're offline. Reconnect to conclude the consultation.");
-      }
-      clearTimers();
-      mediaRef.current.releaseCall();
-      if (isBusy(callRef.current)) {
-        apply({ type: "END", reason: "hangup" });
-        timers.current.ended = setTimeout(() => apply({ type: "RESET" }), ENDED_BANNER_MS);
-      }
-      durationRef.current = 0;
-      setCallDuration(0);
-    },
-    [apply, clearTimers, rejectCall, send]
-  );
+    return () => {
+      window.removeEventListener("pagehide", onPageHide);
+      offs.forEach((off) => off());
+      ctrl.dispose(); // tells the peer if a call is live, then releases everything
+      controllerRef.current = null;
+    };
+  }, [client, consultationId]);
 
-  const syncServerCallState = useCallback(
-    (s: ServerCallState) => {
-      const o = optsRef.current;
-      const fresh = s.callUpdatedAt ? Date.now() - new Date(s.callUpdatedAt).getTime() < INCOMING_RING_MS : false;
-      if (s.callStatus === "calling" && s.callInitiatorId && s.callInitiatorId !== o.selfId && fresh && !isBusy(callRef.current)) {
-        apply({ type: "REMOTE_REQUEST", peerName: o.peerName });
-        timers.current.ring = setTimeout(() => {
-          if (callRef.current.phase === "CALL_REQUESTED" && callRef.current.direction === "incoming") apply({ type: "RESET" });
-        }, INCOMING_RING_MS);
-      } else if (isBusy(callRef.current) && callRef.current.phase !== "CALL_REQUESTED" && (s.callStatus === "idle" || s.callStatus === "ended")) {
-        finish("connection_lost", { message: END_MESSAGES.hangup });
-      }
-      if (s.completed) setConsultationCompleted(true);
-    },
-    [apply, finish]
-  );
-
-  // ── Realtime subscriptions ────────────────────────────────────────────────
-
+  // ── Chat/presence room (only while the room is open) ──────────────────────────────────
   useEffect(() => {
     if (!consultationId || !enabled) return;
     const room = Rooms.consultation(consultationId);
     let cancelled = false;
-
     client.joinRoom(room).catch((e: Error) => {
-      if (!cancelled) setError(e.message || "You don't have access to this consultation room.");
+      if (!cancelled) setNotice(e.message || "You don't have access to this consultation room.");
     });
-
-    const isFromSelf = (userId?: string) => userId !== undefined && userId === optsRef.current.selfId;
+    const isSelf = (userId?: string) => userId !== undefined && userId === optsRef.current.selfId;
 
     const offs = [
       client.on(RealtimeEvent.PRESENCE_UPDATE, (p) => {
         if (p.roomId !== room) return;
-        const peerHere = p.users.some((u) => !isFromSelf(u.userId));
+        const peerHere = p.users.some((u) => !isSelf(u.userId));
         setOnlineUsers(Math.max(1, p.users.length));
         setPeerOnline(peerHere);
-        const phase = callRef.current.phase;
-        if (peerHere) {
-          peerWasOnline.current = true;
-          if (timers.current.peerGone) clearTimeout(timers.current.peerGone);
-        } else if (peerWasOnline.current && (phase === "CALL_ACCEPTED" || phase === "NEGOTIATING")) {
-          if (timers.current.peerGone) clearTimeout(timers.current.peerGone);
-          timers.current.peerGone = setTimeout(() => finish("peer_disconnected", { notify: "peer_disconnected" }), PEER_GONE_GRACE_MS);
-        }
+        controllerRef.current?.onPeerPresence(peerHere, peerWasOnline.current);
+        if (peerHere) peerWasOnline.current = true;
       }),
-
-      client.on(RealtimeEvent.USER_JOINED, (p) => {
-        // The callee arrived while we were ringing into an empty room: ring again.
-        if (p.roomId === room && !isFromSelf(p.userId) && callRef.current.phase === "CALL_REQUESTED" && callRef.current.direction === "outgoing") {
-          send(RealtimeEvent.CALL_CREATE, {});
-        }
-      }),
-
-      client.on(RealtimeEvent.CALL_CREATE, (_p, packet) => {
-        if (isBusy(callRef.current)) return;
-        if (timers.current.ended) clearTimeout(timers.current.ended);
-        apply({ type: "REMOTE_REQUEST", peerName: packet.from?.name || optsRef.current.peerName });
-        if (timers.current.ring) clearTimeout(timers.current.ring);
-        timers.current.ring = setTimeout(() => {
-          if (callRef.current.phase === "CALL_REQUESTED" && callRef.current.direction === "incoming") apply({ type: "RESET" });
-        }, INCOMING_RING_MS);
-      }),
-
-      client.on(RealtimeEvent.CALL_CANCEL, () => {
-        if (callRef.current.phase === "CALL_REQUESTED" && callRef.current.direction === "incoming") finish("cancelled");
-      }),
-
-      client.on(RealtimeEvent.CALL_REJECT, (p) => {
-        if (callRef.current.phase === "CALL_REQUESTED" && callRef.current.direction === "outgoing") {
-          finish("rejected", { message: p.reason || END_MESSAGES.rejected });
-        }
-      }),
-
-      client.on(RealtimeEvent.CALL_ACCEPT, async () => {
-        if (callRef.current.phase !== "CALL_REQUESTED" || callRef.current.direction !== "outgoing") return;
-        if (timers.current.ring) clearTimeout(timers.current.ring);
-        apply({ type: "REMOTE_ACCEPT" });
-        try {
-          const session = makeSession();
-          await flushPendingIce(session);
-          const offer = await session.createOffer();
-          apply({ type: "NEGOTIATION_STARTED" });
-          if (!send(RealtimeEvent.WEBRTC_OFFER, { sdp: { type: "offer", sdp: offer.sdp } })) throw new Error("send");
-        } catch {
-          finish("negotiation_failed", { notify: "negotiation_failed" });
-        }
-      }),
-
-      client.on(RealtimeEvent.WEBRTC_OFFER, async (p) => {
-        if (callRef.current.direction !== "incoming" || (callRef.current.phase !== "CALL_ACCEPTED" && callRef.current.phase !== "NEGOTIATING")) return;
-        try {
-          const session = mediaRef.current.getSession() ?? makeSession();
-          const answer = await session.acceptOffer(p.sdp);
-          apply({ type: "NEGOTIATION_STARTED" });
-          if (!send(RealtimeEvent.WEBRTC_ANSWER, { sdp: { type: "answer", sdp: answer.sdp } })) throw new Error("send");
-        } catch {
-          finish("negotiation_failed", { notify: "negotiation_failed" });
-        }
-      }),
-
-      client.on(RealtimeEvent.WEBRTC_ANSWER, async (p) => {
-        const session = mediaRef.current.getSession();
-        if (!session) return;
-        try {
-          await session.acceptAnswer(p.sdp);
-        } catch {
-          finish("negotiation_failed", { notify: "negotiation_failed" });
-        }
-      }),
-
-      client.on(RealtimeEvent.WEBRTC_ICE_CANDIDATE, async (p) => {
-        const session = mediaRef.current.getSession();
-        if (session) await session.addIceCandidate(p.candidate);
-        else if (pendingIce.current.length < 100) pendingIce.current.push(p.candidate);
-      }),
-
-      client.on(RealtimeEvent.CALL_END, (p) => {
-        if (p.consultationCompleted) {
-          setConsultationCompleted(true);
-          optsRef.current.onConsultationCompleted?.();
-        }
-        if (isBusy(callRef.current)) {
-          finish(p.consultationCompleted ? "consultation_completed" : p.reason === "peer_disconnected" ? "peer_disconnected" : "hangup");
-        }
-      }),
-
       client.on(RealtimeEvent.PRESCRIPTION_RECEIVED, (p) => optsRef.current.onPrescription?.(p)),
-
-      client.on(RealtimeEvent.ERROR, (p) => {
-        if (p.roomId) return; // join errors are handled by joinRoom()
-        const cur = callRef.current;
-        if (p.code === "CALL_STATE" || p.code === "CALL_NOT_ALLOWED") {
-          if (isBusy(cur)) finish("negotiation_failed", { message: p.message });
-          else setError(p.message);
-        } else if (p.code !== "RATE_LIMITED") {
-          setError(p.message);
-        }
-      }),
-
-      client.onReady(({ reconnected }) => {
-        if (!reconnected) return;
-        const load = optsRef.current.loadCallState;
-        if (!load) return;
-        void load().then((s) => {
-          if (s) syncServerCallState(s);
-        });
-      }),
     ];
-
-    const onPageHide = () => {
-      if (isBusy(callRef.current) && callRef.current.phase !== "CALL_REQUESTED") {
-        client.emit(RealtimeEvent.CALL_END, { consultationId, duration: durationRef.current, reason: "hangup" }, room);
-      }
-    };
-    window.addEventListener("pagehide", onPageHide);
 
     return () => {
       cancelled = true;
-      window.removeEventListener("pagehide", onPageHide);
       offs.forEach((off) => off());
-      // Leaving the page ends any live call so the peer is never left on a stale one.
-      const cur = callRef.current;
-      if (isBusy(cur)) {
-        if (cur.phase === "CALL_REQUESTED" && cur.direction === "outgoing") {
-          client.emit(RealtimeEvent.CALL_CANCEL, { consultationId }, room);
-        } else if (cur.phase !== "CALL_REQUESTED") {
-          client.emit(RealtimeEvent.CALL_END, { consultationId, duration: durationRef.current, reason: "hangup" }, room);
-        }
-      }
-      clearTimers();
-      mediaRef.current.releaseCall();
-      client.leaveRoom(room);
+      client.leaveRoom(room); // calls do not depend on this
       peerWasOnline.current = false;
       setPeerOnline(false);
-      callRef.current = initialCallState;
     };
-  }, [client, consultationId, enabled, apply, clearTimers, finish, flushPendingIce, makeSession, send, syncServerCallState]);
+  }, [client, consultationId, enabled]);
 
-  useEffect(
-    () => () => {
-      if (timers.current.ended) clearTimeout(timers.current.ended);
-    },
-    []
+  // ── Actions ───────────────────────────────────────────────────────────────────────────
+  const startPreview = useCallback(async () => (await mediaRef.current.prepareMedia()).ok, []);
+  const requestCall = useCallback(async () => {
+    if (!optsRef.current.enabled) return;
+    setNotice(null);
+    await controllerRef.current?.startCall();
+  }, []);
+  const acceptCall = useCallback(async () => {
+    setNotice(null);
+    await controllerRef.current?.acceptIncoming();
+  }, []);
+  const rejectCall = useCallback(() => controllerRef.current?.rejectIncoming(), []);
+  const endCall = useCallback((opts?: { concludeConsultation?: boolean }) => controllerRef.current?.endCall(opts) ?? false, []);
+  const syncServerCallState = useCallback((s: ServerCallState) => {
+    if (controllerRef.current) controllerRef.current.syncServerCallState(s);
+    else pendingSync.current = s;
+  }, []);
+
+  const call = snap.call;
+  return useMemo(
+    () => ({
+      call,
+      isIncomingRing: isIncomingRing(call),
+      isConnecting: isConnecting(call),
+      incomingCallerName: call.peerName,
+      callDuration: snap.duration,
+      connectionStatus: status,
+      peerOnline,
+      onlineUsers,
+      error: notice ?? media.mediaError,
+      clearError: () => setNotice(null),
+      consultationCompleted,
+      debug: snap,
+      startPreview,
+      requestCall,
+      acceptCall,
+      rejectCall,
+      endCall,
+      syncServerCallState,
+      localVideoRef: media.localVideoRef,
+      remoteVideoRef: media.remoteVideoRef,
+      hasLocalStream: media.hasLocalStream,
+      hasRemoteStream: media.hasRemoteStream,
+      isAudioOnly: media.isAudioOnly,
+      mediaError: media.mediaError,
+      isMuted: media.isMuted,
+      isVideoDisabled: media.isVideoDisabled,
+      toggleMute: media.toggleMute,
+      toggleVideo: media.toggleVideo,
+    }),
+    [call, snap, status, peerOnline, onlineUsers, notice, consultationCompleted, media, startPreview, requestCall, acceptCall, rejectCall, endCall, syncServerCallState]
   );
-
-  return {
-    call,
-    isIncomingRing: call.phase === "CALL_REQUESTED" && call.direction === "incoming",
-    incomingCallerName: call.peerName,
-    callDuration,
-    connectionStatus: status,
-    peerOnline,
-    onlineUsers,
-    error: error ?? media.mediaError,
-    clearError: () => setError(null),
-    consultationCompleted,
-    startPreview,
-    requestCall,
-    acceptCall,
-    rejectCall,
-    endCall,
-    syncServerCallState,
-    localVideoRef: media.localVideoRef,
-    remoteVideoRef: media.remoteVideoRef,
-    hasLocalStream: media.hasLocalStream,
-    hasRemoteStream: media.hasRemoteStream,
-    isFallbackMedia: media.isFallbackMedia,
-    mediaError: media.mediaError,
-    isMuted: media.isMuted,
-    isVideoDisabled: media.isVideoDisabled,
-    toggleMute: media.toggleMute,
-    toggleVideo: media.toggleVideo,
-  };
 }

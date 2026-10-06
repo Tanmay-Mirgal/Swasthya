@@ -33,6 +33,10 @@ export const RealtimeEvent = {
   CALL_REJECT: "CALL_REJECT",
   CALL_CANCEL: "CALL_CANCEL",
   CALL_END: "CALL_END",
+  /** Client → server: this client's peer connection reached `connected`. Only then is a call "connected". */
+  CALL_CONNECTED: "CALL_CONNECTED",
+  /** Server → creator only: acknowledges CALL_CREATE and carries the server-issued callId. */
+  CALL_CREATED: "CALL_CREATED",
 
   // WebRTC signaling (media itself is peer-to-peer)
   WEBRTC_OFFER: "WEBRTC_OFFER",
@@ -65,6 +69,7 @@ export const CLIENT_TO_SERVER_EVENTS: ReadonlySet<RealtimeEventType> = new Set([
   RealtimeEvent.CALL_REJECT,
   RealtimeEvent.CALL_CANCEL,
   RealtimeEvent.CALL_END,
+  RealtimeEvent.CALL_CONNECTED,
   RealtimeEvent.WEBRTC_OFFER,
   RealtimeEvent.WEBRTC_ANSWER,
   RealtimeEvent.WEBRTC_ICE_CANDIDATE,

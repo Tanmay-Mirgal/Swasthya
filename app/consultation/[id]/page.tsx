@@ -16,6 +16,7 @@ import {
   VideoControls,
   ChatPanel,
 } from "@/components/consultation";
+import CallDebugPanel from "@/components/consultation/CallDebugPanel";
 import {
   Message,
   ConsultationDetails,
@@ -74,6 +75,7 @@ export default function ConsultationPage({
   const syncCallStateRef = useRef<(s: {
     callStatus: string;
     callInitiatorId?: string;
+    callId?: string;
     callUpdatedAt?: string | Date;
     completed: boolean;
   }) => void>(() => undefined);
@@ -141,7 +143,8 @@ export default function ConsultationPage({
   });
 
   const cs = useConsultation({
-    consultationId: realtimeEnabled ? canonicalId : null,
+    // The call controller lives as long as the consultation id does; `enabled` only gates new calls and the chat room.
+    consultationId: canonicalId,
     selfId: user?.id,
     peerName,
     enabled: realtimeEnabled,
@@ -151,6 +154,7 @@ export default function ConsultationPage({
         ? {
             callStatus: d.consultation?.callStatus,
             callInitiatorId: d.consultation?.callInitiatorId,
+            callId: d.consultation?.callId,
             callUpdatedAt: d.consultation?.callUpdatedAt,
             completed: Boolean(d.isCompleted),
           }
@@ -184,11 +188,30 @@ export default function ConsultationPage({
       syncCallStateRef.current({
         callStatus: d.consultation?.callStatus,
         callInitiatorId: d.consultation?.callInitiatorId,
+        callId: d.consultation?.callId,
         callUpdatedAt: d.consultation?.callUpdatedAt,
         completed: Boolean(d.isCompleted),
       });
     });
   }, [fetchConsultation]);
+
+  // Arrived from the app-wide incoming-call banner ("Accept"): answer the ringing call once, then drop the flag.
+  const autoAccept = useRef(false);
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    if (url.searchParams.get("accept") === "1") {
+      autoAccept.current = true;
+      url.searchParams.delete("accept");
+      window.history.replaceState(null, "", url.pathname + url.search);
+    }
+  }, []);
+  const { isIncomingRing: ringing, acceptCall: answerCall } = cs;
+  useEffect(() => {
+    if (ringing && autoAccept.current) {
+      autoAccept.current = false;
+      void answerCall();
+    }
+  }, [ringing, answerCall]);
 
   // Camera preview as soon as the room is open (permission prompt happens before any call).
   const { startPreview } = cs;
@@ -202,7 +225,7 @@ export default function ConsultationPage({
 
   // Names kept for the view code below
   const callActive = cs.call.phase === "CONNECTED";
-  const callConnecting = cs.call.phase === "CALL_REQUESTED" || cs.call.phase === "CALL_ACCEPTED" || cs.call.phase === "NEGOTIATING";
+  const callConnecting = cs.call.phase === "OUTGOING_RINGING" || cs.call.phase === "INCOMING_RINGING" || cs.isConnecting;
   const incomingCall = cs.isIncomingRing
     ? {
         callerName: cs.incomingCallerName || peerName || (activeRole === "patient" ? "Doctor" : "Patient"),
@@ -219,9 +242,9 @@ export default function ConsultationPage({
       ? "Offline — trying to reconnect…"
       : "Reconnecting to the consultation room…";
   const statusText =
-    cs.call.phase === "CALL_REQUESTED" && cs.call.direction === "outgoing"
+    cs.call.phase === "OUTGOING_RINGING"
       ? `Calling ${peerName || "participant"}…`
-      : cs.call.phase === "CALL_ACCEPTED" || cs.call.phase === "NEGOTIATING"
+      : cs.isConnecting
       ? "Connecting securely..."
       : undefined;
   const notice = cs.error || (cs.call.phase === "ENDED" ? cs.call.message : null) || null;
@@ -235,9 +258,11 @@ export default function ConsultationPage({
   const handleConfirmEndConsultation = async () => {
     try {
       setIsEnding(true);
-      cs.endCall({ concludeConsultation: true });
+      // One CALL_END(conclude): the server ends the call, completes the consultation and tells the patient.
+      // It is routed to the patient's own channel, so flipping `isCompleted` below cannot swallow it.
+      const sent = cs.endCall({ concludeConsultation: true });
 
-      if (cs.connectionStatus !== "connected" && canonicalId) {
+      if (!sent && canonicalId) {
         // Realtime is unavailable: fall back to the REST endpoint.
         const token = await getToken();
         await fetch(`/api/consultation/${canonicalId}`, {
@@ -452,7 +477,7 @@ export default function ConsultationPage({
           remoteVideoRef={cs.remoteVideoRef}
           isMuted={cs.isMuted}
           isVideoDisabled={cs.isVideoDisabled}
-          isFallbackMedia={cs.isFallbackMedia}
+          isAudioOnly={cs.isAudioOnly}
           statusText={statusText}
           notice={notice}
           connectionLabel={connectionLabel}
@@ -479,6 +504,7 @@ export default function ConsultationPage({
           onEndCall={activeRole === "doctor" ? () => setShowEndModal(true) : handlePatientLeave}
           onOpenChat={() => setIsChatOpen(true)}
         />
+        <CallDebugPanel debug={cs.debug} socket={cs.connectionStatus} hasLocalStream={cs.hasLocalStream} hasRemoteStream={cs.hasRemoteStream} />
       </div>
 
       {/* === SIDE CHAT PANEL === */}

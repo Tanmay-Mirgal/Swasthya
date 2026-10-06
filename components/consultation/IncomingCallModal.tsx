@@ -16,7 +16,7 @@ export default function IncomingCallModal({ incomingCall, onAccept, onReject }: 
     <div
       role="alertdialog"
       aria-label={`Incoming call from ${incomingCall.callerName}`}
-      className="absolute left-1/2 top-24 z-50 flex w-[min(24rem,calc(100%-2rem))] -translate-x-1/2 items-center gap-4 rounded-lg border border-slate-500 bg-slate-900 px-4 py-3"
+      className="fixed left-1/2 top-24 z-[80] flex w-[min(24rem,calc(100%-2rem))] -translate-x-1/2 items-center gap-4 rounded-lg border border-slate-500 bg-slate-900 px-4 py-3"
     >
       <div className="min-w-0 flex-1">
         <p className="text-sm font-semibold text-emerald-300">Incoming call</p>

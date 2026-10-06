@@ -1,46 +1,47 @@
 /**
  * lib/webrtc/useWebRTC.ts
  *
- * Local/remote media + the active PeerSession for a call. Pure media concerns:
- * acquiring camera/mic (with the existing graceful fallbacks), mute/camera toggles,
- * attaching streams to <video> elements and releasing everything on cleanup.
- * Signaling lives in useConsultation.
+ * The media half of a call as React state: the local camera/mic stream, the remote stream,
+ * the <video> elements, mute / camera toggles. It holds NO peer connection and no signaling:
+ * those belong to CallController. `release()` stops every local track and clears both
+ * streams, and is safe to call repeatedly.
  */
 
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { getMediaStreamWithFallback } from "./media";
-import { LocalStream, PeerSession, PeerSessionHandlers } from "./peerSession";
+import { acquireMedia } from "./media";
+import type { MediaPrepareResult } from "./callController";
 
 export interface UseWebRTCResult {
   localVideoRef: React.RefObject<HTMLVideoElement | null>;
   remoteVideoRef: React.RefObject<HTMLVideoElement | null>;
   hasLocalStream: boolean;
   hasRemoteStream: boolean;
-  /** True when real camera/mic access was refused or unavailable and a placeholder stream is used. */
-  isFallbackMedia: boolean;
+  /** True when we joined without a camera (blocked or missing). */
+  isAudioOnly: boolean;
   mediaError: string | null;
   isMuted: boolean;
   isVideoDisabled: boolean;
-  prepareMedia: () => Promise<boolean>;
-  startSession: (handlers: PeerSessionHandlers) => PeerSession;
-  getSession: () => PeerSession | null;
+  /** Camera/mic for the controller. Reuses a live stream rather than opening a second one. */
+  prepareMedia: () => Promise<MediaPrepareResult>;
+  setRemoteStream: (stream: MediaStream | null) => void;
   toggleMute: () => void;
   toggleVideo: () => void;
-  /** Close the peer connection, stop all tracks, reset state. Idempotent. */
-  releaseCall: () => void;
+  /** Stop all local tracks and clear both streams. Idempotent. */
+  release: () => void;
 }
 
 export function useWebRTC(): UseWebRTCResult {
   const localVideoRef = useRef<HTMLVideoElement>(null);
   const remoteVideoRef = useRef<HTMLVideoElement>(null);
-  const localRef = useRef<LocalStream | null>(null);
-  const sessionRef = useRef<PeerSession | null>(null);
+  const localRef = useRef<MediaStream | null>(null);
+  const audioOnlyRef = useRef(false);
+  const inflight = useRef<Promise<MediaPrepareResult> | null>(null);
 
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
-  const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
-  const [isFallbackMedia, setIsFallbackMedia] = useState(false);
+  const [remoteStream, setRemote] = useState<MediaStream | null>(null);
+  const [isAudioOnly, setIsAudioOnly] = useState(false);
   const [mediaError, setMediaError] = useState<string | null>(null);
   const [isMuted, setIsMuted] = useState(false);
   const [isVideoDisabled, setIsVideoDisabled] = useState(false);
@@ -59,42 +60,32 @@ export function useWebRTC(): UseWebRTCResult {
     }
   });
 
-  const prepareMedia = useCallback(async (): Promise<boolean> => {
+  const prepareMedia = useCallback((): Promise<MediaPrepareResult> => {
     const existing = localRef.current;
-    if (existing && !existing.isFallback && existing.getTracks().some((t) => t.readyState === "live")) return true;
-
-    const stream = (await getMediaStreamWithFallback()) as LocalStream | null;
-    if (!stream) {
-      setMediaError("Camera and microphone are not available in this browser.");
-      return false;
+    if (existing && existing.getTracks().some((t) => t.readyState === "live")) {
+      return Promise.resolve({ ok: true, stream: existing, notice: audioOnlyRef.current ? "Your camera is blocked, so you're joining with audio only." : undefined });
     }
-    existing?.getTracks().forEach((t) => t.stop());
-    localRef.current = stream;
-    setLocalStream(stream);
-    setIsFallbackMedia(Boolean(stream.isFallback));
-    setIsMuted(false);
-    setIsVideoDisabled(false);
-    setMediaError(null);
-    return true;
+    if (inflight.current) return inflight.current; // a preview and a call must not open the devices twice
+    const p = (async (): Promise<MediaPrepareResult> => {
+      const r = await acquireMedia();
+      if (!r.ok) {
+        setMediaError(r.message);
+        return { ok: false, message: r.message };
+      }
+      localRef.current = r.stream;
+      audioOnlyRef.current = r.stream.getVideoTracks().length === 0;
+      setLocalStream(r.stream);
+      setIsAudioOnly(audioOnlyRef.current);
+      setIsMuted(false);
+      setIsVideoDisabled(audioOnlyRef.current);
+      setMediaError(null);
+      return { ok: true, stream: r.stream, notice: r.notice };
+    })().finally(() => {
+      inflight.current = null;
+    });
+    inflight.current = p;
+    return p;
   }, []);
-
-  const startSession = useCallback((handlers: PeerSessionHandlers): PeerSession => {
-    sessionRef.current?.close();
-    const session = new PeerSession(
-      {
-        ...handlers,
-        onRemoteStream: (stream) => {
-          setRemoteStream(stream);
-          handlers.onRemoteStream(stream);
-        },
-      },
-      localRef.current
-    );
-    sessionRef.current = session;
-    return session;
-  }, []);
-
-  const getSession = useCallback(() => sessionRef.current, []);
 
   const toggleMute = useCallback(() => {
     const track = localRef.current?.getAudioTracks()[0];
@@ -110,35 +101,33 @@ export function useWebRTC(): UseWebRTCResult {
     setIsVideoDisabled(!track.enabled);
   }, []);
 
-  const releaseCall = useCallback(() => {
-    sessionRef.current?.close();
-    sessionRef.current = null;
+  const release = useCallback(() => {
     localRef.current?.getTracks().forEach((t) => t.stop());
     localRef.current = null;
+    audioOnlyRef.current = false;
     setLocalStream(null);
-    setRemoteStream(null);
-    setIsFallbackMedia(false);
+    setRemote(null);
+    setIsAudioOnly(false);
     setIsMuted(false);
     setIsVideoDisabled(false);
   }, []);
 
-  // Never leave camera/mic running after the page unmounts.
-  useEffect(() => releaseCall, [releaseCall]);
+  // Never leave the camera or microphone running after the page unmounts.
+  useEffect(() => release, [release]);
 
   return {
     localVideoRef,
     remoteVideoRef,
     hasLocalStream: Boolean(localStream),
     hasRemoteStream: Boolean(remoteStream),
-    isFallbackMedia,
+    isAudioOnly,
     mediaError,
     isMuted,
     isVideoDisabled,
     prepareMedia,
-    startSession,
-    getSession,
+    setRemoteStream: setRemote,
     toggleMute,
     toggleVideo,
-    releaseCall,
+    release,
   };
 }

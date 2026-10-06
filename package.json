@@ -8,6 +8,7 @@
     "start": "NODE_ENV=production tsx server.ts",
     "lint": "eslint",
     "test:realtime": "tsx scripts/test_realtime_e2e.ts",
+    "test:webrtc": "tsx --test lib/webrtc/__tests__/*.test.ts",
     "test:rehab": "tsx --test lib/rehab/*.test.ts",
     "movement:replay": "tsx --conditions=react-server scripts/movement_replay.ts",
     "test:movement": "tsx --conditions=react-server --test lib/movement/__tests__/*.test.ts",

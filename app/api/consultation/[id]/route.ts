@@ -6,6 +6,7 @@ import TherapistProfile, { ITherapistProfile } from "@/models/TherapistProfile";
 import PatientProfile from "@/models/PatientProfile";
 import Prescription from "@/models/Prescription";
 import ChatMessage from "@/models/ChatMessage";
+import CallSession from "@/models/CallSession";
 import User, { IUser } from "@/models/User";
 import { publish } from "@/lib/realtime/server/bus";
 import { RealtimeEvent } from "@/lib/realtime/protocol/events";
@@ -225,6 +226,18 @@ export async function PATCH(
       updateFields.status = "COMPLETED";
       updateFields.roomStatus = "COMPLETED";
       updateFields.endedAt = new Date();
+      // Concluding the consultation also ends any live call.
+      const liveCall = ["calling", "accepted", "connected"].includes(consultation.callStatus);
+      if (liveCall) {
+        updateFields.callStatus = "ended";
+        updateFields.callUpdatedAt = new Date();
+        if (consultation.callId) {
+          await CallSession.updateOne(
+            { callId: consultation.callId },
+            { $set: { status: "ended", endedAt: new Date(), endedBy: "doctor", endReason: "ended_by_therapist" } }
+          ).catch(() => undefined);
+        }
+      }
 
       // Update linked appointment if present
       if (consultation.appointmentId) {
@@ -243,12 +256,12 @@ export async function PATCH(
     // Tell everyone in the room (e.g. the patient) that the consultation was concluded.
     if (body.status === "COMPLETED") {
       const cid = consultation._id.toString();
+      // To the patient's private channel (works on any page, and regardless of rooms joined).
       await publish({
-        roomId: Rooms.consultation(cid),
+        roomId: Rooms.user(consultation.patientId),
         event: RealtimeEvent.CALL_END,
-        payload: { consultationId: cid, reason: "hangup", consultationCompleted: true },
+        payload: { consultationId: cid, callId: consultation.callId, reason: "hangup", endedBy: "doctor", consultationCompleted: true },
         from: { userId: callerClerkUserId, role: "doctor" },
-        excludeUserId: callerClerkUserId,
       });
     }
 

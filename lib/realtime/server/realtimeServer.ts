@@ -28,6 +28,7 @@ import {
   parseEnvelope,
   validateAnswer,
   validateCallAccept,
+  validateCallConnected,
   validateCallCancel,
   validateCallCreate,
   validateCallEnd,
@@ -39,6 +40,7 @@ import { authorizeUserForRoom, verifyRealtimeToken, VerifiedIdentity } from "../
 import { BusMessage, publish, setLocalDeliver, startBusWatcher } from "./bus";
 import { addPresence, getRoomUsers, removePresence, touchPresence } from "./presence";
 import * as calls from "./callService";
+import { callLog } from "../../webrtc/callLog";
 
 export interface ClientSession {
   connectionId: string;
@@ -46,6 +48,8 @@ export interface ClientSession {
   identity: VerifiedIdentity | null;
   joinedRooms: Set<string>;
   ready: Promise<void>;
+  /** Inbound packets are handled strictly in arrival order (one at a time per socket). */
+  queue: Promise<void>;
   closed: boolean;
   createdAt: number;
   windowStart: number;
@@ -88,6 +92,7 @@ export class RealtimeServer {
       identity: null,
       joinedRooms: new Set(),
       ready: Promise.resolve(),
+      queue: Promise.resolve(),
       closed: false,
       createdAt: Date.now(),
       windowStart: Date.now(),
@@ -101,7 +106,8 @@ export class RealtimeServer {
 
     ws.on("message", (raw: unknown) => {
       const text = typeof raw === "string" ? raw : (raw as { toString?: () => string })?.toString?.() || "";
-      void this.onRawMessage(session, text);
+      // Serialised: a LEAVE_ROOM, CALL_END and ICE sent back-to-back must be handled in that order.
+      session.queue = session.queue.then(() => this.onRawMessage(session, text)).catch(() => undefined);
     });
     ws.on("close", () => void this.onDisconnect(session));
     ws.on("error", () => {
@@ -209,102 +215,106 @@ export class RealtimeServer {
       case RealtimeEvent.TYPING_STOP:
         return this.relayTyping(session, me, event === RealtimeEvent.TYPING_START, String(payload.roomId ?? roomId ?? ""));
 
+      // ── Calls ──────────────────────────────────────────────────────────────
+      // Authorised from the verified identity and the consultation record (callService), and
+      // routed to the PEER'S private user channel. Neither step depends on which rooms either
+      // socket has joined, so a leave, a reconnect or a page change can never swallow a signal,
+      // and a call can ring on any page.
       case RealtimeEvent.CALL_CREATE: {
         const p = validateCallCreate(payload);
         if (!p) return this.malformed(session);
-        this.requireRoom(session, Rooms.consultation(p.consultationId));
-        const ctx = await calls.createCall(me, p.consultationId);
-        this.requireRoom(session, ctx.roomId);
-        await this.relay(ctx.roomId, RealtimeEvent.CALL_CREATE, { consultationId: ctx.consultationId }, me, true);
+        const { ctx, callId, reused } = await calls.createCall(me, p.consultationId);
+        this.send(session, RealtimeEvent.CALL_CREATED, { consultationId: ctx.consultationId, callId });
+        await this.relayToPeer(ctx, RealtimeEvent.CALL_CREATE, { consultationId: ctx.consultationId, callId, callerName: me.name }, me);
+        callLog(callId, `CREATE by ${me.role}${reused ? " (re-ring)" : ""}`);
         return;
       }
       case RealtimeEvent.CALL_ACCEPT: {
         const p = validateCallAccept(payload);
         if (!p) return this.malformed(session);
-        this.requireRoom(session, Rooms.consultation(p.consultationId));
-        const ctx = await calls.acceptCall(me, p.consultationId);
-        this.requireRoom(session, ctx.roomId);
-        await this.relay(ctx.roomId, RealtimeEvent.CALL_ACCEPT, { consultationId: ctx.consultationId }, me, true);
+        const { ctx, callId } = await calls.acceptCall(me, p.consultationId, p.callId);
+        await this.relayToPeer(ctx, RealtimeEvent.CALL_ACCEPT, { consultationId: ctx.consultationId, callId }, me, session);
+        callLog(callId, `ACCEPT by ${me.role}`);
         return;
       }
       case RealtimeEvent.CALL_REJECT: {
         const p = validateCallReject(payload);
         if (!p) return this.malformed(session);
-        this.requireRoom(session, Rooms.consultation(p.consultationId));
-        const ctx = await calls.rejectCall(me, p.consultationId);
-        this.requireRoom(session, ctx.roomId);
-        await this.relay(
-          ctx.roomId,
+        const { ctx, callId } = await calls.rejectCall(me, p.consultationId, p.callId);
+        await this.relayToPeer(
+          ctx,
           RealtimeEvent.CALL_REJECT,
-          { consultationId: ctx.consultationId, reason: p.reason || "The call was declined." },
+          { consultationId: ctx.consultationId, callId, reason: p.reason || "The call was declined." },
           me,
-          true
+          session
         );
+        callLog(callId, `REJECT by ${me.role}`);
         return;
       }
       case RealtimeEvent.CALL_CANCEL: {
         const p = validateCallCancel(payload);
         if (!p) return this.malformed(session);
-        this.requireRoom(session, Rooms.consultation(p.consultationId));
-        const ctx = await calls.cancelCall(me, p.consultationId);
-        this.requireRoom(session, ctx.roomId);
-        await this.relay(ctx.roomId, RealtimeEvent.CALL_CANCEL, { consultationId: ctx.consultationId }, me, true);
+        const { ctx, callId } = await calls.cancelCall(me, p.consultationId, p.callId, p.reason);
+        await this.relayToPeer(ctx, RealtimeEvent.CALL_CANCEL, { consultationId: ctx.consultationId, callId, reason: p.reason }, me, session);
+        callLog(callId, `CANCEL (${p.reason}) by ${me.role}`);
+        return;
+      }
+      case RealtimeEvent.CALL_CONNECTED: {
+        const p = validateCallConnected(payload);
+        if (!p) return this.malformed(session);
+        const r = await calls.markConnected(me, p.consultationId, p.callId);
+        if (r?.first) callLog(r.callId, `CONNECTED (reported by ${me.role})`);
         return;
       }
       case RealtimeEvent.CALL_END: {
         const p = validateCallEnd(payload);
         if (!p) return this.malformed(session);
-        this.requireRoom(session, Rooms.consultation(p.consultationId));
-        const ctx = await calls.endCall(me, p.consultationId, {
+        const r = await calls.endCall(me, p.consultationId, {
+          callId: p.callId,
           duration: p.duration,
           concludeConsultation: p.concludeConsultation,
+          reason: p.reason,
         });
-        this.requireRoom(session, ctx.roomId);
-        await this.relay(
-          ctx.roomId,
-          RealtimeEvent.CALL_END,
-          {
-            consultationId: ctx.consultationId,
-            duration: p.duration,
-            reason: p.reason || "hangup",
-            consultationCompleted: Boolean(p.concludeConsultation),
-          },
-          me,
-          true
-        );
+        // Tell the peer when a live call really ended, or when the consultation was concluded
+        // (the patient may be idle and still needs to hear it). A stale or duplicate end says nothing.
+        if (r.changed || r.consultationCompleted) {
+          await this.relayToPeer(
+            r.ctx,
+            RealtimeEvent.CALL_END,
+            {
+              consultationId: r.ctx.consultationId,
+              callId: r.callId,
+              duration: p.duration,
+              reason: p.reason || "hangup",
+              endedBy: r.endedBy,
+              consultationCompleted: r.consultationCompleted,
+            },
+            me,
+            session
+          );
+        }
+        callLog(r.callId ?? "-", r.changed ? `END by ${me.role} (${p.reason || "hangup"}); peer notified` : "END ignored (no live matching call)");
         return;
       }
       case RealtimeEvent.WEBRTC_OFFER: {
         const p = validateOffer(payload);
         if (!p) return this.malformed(session);
-        this.requireRoom(session, Rooms.consultation(p.consultationId));
-        const ctx = await calls.authorizeOffer(me, p.consultationId);
-        this.requireRoom(session, ctx.roomId);
-        await this.relay(ctx.roomId, RealtimeEvent.WEBRTC_OFFER, { consultationId: ctx.consultationId, sdp: p.sdp }, me, true);
+        const { ctx, callId } = await calls.authorizeOffer(me, p.consultationId, p.callId);
+        await this.relayToPeer(ctx, RealtimeEvent.WEBRTC_OFFER, { consultationId: ctx.consultationId, callId, sdp: p.sdp }, me);
         return;
       }
       case RealtimeEvent.WEBRTC_ANSWER: {
         const p = validateAnswer(payload);
         if (!p) return this.malformed(session);
-        this.requireRoom(session, Rooms.consultation(p.consultationId));
-        const ctx = await calls.authorizeAnswer(me, p.consultationId);
-        this.requireRoom(session, ctx.roomId);
-        await this.relay(ctx.roomId, RealtimeEvent.WEBRTC_ANSWER, { consultationId: ctx.consultationId, sdp: p.sdp }, me, true);
+        const { ctx, callId } = await calls.authorizeAnswer(me, p.consultationId, p.callId);
+        await this.relayToPeer(ctx, RealtimeEvent.WEBRTC_ANSWER, { consultationId: ctx.consultationId, callId, sdp: p.sdp }, me);
         return;
       }
       case RealtimeEvent.WEBRTC_ICE_CANDIDATE: {
         const p = validateIce(payload);
         if (!p) return this.malformed(session);
-        this.requireRoom(session, Rooms.consultation(p.consultationId));
-        const ctx = await calls.authorizeIce(me, p.consultationId);
-        this.requireRoom(session, ctx.roomId);
-        await this.relay(
-          ctx.roomId,
-          RealtimeEvent.WEBRTC_ICE_CANDIDATE,
-          { consultationId: ctx.consultationId, candidate: p.candidate },
-          me,
-          true
-        );
+        const { ctx, callId } = await calls.authorizeIce(me, p.consultationId, p.callId);
+        await this.relayToPeer(ctx, RealtimeEvent.WEBRTC_ICE_CANDIDATE, { consultationId: ctx.consultationId, callId, candidate: p.candidate }, me);
         return;
       }
       default:
@@ -385,6 +395,32 @@ export class RealtimeServer {
   }
 
   // ── Relays ────────────────────────────────────────────────────────────────
+
+  /**
+   * Delivers a call/signaling event to the peer's private channel (all of their tabs). When
+   * `origin` is given it is also mirrored to the sender's OTHER connections, so a second tab
+   * can dismiss a ring that was answered or ended elsewhere. The peer id comes from the
+   * consultation record, never from the client.
+   */
+  private async relayToPeer(
+    ctx: calls.CallContext,
+    event: RealtimeEventType,
+    payload: Record<string, unknown>,
+    me: VerifiedIdentity,
+    origin?: ClientSession
+  ): Promise<void> {
+    const from = { userId: me.userId, role: me.role, name: me.name };
+    await publish({ roomId: Rooms.user(ctx.peerUserId), event, payload, from });
+    if (origin) {
+      await publish({
+        roomId: Rooms.user(me.userId),
+        event,
+        payload: { ...payload, mirrored: true },
+        from,
+        excludeConnectionId: origin.connectionId,
+      });
+    }
+  }
 
   private async relayTyping(session: ClientSession, me: VerifiedIdentity, isTyping: boolean, roomId: string): Promise<void> {
     const parsed = parseRoom(roomId);

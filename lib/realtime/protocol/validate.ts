@@ -9,6 +9,7 @@ import { isRealtimeEvent, RealtimeEventType } from "./events";
 import type {
   CallAcceptPayload,
   CallCancelPayload,
+  CallConnectedPayload,
   CallCreatePayload,
   CallEndPayload,
   CallRejectPayload,
@@ -66,26 +67,40 @@ export function validateCallCreate(p: Obj): CallCreatePayload | null {
   if (!consultationId) return null;
   return { consultationId, callerName: typeof p.callerName === "string" ? p.callerName.slice(0, 100) : undefined };
 }
+const callIdOf = (p: Obj): string | null => str(p.callId, 64);
+
 export function validateCallAccept(p: Obj): CallAcceptPayload | null {
   const consultationId = str(p.consultationId);
-  return consultationId ? { consultationId } : null;
+  const callId = callIdOf(p);
+  return consultationId && callId ? { consultationId, callId } : null;
 }
 export function validateCallReject(p: Obj): CallRejectPayload | null {
   const consultationId = str(p.consultationId);
-  if (!consultationId) return null;
-  return { consultationId, reason: typeof p.reason === "string" ? p.reason.slice(0, 200) : undefined };
+  const callId = callIdOf(p);
+  if (!consultationId || !callId) return null;
+  return { consultationId, callId, reason: typeof p.reason === "string" ? p.reason.slice(0, 200) : undefined };
 }
 export function validateCallCancel(p: Obj): CallCancelPayload | null {
   const consultationId = str(p.consultationId);
-  return consultationId ? { consultationId } : null;
+  const callId = callIdOf(p);
+  if (!consultationId || !callId) return null;
+  return { consultationId, callId, reason: p.reason === "timeout" ? "timeout" : "cancelled" };
+}
+export function validateCallConnected(p: Obj): CallConnectedPayload | null {
+  const consultationId = str(p.consultationId);
+  const callId = callIdOf(p);
+  return consultationId && callId ? { consultationId, callId } : null;
 }
 export function validateCallEnd(p: Obj): CallEndPayload | null {
   const consultationId = str(p.consultationId);
   if (!consultationId) return null;
-  const reasons = ["hangup", "peer_disconnected", "negotiation_failed", "timeout"] as const;
-  const reason = reasons.find((r) => r === p.reason);
+  const reasons = ["hangup", "timeout", "connection_failed", "participant_disconnected"] as const;
+  // Older clients sent these names.
+  const legacy: Record<string, (typeof reasons)[number]> = { peer_disconnected: "participant_disconnected", negotiation_failed: "connection_failed" };
+  const reason = reasons.find((r) => r === p.reason) ?? (typeof p.reason === "string" ? legacy[p.reason] : undefined);
   return {
     consultationId,
+    callId: callIdOf(p) ?? undefined,
     duration: typeof p.duration === "number" && p.duration >= 0 && p.duration < 86_400 ? Math.floor(p.duration) : undefined,
     concludeConsultation: p.concludeConsultation === true,
     reason,
@@ -94,25 +109,29 @@ export function validateCallEnd(p: Obj): CallEndPayload | null {
 
 export function validateOffer(p: Obj): WebrtcOfferPayload | null {
   const consultationId = str(p.consultationId);
-  if (!consultationId || !isObj(p.sdp)) return null;
+  const callId = callIdOf(p);
+  if (!consultationId || !callId || !isObj(p.sdp)) return null;
   const sdp = str(p.sdp.sdp, MAX_SDP_LENGTH);
   if (p.sdp.type !== "offer" || !sdp) return null;
-  return { consultationId, sdp: { type: "offer", sdp } };
+  return { consultationId, callId, sdp: { type: "offer", sdp } };
 }
 export function validateAnswer(p: Obj): WebrtcAnswerPayload | null {
   const consultationId = str(p.consultationId);
-  if (!consultationId || !isObj(p.sdp)) return null;
+  const callId = callIdOf(p);
+  if (!consultationId || !callId || !isObj(p.sdp)) return null;
   const sdp = str(p.sdp.sdp, MAX_SDP_LENGTH);
   if (p.sdp.type !== "answer" || !sdp) return null;
-  return { consultationId, sdp: { type: "answer", sdp } };
+  return { consultationId, callId, sdp: { type: "answer", sdp } };
 }
 export function validateIce(p: Obj): WebrtcIcePayload | null {
   const consultationId = str(p.consultationId);
-  if (!consultationId || !isObj(p.candidate)) return null;
+  const callId = callIdOf(p);
+  if (!consultationId || !callId || !isObj(p.candidate)) return null;
   const c = p.candidate;
   if (c.candidate !== undefined && (typeof c.candidate !== "string" || c.candidate.length > MAX_CANDIDATE_LENGTH)) return null;
   return {
     consultationId,
+    callId,
     candidate: {
       candidate: c.candidate as string | undefined,
       sdpMid: typeof c.sdpMid === "string" ? c.sdpMid : null,

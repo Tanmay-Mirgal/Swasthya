@@ -2,6 +2,7 @@ import ClerkClientProvider from "@/components/auth/ClerkClientProvider";
 import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono, Kalam } from "next/font/google";
 import AuthGuard from "@/components/auth/AuthGuard";
+import CallProvider from "@/components/consultation/CallProvider";
 import { ToastProvider } from "@/components/ui/Toast";
 import "./globals.css";
 
@@ -67,6 +68,7 @@ export default function RootLayout({
               Skip to main content
             </a>
             <AuthGuard>{children}</AuthGuard>
+            <CallProvider />
           </ToastProvider>
         </ClerkClientProvider>
       </body>
