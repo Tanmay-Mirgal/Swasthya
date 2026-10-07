@@ -119,3 +119,22 @@ export function setSelectedLanguage(code: LanguageCode) {
   applyLanguageCookies(code);
   window.location.reload();
 }
+
+const listeners = new Set<() => void>();
+
+/** Called whenever `changeLanguage` runs, so components that speak or show coach text can follow the choice at once. */
+export function subscribeLanguage(listener: () => void): () => void {
+  listeners.add(listener);
+  return () => void listeners.delete(listener);
+}
+
+/**
+ * Persist the choice WITHOUT reloading, for screens that cannot be interrupted (the live exercise: a reload would stop
+ * the camera and lose the reps of the current chunk). The coach's words and voice change immediately; the translator
+ * applies the choice to the rest of the page the next time a page is loaded.
+ */
+export function changeLanguage(code: LanguageCode, env?: CookieEnv): void {
+  if (!env && typeof document === "undefined") return;
+  applyLanguageCookies(code, env);
+  listeners.forEach((l) => l());
+}

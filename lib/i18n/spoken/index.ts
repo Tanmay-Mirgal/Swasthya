@@ -149,6 +149,14 @@ export function localizeSpoken(text: string, lang: LanguageCode): string | null 
   return out.join(" ");
 }
 
+/**
+ * The line to SHOW in `lang`: the same reviewed translation the voice uses, or the English as written when any part of
+ * it has none. The screen and the voice therefore never disagree about what the coach said.
+ */
+export function localizeShown(text: string, lang: LanguageCode): string {
+  return localizeSpoken(text, lang) ?? text;
+}
+
 /** For tests: how many sentences each language can say. */
 export const CATALOGUE_SIZE = { hi: INDEX.hi.size, mr: INDEX.mr.size } as const;
 export type { Entry };

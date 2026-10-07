@@ -2,6 +2,7 @@
 
 import { ConfidenceBadge } from "@/components/movement/ConfidenceBadge";
 import { Button, TickBox } from "@/components/ui";
+import CoachLanguageSwitch from "./CoachLanguageSwitch";
 import type { MovementUi } from "@/hooks/useMovementSession";
 import { JOINT_OK } from "@/lib/movement/types";
 
@@ -24,11 +25,14 @@ export default function ReadyCheck({ ui, hint, onReady, onManual }: Props) {
   return (
     <div className="flex flex-col gap-5 p-4 sm:p-5">
       <div>
-        <h2 className="text-xl font-bold leading-snug text-slate-900">Let’s get you ready</h2>
+        <div className="flex items-start justify-between gap-3">
+          <h2 className="text-xl font-bold leading-snug text-slate-900">Let’s get you ready</h2>
+          <CoachLanguageSwitch className="shrink-0" />
+        </div>
         <p className="mt-1 text-base leading-relaxed text-slate-800">{hint}</p>
       </div>
       <div role="status" aria-live="polite" className="flex flex-col gap-1.5">
-        <p className="text-lg font-semibold text-slate-900">{headline}</p>
+        <p translate={ui.tracking && ui.advice ? "no" : undefined} className="text-lg font-semibold text-slate-900">{headline}</p>
         <p className="text-base text-slate-800">{detail}</p>
         <ConfidenceBadge level={ui.confidence} tracking={ui.tracking} />
       </div>

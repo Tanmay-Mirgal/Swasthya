@@ -7,6 +7,7 @@ import VoiceService from "@/services/voice/voiceService";
 import { START_FOR_ME_OPTIONS, VIEW_SCALES, VOICE_RATE_RANGE, type StartForMe, type VoiceSettings } from "@/lib/preferences";
 import { cn } from "@/lib/utils";
 import { languageInfo, type LanguageCode } from "@/lib/i18n/languages";
+import CoachLanguageSwitch from "./CoachLanguageSwitch";
 import type { VoiceAvailability } from "@/services/voice/voicePick";
 
 interface Props {
@@ -16,7 +17,7 @@ interface Props {
   onVoiceEnabled: (on: boolean) => void;
   settings: VoiceSettings;
   onChange: (patch: Partial<VoiceSettings>) => void;
-  /** The language the coach speaks, from the language switcher. */
+  /** The language the coach speaks and writes in. */
   language: LanguageCode;
   /** The size of text on the exercise screen, chosen for where the patient sits. Shown only when the screen supports it. */
   viewScale?: number;
@@ -45,7 +46,6 @@ export default function SettingsSheet({ open, onClose, voiceEnabled, onVoiceEnab
     return () => window.speechSynthesis.removeEventListener("voiceschanged", load);
   }, [open, language]);
 
-  const native = languageInfo(language).native;
   const chosen = language === "en" ? settings.voiceURI : (settings.voiceByLang[language] ?? null);
   const supported = VoiceService.isSupported();
   return (
@@ -67,14 +67,14 @@ export default function SettingsSheet({ open, onClose, voiceEnabled, onVoiceEnab
           <input id="voice-rate" type="range" min={VOICE_RATE_RANGE.min} max={VOICE_RATE_RANGE.max} step={0.05} value={settings.rate} onChange={(e) => onChange({ rate: Number(e.target.value) })} className="mt-2 h-11 w-full accent-emerald-700" />
         </div>
 
-        {language !== "en" && supported && (
-          <p className="text-base text-slate-800">
-            The coach speaks <span className="font-semibold" translate="no">{native}</span>. Change it with the language button at the top of the page.
-          </p>
-        )}
+        <div>
+          <p className="text-base font-semibold text-slate-900">Coach language</p>
+          <p className="text-sm text-slate-700">What the coach says and writes. Remembered on this device.</p>
+          <CoachLanguageSwitch className="mt-2" />
+        </div>
         {language !== "en" && supported && availability === "none" && (
           <Notice tone="warning" title={`No ${languageInfo(language).label} voice on this device`}>
-            The coach will speak in English instead, and what is said is shown as text. You can add a {languageInfo(language).label} voice in your device’s speech settings.
+            The coach will speak in English instead, and still writes what it says in {languageInfo(language).label} on screen. You can add a {languageInfo(language).label} voice in your device’s speech settings.
           </Notice>
         )}
         {language === "mr" && supported && availability === "borrowed" && (

@@ -2,24 +2,19 @@
 
 import { useCallback, useEffect, useState } from "react";
 import VoiceService from "@/services/voice/voiceService";
-import { getSelectedLanguage, type LanguageCode } from "@/lib/i18n/languages";
+import { useSelectedLanguage } from "@/lib/i18n/useSelectedLanguage";
 import { getVoiceCoachPreference, getVoiceSettings, normalizeVoiceSettings, setVoiceCoachPreference, setVoiceSettings, type VoiceSettings } from "@/lib/preferences";
 
 /**
  * The patient's voice choices: on or off, how loud, how fast, which voice, whether to keep captions and whether to celebrate.
- * The coach speaks in the language chosen in the language switcher.
+ * The coach speaks in the chosen language (the language switcher, or the one on the exercise screen) and follows a change at once.
  * What is said, and when, is decided by the coaching loop (lib/movement/coach); this hook only owns the
  * switch, the settings and the speaker's lifecycle.
  */
 export function useVoicePreference() {
   const [enabled, setEnabled] = useState(() => getVoiceCoachPreference());
   const [settings, setSettings] = useState<VoiceSettings>(() => getVoiceSettings());
-  /** Read after mount: the choice lives in a cookie the server cannot see, so reading it during render would not match. */
-  const [language, setLanguage] = useState<LanguageCode>("en");
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- cookie is only readable after mount
-    setLanguage(getSelectedLanguage());
-  }, []);
+  const language = useSelectedLanguage();
 
   useEffect(() => {
     void VoiceService.init();

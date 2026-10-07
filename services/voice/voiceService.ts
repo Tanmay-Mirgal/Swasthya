@@ -11,7 +11,9 @@
  *   - everything fails silently: no voice is never an error
  *   - the line is voiced in the language the person chose (Hindi is spoken by a Hindi voice, in Hindi). A line with no
  *     reviewed translation, or a device with no voice for the language, falls back to English with an English voice
- *     rather than reading Devanagari with the wrong voice. `prepare` says what will really be spoken, so captions match.
+ *     rather than reading Devanagari with the wrong voice. The language is read when each line is spoken, so a change
+ *     made in the middle of an exercise applies to the very next line. What is shown and captioned is localised by
+ *     lib/i18n (`localizeShown`) with the same catalogue.
  */
 import { getSelectedLanguage, languageInfo, type LanguageCode } from "@/lib/i18n/languages";
 import { localizeSpoken } from "@/lib/i18n/spoken";
@@ -116,12 +118,6 @@ export const VoiceService = {
       return;
     }
     speakNow(text);
-  },
-
-  /** The words that will really be spoken for `text` (translated when it can be), for captions and settings. */
-  prepare(text: string): { text: string; lang: LanguageCode } {
-    const p = prepare(text);
-    return { text: p.text, lang: p.lang };
   },
 
   stop(): void {

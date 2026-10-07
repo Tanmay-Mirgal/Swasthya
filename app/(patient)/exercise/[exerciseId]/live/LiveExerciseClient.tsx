@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useEffect, useRef, use } from "react";
+import { useState, useCallback, useEffect, useMemo, useRef, use } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@clerk/react";
@@ -11,6 +11,7 @@ import FocusFrame from "@/components/exercise/FocusFrame";
 import LivePanel from "@/components/exercise/LivePanel";
 import PoseGuidePanel from "@/components/exercise/PoseGuidePanel";
 import { useVoicePreference } from "@/components/exercise/useVoiceCoach";
+import { localizeMovementUi } from "@/lib/i18n/coachUi";
 import { Button, Dialog, Notice } from "@/components/ui";
 import { getExerciseById } from "@/lib/exercises/registry";
 import { saveSession, syncSessionToDatabase } from "@/lib/session/sessionStore";
@@ -135,7 +136,7 @@ function FreePracticeSession({ template }: { template: MovementTemplate }) {
     };
   }, [finishSession]);
 
-  const { ui } = session;
+  const ui = useMemo(() => localizeMovementUi(session.ui, language), [session.ui, language]);
   const completedReps = ui.counted;
 
   return (

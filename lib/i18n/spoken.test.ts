@@ -80,6 +80,14 @@ test("everything the coach says in a session is covered, so no line falls back t
   assert.deepEqual(missing, []);
 });
 
+test("the cue shown while nothing needs correcting (set-up instruction and each phase's cue) is covered for every exercise", () => {
+  const missing: string[] = [];
+  for (const t of templates) {
+    for (const line of [t.setup.instruction, ...Object.values(t.phaseCues)]) for (const lang of LANGS) if (localizeSpoken(line, lang) === null) missing.push(`${t.id} [${lang}]: ${line}`);
+  }
+  assert.deepEqual(missing, []);
+});
+
 test("camera advice that names a joint or a stretch of body is covered for every exercise", () => {
   const missing: string[] = [];
   for (const t of templates) {

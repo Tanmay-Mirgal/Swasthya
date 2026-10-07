@@ -3,6 +3,7 @@
 import { AlertTriangle, BookOpen, CheckCircle2, Info, Pause, Play, Volume2, VolumeX } from "lucide-react";
 import { Authorship, Button, TickBox } from "@/components/ui";
 import { ConfidenceBadge } from "@/components/movement/ConfidenceBadge";
+import CoachLanguageSwitch from "./CoachLanguageSwitch";
 import { JointStatusStrip } from "@/components/movement/JointStatusStrip";
 import type { MovementUi } from "@/hooks/useMovementSession";
 import { cn } from "@/lib/utils";
@@ -90,7 +91,7 @@ export default function LivePanel(p: LivePanelProps) {
         <div role="status" className="rounded-lg border border-amber-400 bg-amber-50 px-3.5 py-3">
           <div className="flex items-start gap-2.5">
             <AlertTriangle className="mt-0.5 size-5 shrink-0 text-slate-800" aria-hidden="true" />
-            <p className="flex-1 text-lg font-semibold leading-snug text-slate-900">{verdict.say ?? "That one wasn’t counted."}</p>
+            <p translate={verdict.say ? "no" : undefined} className="flex-1 text-lg font-semibold leading-snug text-slate-900">{verdict.say ?? "That one wasn’t counted."}</p>
           </div>
         </div>
       )}
@@ -98,7 +99,7 @@ export default function LivePanel(p: LivePanelProps) {
       <div role="status" aria-live="polite" className={cn("rounded-lg border px-3.5 py-3", p.paused ? "border-slate-300 bg-slate-50" : tone.box)}>
         <div className="flex items-start gap-2.5">
           <Icon className="mt-0.5 size-5 shrink-0 text-slate-800" aria-hidden="true" />
-          <p className="flex-1 text-lg font-semibold leading-snug text-slate-900">{p.paused ? "Paused. Tap Resume when you’re ready." : ui.cue}</p>
+          <p translate={p.paused ? undefined : "no"} className="flex-1 text-lg font-semibold leading-snug text-slate-900">{p.paused ? "Paused. Tap Resume when you’re ready." : ui.cue}</p>
           <button
             type="button"
             onClick={p.onToggleVoice}
@@ -109,8 +110,9 @@ export default function LivePanel(p: LivePanelProps) {
             {p.voiceEnabled ? <Volume2 className="size-5" /> : <VolumeX className="size-5" />}
           </button>
         </div>
-        <div className="mt-1.5 pl-[30px]">
+        <div className="mt-1.5 flex items-center justify-between gap-2 pl-[30px]">
           <Authorship by="automated" />
+          <CoachLanguageSwitch className="shrink-0" />
         </div>
       </div>
 

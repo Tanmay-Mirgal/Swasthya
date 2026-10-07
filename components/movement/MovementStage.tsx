@@ -48,7 +48,7 @@ export default function MovementStage({ videoRef, canvasRef, ui, error, onRetry,
 
       {running && !quiet && ui.advice && (
         <div className="pointer-events-none absolute inset-x-3 bottom-3 z-30 flex justify-center">
-          <p role="status" className="max-w-md rounded-lg bg-[var(--paper)] px-4 py-2.5 text-center text-sm font-semibold text-slate-900 shadow-md">
+          <p role="status" translate="no" className="max-w-md rounded-lg bg-[var(--paper)] px-4 py-2.5 text-center text-sm font-semibold text-slate-900 shadow-md">
             {ui.advice.message}
           </p>
         </div>

@@ -283,4 +283,51 @@ export const TEMPLATE_ENTRIES: Entry[] = [
   ["Finish standing tall, with your hips and knees straight, at the top of each squat", "हर बार ऊपर पहुँचकर पूरे सीधे खड़े होइए, कूल्हे और घुटने सीधे रखिए", "प्रत्येक वेळी वर पोहोचल्यावर पूर्ण ताठ उभे राहा, कंबर आणि गुडघे सरळ ठेवा"],
   ["Straighten your hips and knees fully before you bend again", "फिर से झुकने से पहले कूल्हे और घुटने पूरे सीधे कीजिए", "पुन्हा वाकण्यापूर्वी कंबर आणि गुडघे पूर्ण सरळ करा"],
   ["Stand all the way up", "पूरे खड़े होइए", "पूर्ण उभे राहा"],
+
+  // The on-screen cue shown while nothing needs correcting: each template's `setup.instruction` and `phaseCues`.
+  // Shown rather than spoken, but they pass through the same catalogue so the screen and the voice share one wording.
+  ["Ready", "तैयार", "तयार"],
+  ["Good", "अच्छा", "छान"],
+  // Seated knee extension
+  ["Sit tall with your knee bent about 90 degrees and your side to the camera", "सीधे बैठिए, घुटना लगभग नब्बे डिग्री मुड़ा रखिए और अपनी बगल कैमरे की तरफ़ रखिए", "ताठ बसा, गुडघा सुमारे नव्वद अंशांत वाकवा आणि तुमची बाजू कॅमेऱ्याकडे ठेवा"],
+  ["Slowly straighten your leg", "धीरे-धीरे पैर सीधा कीजिए", "हळूहळू पाय सरळ करा"],
+  ["Keep straightening your leg", "पैर सीधा करते रहिए", "पाय सरळ करत राहा"],
+  ["Hold briefly, then lower", "थोड़ी देर रुकिए, फिर नीचे लाइए", "थोडा वेळ थांबा, मग खाली आणा"],
+  ["Lower your leg slowly", "पैर को धीरे-धीरे नीचे लाइए", "पाय हळूहळू खाली आणा"],
+  // Seated bicep curl
+  ["Sit tall with your arm hanging by your side", "सीधे बैठिए और हाथ को बगल में लटकने दीजिए", "ताठ बसा आणि हात बाजूला लोंबू द्या"],
+  ["Curl your hand toward your shoulder", "हाथ को मोड़कर कंधे की ओर लाइए", "हात वाकवून खांद्याकडे आणा"],
+  ["Keep curling, elbow by your side", "मोड़ते रहिए, कोहनी बगल में रखिए", "वाकवत राहा, कोपर बाजूला ठेवा"],
+  ["Squeeze briefly, then lower", "थोड़ी देर ज़ोर देकर रुकिए, फिर नीचे लाइए", "थोडा वेळ ताण देऊन थांबा, मग खाली आणा"],
+  ["Lower your arm slowly", "हाथ को धीरे-धीरे नीचे लाइए", "हात हळूहळू खाली आणा"],
+  // Neck rotation
+  ["Face the camera with your head centred and your shoulders level", "कैमरे की ओर मुँह कीजिए, सिर बीच में और कंधे बराबर रखिए", "कॅमेऱ्याकडे तोंड करा, डोके मध्यभागी आणि खांदे समान पातळीवर ठेवा"],
+  ["Slowly turn your head to one side", "धीरे-धीरे सिर को एक तरफ़ घुमाइए", "हळूहळू डोके एका बाजूला वळवा"],
+  ["Keep turning as far as is comfortable", "जितना सहज हो उतना घुमाते रहिए", "जितके सोयीचे असेल तितके वळवत राहा"],
+  ["Now return slowly to the centre", "अब धीरे-धीरे बीच में लौटिए", "आता हळूहळू मध्यभागी परत या"],
+  ["Come back to centre, then turn the other way", "बीच में लौटिए, फिर दूसरी तरफ़ घुमाइए", "मध्यभागी परत या, मग दुसऱ्या बाजूला वळवा"],
+  // Sit to stand
+  ["Sit near the front of a sturdy chair, feet flat, with your side to the camera", "मज़बूत कुर्सी के आगे के हिस्से पर बैठिए, पैर ज़मीन पर सपाट रखिए और अपनी बगल कैमरे की तरफ़ रखिए", "भक्कम खुर्चीच्या पुढच्या भागावर बसा, पाय जमिनीवर सपाट ठेवा आणि तुमची बाजू कॅमेऱ्याकडे ठेवा"],
+  ["Lean forward a little and stand up", "थोड़ा आगे झुकिए और खड़े हो जाइए", "थोडे पुढे झुका आणि उभे राहा"],
+  ["Keep rising until you are standing tall", "पूरे सीधे खड़े होने तक उठते रहिए", "ताठ उभे राहेपर्यंत वर उठत राहा"],
+  ["Stand tall, then sit back slowly", "सीधे खड़े रहिए, फिर धीरे-धीरे वापस बैठिए", "ताठ उभे राहा, मग हळूहळू परत बसा"],
+  ["Sit down slowly, with control", "नियंत्रण के साथ धीरे-धीरे बैठिए", "नियंत्रणाने हळूहळू खाली बसा"],
+  // Shoulder abduction
+  ["Stand or sit tall facing the camera, with your arms relaxed at your sides", "कैमरे की ओर मुँह करके सीधे खड़े हों या बैठें, हाथ बगल में ढीले रखिए", "कॅमेऱ्याकडे तोंड करून ताठ उभे राहा किंवा बसा, हात बाजूला सैल ठेवा"],
+  ["Lift your arm out to the side", "हाथ को बगल में उठाइए", "हात बाजूला उचला"],
+  ["Keep lifting, arm nearly straight", "उठाते रहिए, हाथ लगभग सीधा रखिए", "उचलत राहा, हात जवळजवळ सरळ ठेवा"],
+  ["Hold briefly, then lower slowly", "थोड़ी देर रुकिए, फिर धीरे-धीरे नीचे लाइए", "थोडा वेळ थांबा, मग हळूहळू खाली आणा"],
+  ["Lower your arm slowly to your side", "हाथ को धीरे-धीरे बगल में नीचे लाइए", "हात हळूहळू बाजूला खाली आणा"],
+  // Heel raise
+  ["Stand tall with your feet flat, holding a steady support", "सीधे खड़े रहिए, पैर ज़मीन पर सपाट रखिए और किसी मज़बूत सहारे को पकड़िए", "ताठ उभे राहा, पाय जमिनीवर सपाट ठेवा आणि एखादा भक्कम आधार धरा"],
+  ["Rise up onto your toes", "पंजों के बल ऊपर उठिए", "पायाच्या बोटांवर वर उठा"],
+  ["Keep rising, knees straight", "ऊपर उठते रहिए, घुटने सीधे रखिए", "वर उठत राहा, गुडघे सरळ ठेवा"],
+  ["Pause, then lower slowly", "रुकिए, फिर धीरे-धीरे नीचे आइए", "थांबा, मग हळूहळू खाली या"],
+  ["Lower your heels slowly", "एड़ियों को धीरे-धीरे नीचे लाइए", "टाचा हळूहळू खाली आणा"],
+  // Mini squat
+  ["Stand tall facing the camera, feet shoulder-width apart, near a steady support", "कैमरे की ओर मुँह करके सीधे खड़े रहिए, पैर कंधों जितने खुले रखिए और किसी मज़बूत सहारे के पास रहिए", "कॅमेऱ्याकडे तोंड करून ताठ उभे राहा, पाय खांद्यांइतके अंतरावर ठेवा आणि एखाद्या भक्कम आधाराजवळ राहा"],
+  ["Bend your knees a short way", "घुटनों को थोड़ा सा मोड़िए", "गुडघे थोडेसे वाकवा"],
+  ["Keep bending slowly, knees over your feet", "धीरे-धीरे झुकते रहिए, घुटने पैरों के ऊपर रखिए", "हळूहळू वाकत राहा, गुडघे पायांच्या वर ठेवा"],
+  ["Now stand back up slowly", "अब धीरे-धीरे वापस खड़े होइए", "आता हळूहळू परत उभे राहा"],
+  ["Stand tall again, with control", "नियंत्रण के साथ फिर से सीधे खड़े होइए", "नियंत्रणाने पुन्हा ताठ उभे राहा"],
 ];

@@ -3,6 +3,8 @@
 import { useEffect, useMemo, useRef } from "react";
 import FocusFrame from "@/components/exercise/FocusFrame";
 import LivePanel from "@/components/exercise/LivePanel";
+import { localizeMovementUi } from "@/lib/i18n/coachUi";
+import { useSelectedLanguage } from "@/lib/i18n/useSelectedLanguage";
 import { drawOverlay } from "@/components/movement/overlay";
 import { LEAD_MS, MIXED_PLAN, STUCK_PLAN, kneeExtensionSession, repPlanSession, replayUntil } from "@/lib/movement/testing/scenarios";
 import { PoseLandmark as L } from "@/lib/movement/landmarks";
@@ -19,6 +21,7 @@ const PERIOD = 4000;
  */
 export default function ReplayScreen({ scenario }: { scenario: ReplayScenario }) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const language = useSelectedLanguage();
 
   const replay = useMemo(() => {
     // Mid-way through the third repetition, unless the scenario needs something else.
@@ -47,6 +50,8 @@ export default function ReplayScreen({ scenario }: { scenario: ReplayScenario })
     }
   }, [scenario]);
 
+  const ui = useMemo(() => localizeMovementUi(replay.ui, language), [replay.ui, language]);
+
   useEffect(() => {
     const canvas = canvasRef.current;
     const ctx = canvas?.getContext("2d");
@@ -70,14 +75,14 @@ export default function ReplayScreen({ scenario }: { scenario: ReplayScenario })
           <canvas ref={canvasRef} aria-label="Replayed skeleton, no camera" className="absolute inset-0 size-full object-cover" />
           {replay.ui.advice && scenario !== "paused" && (
             <div className="absolute inset-x-3 bottom-3 flex justify-center">
-              <p role="status" className="max-w-md rounded-lg bg-[var(--paper)] px-4 py-2.5 text-center text-sm font-semibold text-slate-900 shadow-md">{replay.ui.advice.message}</p>
+              <p role="status" className="max-w-md rounded-lg bg-[var(--paper)] px-4 py-2.5 text-center text-sm font-semibold text-slate-900 shadow-md">{ui.advice?.message}</p>
             </div>
           )}
         </div>
       }
       panel={
         <LivePanel
-          ui={replay.ui}
+          ui={ui}
           paused={scenario === "paused"}
           voiceEnabled
           onToggleVoice={() => undefined}

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useReducer, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@clerk/react";
@@ -21,6 +21,8 @@ import { getStartForMe, setStartForMe, type StartForMe } from "@/lib/preferences
 import RestPanel from "./RestPanel";
 import CaptionsBar from "./CaptionsBar";
 import SettingsSheet from "./SettingsSheet";
+import { localizeMovementUi } from "@/lib/i18n/coachUi";
+import { localizeShown } from "@/lib/i18n/spoken";
 import Celebration, { useCelebration } from "./Celebration";
 import { SessionDone, SessionIntro } from "./SessionViews";
 import { startHref } from "@/components/patient/PatientHome";
@@ -117,13 +119,13 @@ function PrescribedSessionInner({ exerciseId, planId, exerciseKey, reviewId, tem
   /** True once the chunk just ended has been saved: its reps are then already in the set's total. */
   const [chunkSaved, setChunkSaved] = useState(false);
   const [captionLines, setCaptionLines] = useState<string[]>([]);
-  /** Records a spoken line for the captions (always, in the language it is spoken in), and speaks it when the voice is on. */
+  /** Records a spoken line for the captions (in the chosen language, as on the rest of the screen), and speaks it when the voice is on. */
   const say = useCallback(
     (text: string, interrupt = false) => {
-      setCaptionLines((l) => [...l.slice(-2), VoiceService.prepare(text).text]);
+      setCaptionLines((l) => [...l.slice(-2), localizeShown(text, language)]);
       if (voiceEnabled) VoiceService.speak(text, { interrupt });
     },
-    [voiceEnabled]
+    [voiceEnabled, language]
   );
   /** The party popper, and what the set just finished earned. Both reset when the next set begins. */
   const { burst, fire } = useCelebration(voiceSettings.celebrations);
@@ -183,9 +185,11 @@ function PrescribedSessionInner({ exerciseId, planId, exerciseKey, reviewId, tem
       setStreamReady(Boolean(s));
     },
     onDone: () => doneRef.current(),
-    onSpoken: (text) => setCaptionLines((l) => [...l.slice(-2), VoiceService.prepare(text).text]),
+    onSpoken: (text) => setCaptionLines((l) => [...l.slice(-2), localizeShown(text, language)]),
   });
   const { start: startCamera, stop: stopCamera, reset: resetSession, configure: configureEngine, getSummary, announceSetComplete } = session;
+  /** What the screen shows: the coach's words in the chosen language. Logic keeps reading `session.ui`; only wording differs. */
+  const shownUi = useMemo(() => localizeMovementUi(session.ui, language), [session.ui, language]);
   const uiRef = useRef(session.ui);
   const cameraErrorRef = useRef<string | null>(null);
   useEffect(() => {
@@ -751,7 +755,7 @@ function PrescribedSessionInner({ exerciseId, planId, exerciseKey, reviewId, tem
   }
 
   // Everything from the camera check to the rest between sets. The camera, once started, stays on.
-  const ui = session.ui;
+  const ui = shownUi;
   const manual = mode === "manual";
   const chunkReps = manual ? manualCount : ui.counted;
   // Anything worth saving: good reps, or attempts that did not count.

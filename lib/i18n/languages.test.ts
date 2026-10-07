@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { applyLanguageCookies, clearTranslateCookies, cookieDomains, getSelectedLanguage, syncTranslateCookie, type CookieEnv } from "./languages";
+import { applyLanguageCookies, changeLanguage, clearTranslateCookies, cookieDomains, getSelectedLanguage, subscribeLanguage, syncTranslateCookie, type CookieEnv } from "./languages";
 
 /** A small model of how a browser scopes cookies: host-only vs domain cookies, path, expiry, and read order. */
 class Jar implements CookieEnv {
@@ -126,4 +126,21 @@ test("on localhost (no parent domain) switching still works", () => {
   assert.equal(getSelectedLanguage(jar), "mr");
   clearTranslateCookies(jar);
   assert.deepEqual(jar.all(GOOGLE), []);
+});
+
+test("changing language mid-exercise persists the choice and tells every listener, without needing a page reload", () => {
+  const jar = new Jar("app.example.com");
+  let told = 0;
+  const off = subscribeLanguage(() => told++);
+  changeLanguage("hi", jar);
+  assert.equal(getSelectedLanguage(jar), "hi", "the next visit (and the very next spoken line) uses it");
+  assert.equal(told, 1);
+  changeLanguage("mr", jar);
+  assert.equal(getSelectedLanguage(jar), "mr");
+  assert.deepEqual(jar.all("googtrans"), ["/en/mr"], "the page-wide translator agrees on the next load");
+  off();
+  changeLanguage("en", jar);
+  assert.equal(getSelectedLanguage(jar), "en");
+  assert.deepEqual(jar.all("googtrans"), []);
+  assert.equal(told, 2, "an unsubscribed listener is not called again");
 });
