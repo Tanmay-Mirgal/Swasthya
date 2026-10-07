@@ -1,6 +1,4 @@
 import { NextResponse } from "next/server";
-import connectToDatabase from "@/lib/mongodb";
-import AppointmentRequest from "@/models/AppointmentRequest";
 
 export function parseScheduledAt(
   requestedDate?: string | Date,
@@ -36,63 +34,7 @@ export function parseScheduledAt(
   return base;
 }
 
-export async function POST(req: Request) {
-  try {
-    const authHeader = req.headers.get("Authorization");
-    if (!authHeader || !authHeader.startsWith("Bearer ")) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    const token = authHeader.split(" ")[1];
-    const { verifyToken } = await import("@clerk/backend");
-    const verified = await verifyToken(token, { secretKey: process.env.CLERK_SECRET_KEY });
-    const clerkUserId = verified?.sub;
-
-    if (!clerkUserId) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    const body = await req.json();
-    const { therapistId, requestedDate, requestedTime, patientNote, scheduledAt: clientScheduledAt } = body;
-
-    if (!therapistId) {
-      return NextResponse.json({ error: "Therapist ID is required" }, { status: 400 });
-    }
-
-    await connectToDatabase();
-
-    // Check for existing pending request with this therapist
-    const existing = await AppointmentRequest.findOne({
-      patientId: clerkUserId,
-      therapistId,
-      status: "pending",
-    });
-
-    if (existing) {
-      return NextResponse.json(
-        { error: "An appointment request is already pending review with this therapist." },
-        { status: 400 }
-      );
-    }
-
-    const scheduledAt = clientScheduledAt
-      ? new Date(clientScheduledAt)
-      : parseScheduledAt(requestedDate, requestedTime);
-
-    const newRequest = await AppointmentRequest.create({
-      patientId: clerkUserId,
-      therapistId,
-      status: "pending",
-      requestedDate: requestedDate ? new Date(requestedDate) : new Date(),
-      requestedTime: requestedTime || "10:00 AM",
-      scheduledAt,
-      duration: 30,
-      patientNote: patientNote?.trim() || "",
-    });
-
-    return NextResponse.json({ success: true, data: newRequest });
-  } catch (error) {
-    console.error("Error creating appointment request:", error);
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
-  }
+/** Appointments are booked through /api/payments/razorpay/{order,verify}; this unpaid path is closed. */
+export async function POST() {
+  return NextResponse.json({ error: "Appointments must be paid for when booking." }, { status: 410 });
 }

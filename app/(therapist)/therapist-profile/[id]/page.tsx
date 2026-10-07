@@ -34,6 +34,40 @@ function format24to12(timeStr: string): string {
   return `${hStr}:${m} ${ampm}`;
 }
 
+interface RazorpaySuccess {
+  razorpay_order_id: string;
+  razorpay_payment_id: string;
+  razorpay_signature: string;
+}
+
+interface RazorpayCheckout {
+  open: () => void;
+  on: (event: "payment.failed", cb: (r: { error?: { description?: string } }) => void) => void;
+}
+
+declare global {
+  interface Window {
+    Razorpay?: new (options: Record<string, unknown>) => RazorpayCheckout;
+  }
+}
+
+let razorpayScript: Promise<boolean> | null = null;
+function loadRazorpay(): Promise<boolean> {
+  if (typeof window === "undefined") return Promise.resolve(false);
+  if (window.Razorpay) return Promise.resolve(true);
+  razorpayScript ??= new Promise((resolve) => {
+    const el = document.createElement("script");
+    el.src = "https://checkout.razorpay.com/v1/checkout.js";
+    el.onload = () => resolve(true);
+    el.onerror = () => {
+      razorpayScript = null;
+      resolve(false);
+    };
+    document.body.appendChild(el);
+  });
+  return razorpayScript;
+}
+
 interface TherapistPublicProfile {
   _id?: string;
   clerkUserId?: string;
@@ -104,13 +138,21 @@ export default function TherapistProfilePage({
     setBookingLoading(true);
     setBookingError(null);
 
+    // The browser's native dialog sits above Razorpay's window, so close ours while paying.
+    const reopenWith = (message: string | null) => {
+      setBookingError(message);
+      setBookingLoading(false);
+      setShowBookingModal(true);
+    };
+
     try {
       const token = await getToken();
       if (!token) {
-        setBookingError("Please sign in to request an appointment.");
+        setBookingError("Please sign in to book an appointment.");
         setBookingLoading(false);
         return;
       }
+      const authHeaders = { "Content-Type": "application/json", Authorization: `Bearer ${token}` };
 
       let scheduledAtISO: string | undefined;
       try {
@@ -121,9 +163,9 @@ export default function TherapistProfilePage({
         /* the server falls back to the requested date and time */
       }
 
-      const res = await fetch("/api/patient/appointment-request", {
+      const orderRes = await fetch("/api/payments/razorpay/order", {
         method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        headers: authHeaders,
         body: JSON.stringify({
           therapistId,
           requestedDate: selectedDate,
@@ -132,20 +174,71 @@ export default function TherapistProfilePage({
           patientNote: patientNote.trim() || therapist?.specialization || "Rehabilitation consultation",
         }),
       });
-
-      const json = await res.json();
-      if (json.success) {
-        setBookingSuccess(true);
-        setTimeout(() => {
-          setShowBookingModal(false);
-          router.push("/appointments");
-        }, 1800);
-      } else {
-        setBookingError(json.error || "We couldn’t send your request. Please try again.");
+      const order = await orderRes.json();
+      if (!order.success) {
+        setBookingError(order.error || "We couldn’t start the payment. Please try again.");
+        setBookingLoading(false);
+        return;
       }
+
+      if (!(await loadRazorpay()) || !window.Razorpay) {
+        setBookingError("We couldn’t load the payment window. Check your connection and try again.");
+        setBookingLoading(false);
+        return;
+      }
+
+      // Razorpay keeps its own window open after a failed attempt so the patient can retry there.
+      // Only come back to our dialog once they close it, and tell them what went wrong.
+      let paid = false;
+      let lastFailure: string | null = null;
+
+      const confirm = async (response: RazorpaySuccess) => {
+        paid = true;
+        setBookingLoading(true);
+        setShowBookingModal(true);
+        try {
+          const freshToken = (await getToken()) || token;
+          const res = await fetch("/api/payments/razorpay/verify", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", Authorization: `Bearer ${freshToken}` },
+            body: JSON.stringify(response),
+          });
+          const json = await res.json();
+          if (json.success) {
+            setBookingSuccess(true);
+            setTimeout(() => {
+              setShowBookingModal(false);
+              router.push("/appointments");
+            }, 2200);
+          } else {
+            setBookingError(json.error || "We couldn’t confirm your payment.");
+          }
+        } catch {
+          setBookingError("We couldn’t confirm your payment. If money was taken, contact support before paying again.");
+        } finally {
+          setBookingLoading(false);
+        }
+      };
+
+      const checkout = new window.Razorpay({
+        key: order.data.keyId,
+        order_id: order.data.orderId,
+        amount: order.data.amount,
+        currency: order.data.currency,
+        name: "Swasthya",
+        description: `Consultation with ${therapist?.professionalName ?? "your physiotherapist"}`,
+        prefill: { name: order.data.name, email: order.data.email },
+        theme: { color: "#047857" },
+        handler: (response: RazorpaySuccess) => void confirm(response),
+        modal: { ondismiss: () => { if (!paid) reopenWith(lastFailure || "Payment was cancelled. You have not been charged."); } },
+      });
+      checkout.on("payment.failed", (r) => {
+        lastFailure = r.error?.description || "The payment failed. You have not been charged.";
+      });
+      setShowBookingModal(false);
+      checkout.open();
     } catch {
       setBookingError("We couldn’t reach Swasthya. Check your connection and try again.");
-    } finally {
       setBookingLoading(false);
     }
   };
@@ -231,7 +324,7 @@ export default function TherapistProfilePage({
         >
           <div className="mx-auto flex max-w-2xl items-center gap-2 px-4 py-3 md:px-0 md:py-0">
             <Button size="lg" className="flex-1 md:flex-none" onClick={() => setShowBookingModal(true)}>
-              <Calendar className="size-4" aria-hidden="true" /> Request appointment
+              <Calendar className="size-4" aria-hidden="true" /> Book appointment
             </Button>
             <Button asChild size="lg" variant="outline">
               <Link href={`/chat/${therapist.clerkUserId}`}>
@@ -244,12 +337,12 @@ export default function TherapistProfilePage({
         <Dialog
           open={showBookingModal}
           onClose={() => !bookingLoading && setShowBookingModal(false)}
-          title="Request an appointment"
-          description={`With ${therapist.professionalName}. They will confirm or suggest another time.`}
+          title="Book an appointment"
+          description={`With ${therapist.professionalName}. You pay now; they confirm the time, or you are refunded.`}
         >
           {bookingSuccess ? (
-            <Notice tone="success" title="Request sent">
-              {therapist.professionalName} will review it. You’ll find it under Appointments.
+            <Notice tone="success" title="Payment received, request sent">
+              {therapist.professionalName} will review it. If they can’t take it, your fee is refunded. You’ll find it under Appointments.
             </Notice>
           ) : (
             <form onSubmit={handleBookAppointment} className="space-y-4">
@@ -285,9 +378,15 @@ export default function TherapistProfilePage({
                 <Textarea id="appt-note" rows={3} value={patientNote} onChange={(e) => setPatientNote(e.target.value)} />
               </Field>
 
+              <div className="flex items-center justify-between rounded-lg border border-slate-300 bg-slate-50 px-3 py-2.5 text-sm">
+                <span className="font-medium text-slate-800">Consultation fee (30 min)</span>
+                <span className="font-mono text-base font-bold tabular text-slate-900">₹{therapist.consultationFee || 499}</span>
+              </div>
+              <p className="-mt-2 text-xs text-slate-600">Test mode: no real money is taken. Use an Indian test card such as <span className="font-mono">5267 3181 8797 5449</span> (any future expiry, any CVV, OTP 1234 if asked) or UPI <span className="font-mono">success@razorpay</span>.</p>
+
               <div className="flex justify-end gap-2 pt-1">
                 <Button type="button" variant="outline" onClick={() => setShowBookingModal(false)} disabled={bookingLoading}>Cancel</Button>
-                <Button type="submit" disabled={bookingLoading}>{bookingLoading ? "Sending…" : "Send request"}</Button>
+                <Button type="submit" disabled={bookingLoading}>{bookingLoading ? "Starting payment…" : `Pay ₹${therapist.consultationFee || 499} & book`}</Button>
               </div>
             </form>
           )}

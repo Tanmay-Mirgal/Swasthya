@@ -11,6 +11,10 @@ export interface IAppointmentRequest extends Document {
   patientNote?: string;
   consultationId?: string;
   cancellationReason?: string;
+  /** Razorpay payment taken when the request was made (amount in rupees). */
+  paymentId?: string;
+  paymentStatus?: "paid" | "refunded";
+  amountPaid?: number;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -57,6 +61,9 @@ const AppointmentRequestSchema = new Schema(
     cancellationReason: {
       type: String,
     },
+    paymentId: { type: String, index: true },
+    paymentStatus: { type: String, enum: ["paid", "refunded"] },
+    amountPaid: { type: Number },
   },
   {
     timestamps: true,

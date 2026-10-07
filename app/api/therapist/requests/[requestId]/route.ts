@@ -3,6 +3,7 @@ import connectToDatabase from "@/lib/mongodb";
 import AppointmentRequest from "@/models/AppointmentRequest";
 import TherapistAssignment from "@/models/TherapistAssignment";
 import Consultation from "@/models/Consultation";
+import { refundAppointment } from "@/lib/payments/appointmentRefund";
 import User from "@/models/User";
 import { parseScheduledAt } from "@/app/api/patient/appointment-request/route";
 
@@ -98,6 +99,7 @@ export async function POST(
     } else if (action === "decline") {
       appointmentRequest.status = "declined";
       await appointmentRequest.save();
+      if (appointmentRequest.paymentId) await refundAppointment(appointmentRequest._id.toString());
     }
 
     return NextResponse.json({
