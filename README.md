@@ -35,7 +35,7 @@ Designed for ease of use, accessibility, and clear guidance during independent e
 Designed for physiotherapists to manage patients, prescribe routines, and review adherence remotely.
 
 - **Patient Management:**
-  - Dashboard to view all assigned patients, their adherence rates, and recent activity flags.
+  - Dashboard to view all assigned  patients, their adherence rates, and recent activity flags.
 - **Exercise Customization & Prescription:**
   - Create and assign custom rehabilitation routines.
   - Adjust parameters like target repetition count, expected range of motion (ROM), and hold times for individual patient needs.
