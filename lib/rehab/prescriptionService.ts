@@ -11,6 +11,8 @@ import TherapistProfile from "@/models/TherapistProfile";
 import Consultation from "@/models/Consultation";
 import WeeklyReview from "@/models/WeeklyReview";
 import { getPrescribableExercise } from "./exerciseCatalog";
+import { getMovementTemplate } from "@/lib/movement/template/registry";
+import { isValidRangeOverride, rangeOverrideBounds } from "@/lib/movement/template/tolerance";
 import { addDays, dateKeyInTimezone, isDateKey, type DateKey } from "./dates";
 import { endDateFor, reviewDays, type ScheduleInput } from "./schedule";
 import { HttpError, patientTimezone } from "./auth";
@@ -21,9 +23,27 @@ export interface PrescriptionExerciseInput {
   reps: number;
   holdSeconds?: number;
   targetRom?: number;
+  /**
+   * The least range (in the exercise's display unit) accepted as a good rep for THIS patient. Optional; only ever more
+   * lenient than the exercise's default, and never below its "almost" line. Absent = the exercise's own standard.
+   */
+  minRangeOverride?: number;
   tempoSeconds?: number;
   modifications?: string;
   instructions?: string;
+}
+
+/** A therapist's accepted-range tolerance, validated against what the exercise's template allows. */
+function rangeOverride(exerciseId: string, name: string, raw: unknown): number | undefined {
+  if (raw === undefined || raw === null || raw === "") return undefined;
+  const v = Number(raw);
+  const template = getMovementTemplate(exerciseId);
+  if (!template || !isValidRangeOverride(template, v)) {
+    const b = template ? rangeOverrideBounds(template) : null;
+    const unit = b?.unit === "pct" ? "%" : "°";
+    throw new HttpError(400, b ? `For ${name}, the accepted range must be between ${Math.min(b.strict, b.lenient)}${unit} and ${Math.max(b.strict, b.lenient)}${unit}.` : `${name} has no adjustable range.`);
+  }
+  return Math.round(v * 10) / 10;
 }
 
 export interface MedicineInput {
@@ -94,6 +114,7 @@ function clean(input: PrescriptionInput, today: DateKey) {
       reps,
       holdSeconds: int(raw.holdSeconds, 0, 120),
       targetRom: int(raw.targetRom, 1, 180),
+      minRangeOverride: rangeOverride(catalog.id, catalog.name, raw.minRangeOverride),
       tempoSeconds: int(raw.tempoSeconds, 1, 20),
       modifications: text(raw.modifications, 1000),
       instructions: text(raw.instructions, 1000),

@@ -63,6 +63,9 @@ export function validateTemplate(t: MovementTemplate): string[] {
       if (/\b(wrong|incorrect|bad posture|try again)\b/i.test(x)) bad(`${where}: vague wording "${x}"`);
     }
     if (!msg.observation.trim()) bad(`${where}: missing observation`);
+    // What is shown from across a room: short enough to read at a glance.
+    if (!msg.show || msg.show.length > 24 || msg.show.trim().split(/\s+/).length > 5) bad(`${where}: "show" must be at most 24 characters and 5 words: "${msg.show}"`);
+    if (msg.show && /\b(invalid|error|incorrect|wrong|fail\w*|threshold|angle|landmark|confidence|combo)\b/i.test(msg.show)) bad(`${where}: "show" uses a word patients should not see: "${msg.show}"`);
   };
   const checkBase = (where: string, rule: { id: string; landmarks: LandmarkRef[]; low?: RuleMessage; high?: RuleMessage }) => {
     if (ids.has(rule.id)) bad(`${where}: duplicate rule id ${rule.id}`);
@@ -88,6 +91,30 @@ export function validateTemplate(t: MovementTemplate): string[] {
   if (!t.repRules.range.low) bad("repRules.range needs a low message");
   if (r.minRepMs > 0 && !t.repRules.tooFast) bad("repRules.tooFast is required when minRepMs is set");
   if (r.minPeakHoldMs && !t.repRules.shortHold) bad("repRules.shortHold is required when minPeakHoldMs is set");
+
+  // Every mandatory rule's landmarks must be REQUIRED (not optional), so a rep is never called good while unchecked.
+  const requiredJoints = new Set(t.landmarks.required.map((x) => x.joint));
+  for (const rule of t.rules) {
+    if (!rule.invalidatesRep) continue;
+    for (const ref of rule.landmarks) if (!requiredJoints.has(ref.joint)) bad(`rule ${rule.id}: is mandatory but its landmark ${ref.joint} is not in landmarks.required`);
+    const m = t.metrics[rule.metric];
+    if (m) for (const ref of refsOf(m)) if (!requiredJoints.has(ref.joint)) bad(`rule ${rule.id}: is mandatory but its metric needs ${ref.joint}, which is not in landmarks.required`);
+  }
+  // A prescription can require a hold of any exercise, so every template says what a missed hold is called.
+  if (!t.repRules.shortHold) bad("repRules.shortHold is required: a prescription can require a hold of any exercise");
+
+  // Validity: the physio-reviewable explanation of every threshold.
+  const v = t.validity;
+  if (!v) bad("validity block is required");
+  else {
+    if (!(v.tempoFloorMs > 0) || v.tempoFloorMs >= r.minRepMs) bad("validity.tempoFloorMs must be positive and below rep.minRepMs (the floor is mandatory, minRepMs only coaches)");
+    if (v.holdTolerance !== undefined && !(v.holdTolerance > 0 && v.holdTolerance <= 1)) bad("validity.holdTolerance must be between 0 and 1");
+    if (v.lowToleranceMs !== undefined && !(v.lowToleranceMs >= 0 && v.lowToleranceMs <= 2000)) bad("validity.lowToleranceMs must be 0 to 2000");
+    const required = ["minRange", "almostBand", "setup", "tempoFloor", "hold", "return", "visibility", ...t.rules.map((x) => x.id)];
+    for (const key of required) if (!v.rationale[key] || v.rationale[key].trim().length < 20) bad(`validity.rationale.${key} is missing or too short`);
+    if (v.source !== "engineering-default" && v.source !== "physio-reviewed") bad("validity.source must be engineering-default or physio-reviewed");
+    if (v.source === "physio-reviewed" && (!v.reviewedBy || !v.reviewedAt)) bad("a physio-reviewed template must name who reviewed it and when");
+  }
 
   if (!t.statusJoints.length) bad("statusJoints is empty");
   for (const l of Object.values(t.phaseCues)) if (l.trim().length < 8) bad("phase cue too short");

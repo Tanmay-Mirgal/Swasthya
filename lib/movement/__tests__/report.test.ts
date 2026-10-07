@@ -8,7 +8,8 @@ import type { IExerciseSession } from "@/models/ExerciseSession";
 import type { ChunkSummary } from "../judge/engine";
 
 const summary = (over: Partial<ChunkSummary> = {}): ChunkSummary => ({
-  counted: 8,
+  // Engine v4: `counted` are the good reps; the 2 flagged and 1 short attempt are not counted.
+  counted: 6,
   valid: 6,
   invalid: 2,
   partial: 1,
@@ -19,20 +20,28 @@ const summary = (over: Partial<ChunkSummary> = {}): ChunkSummary => ({
   trackedMs: 40000,
   errors: { TRUNK_LEAN: { count: 3, severity: "major" }, TOO_FAST: { count: 1, severity: "minor" } },
   corrections: { attempted: 4, succeeded: 3 },
-  reps: Array.from({ length: 8 }, (_, i) => ({ n: i + 1, valid: i < 6, reasons: i < 6 ? [] : ["TRUNK_LEAN"], errors: i < 6 ? [] : ["TRUNK_LEAN"], rom: 70 + i, durationMs: 3000 + i * 100, confidence: 0.93 })),
+  uncertain: 0,
+  attempts: [],
+  unevaluable: [],
+  thresholds: { minRange: 150, unit: "deg", holdMs: null, rangeOverridden: false },
+  reps: Array.from({ length: 6 }, (_, i) => ({ n: i + 1, outcome: "valid" as const, valid: true, reasons: [], errors: [], rom: 70 + i, durationMs: 3000 + i * 100, confidence: 0.93 })),
   ...over,
 });
 
 test("chunk payload is built only from engine numbers", () => {
   const p = summaryToPayload({ ...summary(), observations: [{ code: "trunk_lean", label: "x", repsAffected: 3, ofReps: 8 }] });
-  assert.equal(p.reps, 8);
+  assert.equal(p.reps, 6, "the chunk's reps are its good reps");
   assert.equal(p.validReps, 6);
-  assert.equal(p.formScore, 75);
+  assert.equal(p.invalidReps, 2);
+  assert.equal(p.formScore, 67, "6 good of 9 attempts (6 good + 2 flagged + 1 short)");
   assert.deepEqual(p.issues, { TRUNK_LEAN: 3, TOO_FAST: 1 });
-  assert.equal(p.engine, 2);
-  assert.equal(p.repRecords!.length, 8);
+  assert.equal(p.engine, 4);
+  assert.equal(p.repRecords!.length, 6);
   assert.deepEqual(p.observations, [{ code: "TRUNK_LEAN", repsAffected: 3, ofReps: 8 }]);
-  assert.equal(summaryToPayload(summary({ counted: 0, valid: 0, invalid: 0, reps: [], rom: 0 })).formScore, undefined, "no score is invented when nothing was counted");
+  assert.equal(summaryToPayload(summary({ counted: 0, valid: 0, invalid: 0, partial: 0, reps: [], rom: 0 })).formScore, undefined, "no score is invented when nothing was attempted");
+  const onlyShort = summaryToPayload(summary({ counted: 0, valid: 0, invalid: 0, partial: 3, reps: [], rom: 0 }));
+  assert.equal(onlyShort.reps, 0, "attempts that fell short credit nothing");
+  assert.equal(onlyShort.formScore, 0, "and they are honestly reflected: 0 good of 3 attempts");
 });
 
 // ── Sanitising what the browser sends ─────────────────────────────────────────

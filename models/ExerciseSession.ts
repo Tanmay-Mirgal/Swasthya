@@ -1,5 +1,5 @@
 import mongoose, { Schema, Document } from "mongoose";
-import type { StoredObservation, StoredRep, ErrorSeverity } from "@/lib/rehab/chunkQuality";
+import type { StoredObservation, StoredRep, StoredAttempt, ErrorSeverity, ThresholdsUsed } from "@/lib/rehab/chunkQuality";
 
 export interface IExerciseSessionSet {
   index: number;
@@ -13,10 +13,15 @@ export interface IExerciseSessionSet {
     formScore?: number;
     issues?: Record<string, number>;
     /** Movement-engine quality measurements (see lib/rehab/chunkQuality). Absent on older records. */
+    source?: "camera" | "manual";
     engine?: number;
     validReps?: number;
     invalidReps?: number;
     partialReps?: number;
+    uncertainReps?: number;
+    unevaluable?: string[];
+    attempts?: StoredAttempt[];
+    thresholdsUsed?: ThresholdsUsed;
     avgConfidence?: number;
     lowConfidenceMs?: number;
     corrections?: { attempted: number; succeeded: number };
@@ -51,10 +56,19 @@ export interface IExerciseSession extends Document {
   validReps?: number;
   invalidReps?: number;
   partialReps?: number;
+  /** Cycles the camera could not judge (engine v3+). Never counted, never a mistake. */
+  uncertainReps?: number;
+  /** The gates actually applied (minimum range, hold), so what counted as a good rep can be audited. */
+  thresholdsUsed?: ThresholdsUsed;
   correctionAttempts?: number;
   correctionsSucceeded?: number;
   avgConfidence?: number;
   lowConfidenceMs?: number;
+  /**
+   * Times the patient chose "Finish for today" after attempts kept not counting. Objective counts only; the prescription
+   * never changes. Newest last, at most 20.
+   */
+  finishedEarly?: { setIndex: number; at: Date; reason: "not_counted"; good: number; notCounted: number; topCode?: string }[];
   /** Persistent problems worth a therapist's attention: what was measured and how often. No causes. */
   observations?: StoredObservation[];
   /** Patient-reported discomfort after the exercise (their words, not an app judgement). */
@@ -95,11 +109,14 @@ const ExerciseSessionSchema = new Schema(
     validReps: { type: Number },
     invalidReps: { type: Number },
     partialReps: { type: Number },
+    uncertainReps: { type: Number },
+    thresholdsUsed: { type: Schema.Types.Mixed },
     correctionAttempts: { type: Number },
     correctionsSucceeded: { type: Number },
     avgConfidence: { type: Number },
     lowConfidenceMs: { type: Number },
     observations: { type: Schema.Types.Mixed },
+    finishedEarly: { type: Schema.Types.Mixed },
     discomfort: { type: String, enum: ["none", "mild", "moderate", "severe"] },
     sets: [
       {
@@ -116,10 +133,15 @@ const ExerciseSessionSchema = new Schema(
             rom: { type: Number },
             formScore: { type: Number },
             issues: { type: Schema.Types.Mixed },
+            source: { type: String, enum: ["camera", "manual"] },
             engine: { type: Number },
             validReps: { type: Number },
             invalidReps: { type: Number },
             partialReps: { type: Number },
+            uncertainReps: { type: Number },
+            unevaluable: { type: [String], default: undefined },
+            attempts: { type: Schema.Types.Mixed },
+            thresholdsUsed: { type: Schema.Types.Mixed },
             avgConfidence: { type: Number },
             lowConfidenceMs: { type: Number },
             corrections: { type: Schema.Types.Mixed },

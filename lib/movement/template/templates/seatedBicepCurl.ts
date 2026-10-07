@@ -32,8 +32,9 @@ export const seatedBicepCurl: MovementTemplate = {
   },
   sideMode: "auto",
   landmarks: {
-    required: [{ joint: "shoulder" }, { joint: "elbow" }, { joint: "wrist" }],
-    optional: [{ joint: "hip" }],
+    // The hip is required because "trunk lean" is a mandatory rule: a curl cannot be called good while it cannot be checked.
+    required: [{ joint: "shoulder" }, { joint: "elbow" }, { joint: "wrist" }, { joint: "hip" }],
+    optional: [],
   },
   metrics: {
     elbow: { kind: "angle", a: { joint: "shoulder" }, b: { joint: "elbow" }, c: { joint: "wrist" } },
@@ -76,6 +77,7 @@ export const seatedBicepCurl: MovementTemplate = {
       landmarks: [{ joint: "elbow" }, { joint: "wrist" }],
       bones: [[{ joint: "elbow" }, { joint: "wrist" }]],
       low: {
+        show: "Curl a little higher",
         observation: "the hand stopped before it reached the top of the curl",
         texts: [
           "Curl your hand a little higher toward your shoulder.",
@@ -92,6 +94,7 @@ export const seatedBicepCurl: MovementTemplate = {
       invalidatesRep: false,
       landmarks: [{ joint: "elbow" }],
       low: {
+        show: "Slow down",
         observation: "the repetition was quicker than the controlled pace",
         texts: [
           "Slow down. Take about two seconds to curl your hand up.",
@@ -101,6 +104,23 @@ export const seatedBicepCurl: MovementTemplate = {
       },
       ack: "Nice, that was a controlled pace.",
     },
+    shortHold: {
+      id: "short_hold",
+      label: "Did not hold at the top",
+      severity: "minor",
+      invalidatesRep: true,
+      landmarks: [{ joint: "elbow" }, { joint: "wrist" }],
+      low: {
+        show: "Hold a little longer",
+        observation: "there was no pause at the top of the movement",
+        texts: [
+          "Hold your hand at the top of the curl for a moment.",
+          "Pause with your elbow bent and count to two before lowering.",
+          "Hold your arm steady at the top for the time your therapist set.",
+        ],
+      },
+      ack: "Good, that was a steady hold.",
+    },
     incompleteReturn: {
       id: "incomplete_return",
       label: "Did not lower fully",
@@ -108,6 +128,7 @@ export const seatedBicepCurl: MovementTemplate = {
       invalidatesRep: false,
       landmarks: [{ joint: "elbow" }, { joint: "wrist" }],
       high: {
+        show: "Lower your arm fully",
         observation: "the arm was not lowered back to the starting position",
         texts: [
           "Lower your arm all the way down before the next curl.",
@@ -133,6 +154,7 @@ export const seatedBicepCurl: MovementTemplate = {
       landmarks: [{ joint: "elbow" }, { joint: "shoulder" }],
       bones: [[{ joint: "shoulder" }, { joint: "elbow" }]],
       high: {
+        show: "Keep elbow by your side",
         observation: "the elbow is swinging away from the side of the body",
         texts: [
           "Your elbow is drifting. Keep it close to your side as you curl.",
@@ -157,6 +179,7 @@ export const seatedBicepCurl: MovementTemplate = {
       landmarks: [{ joint: "shoulder" }, { joint: "hip" }],
       bones: [[{ joint: "shoulder" }, { joint: "hip" }]],
       high: {
+        show: "Sit tall",
         observation: "the upper body is leaning instead of staying upright",
         texts: [
           "You are leaning. Sit tall and keep your shoulders over your hips.",
@@ -167,6 +190,23 @@ export const seatedBicepCurl: MovementTemplate = {
       ack: "Good correction, you are sitting tall.",
     },
   ],
+  validity: {
+    tempoFloorMs: 800,
+    holdTolerance: 0.8,
+    lowToleranceMs: 1000,
+    rationale: {
+      minRange: "A good rep is one where the elbow bends to 72 degrees or less (a full curl). Engineering default, not tuned on real footage.",
+      almostBand: "The old halfway-credit line is now only the 'almost there' band, so the wording can say a little farther. That line is at 95 degrees: past it the curl is nearly there.",
+      setup: "The starting position is held for about a second so the person's own resting position is captured before any rep is judged.",
+      tempoFloor: "A whole cycle faster than 0.8 seconds is flicked through, not performed. This is half of the coaching pace and the only new mandatory tempo rule.",
+      hold: "A hold is mandatory only when one is required: the template's own, or the hold the therapist prescribed, with 20% tolerance so a slight early release is not punished.",
+      return: "A rep ends only when the movement returns to the starting zone, so a return is always required; a very slow return is coached, not rejected.",
+      visibility: "If the camera cannot see the movement for more than a second of a cycle (a third of a second when the rep fell short, so a missed peak is never blamed on the person), or cannot check a mandatory rule, the cycle is 'not seen', never wrong.",
+      elbow_drift: "A swinging elbow lets the shoulder do the work of the elbow; 28 degrees of upper-arm swing is clearly visible on camera.",
+      trunk_lean: "Leaning back to heave the weight up changes the exercise; 18 degrees from upright is clearly visible.",
+    },
+    source: "engineering-default",
+  },
   statusJoints: [
     { label: "Shoulder", ref: { joint: "shoulder" } },
     { label: "Elbow", ref: { joint: "elbow" } },

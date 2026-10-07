@@ -6,6 +6,7 @@ import { Button, EmptyState, PageHeader, SectionHeading, Select, Tabs, TickRow }
 import RomChart from "@/components/progress/RomChart";
 import QualityTrend from "@/components/progress/QualityTrend";
 import { buildTrends } from "@/lib/movement/analytics/trends";
+import { progressFacts, type HistorySession } from "@/lib/rehab/progressFacts";
 import AdherenceGrid from "@/components/progress/AdherenceGrid";
 import { dayKey, startOfDay } from "@/components/progress/dates";
 
@@ -90,6 +91,14 @@ export default function ProgressView({ sessions, loading }: { sessions: Progress
   );
   const unit: "°" | "%" = trend?.unit === "pct" ? "%" : "°";
 
+  // "Best range so far" over every session of this exercise (not just this period), only with enough judged history.
+  const bestRange = useMemo(() => {
+    const history: HistorySession[] = sessions
+      .filter((s) => s.exerciseId === activeExercise)
+      .map((s) => ({ dateKey: String(s.date).slice(0, 10), exerciseId: s.exerciseId, judged: Boolean(s.judged), validReps: s.validReps, invalidReps: s.invalidReps, rom: s.rom, romUnit: s.unit ?? "deg" }));
+    return progressFacts(null, history).personalBest;
+  }, [sessions, activeExercise]);
+
   const grouped = useMemo(() => {
     const g = new Map<string, ProgressSession[]>();
     inRange.forEach((s) => {
@@ -172,6 +181,7 @@ export default function ProgressView({ sessions, loading }: { sessions: Progress
                 <>
                   <p className="mb-1 text-sm font-semibold text-slate-900">{exercises.find(([id]) => id === activeExercise)?.[1]}</p>
                   <RomChart points={romPoints} unit={unit} />
+                  {bestRange && <p className="mt-2 text-base text-slate-900">Your best range so far: <span className="font-mono font-semibold tabular">{Math.round(bestRange.rom)}{bestRange.unit === "pct" ? "%" : "°"}</span></p>}
                 </>
               )}
             </div>

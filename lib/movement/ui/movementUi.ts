@@ -6,10 +6,19 @@
  * way and tests can check what a person would read.
  */
 import type { FrameResult } from "../judge/engine";
-import { defaultCue, type CoachState, type CueTone } from "../coach/coachState";
+import { defaultCue, type AttemptMark, type CoachState, type CueTone, type Verdict } from "../coach/coachState";
 import { resolveRef } from "../landmarks";
 import type { MovementTemplate } from "../template/schema";
 import { JOINT_NEUTRAL, type CameraAdvice, type ConfidenceLevel, type Phase } from "../types";
+import { deriveStageVerdict, type StageVerdict } from "../verdict/stageVerdict";
+
+/** Where the body is in the video, as fractions (0..1) of the video frame. Used to keep overlays off the person. */
+export interface BodyBox {
+  x0: number;
+  x1: number;
+  y0: number;
+  y1: number;
+}
 
 export interface JointStatus {
   label: string;
@@ -25,10 +34,26 @@ export interface MovementUi {
   phase: Phase;
   phaseLabel: string;
   setupProgress: number;
+  /** GOOD reps: the number that counts toward the prescription (equal to `valid`). */
   counted: number;
   valid: number;
+  /** Attempts that reached the full range but broke a rule. NOT counted. */
   invalid: number;
+  /** Attempts that did not reach the full range. NOT counted. */
   partial: number;
+  /** invalid + partial: everything the person tried that did not count. */
+  notCounted: number;
+  /** The result of the last attempt (a good rep, or one that was not counted); clears itself after a few seconds. */
+  verdict: Verdict | null;
+  /** What became of each attempt in this chunk, in order. */
+  attempts: AttemptMark[];
+  /** The person's bounding box in the video frame, or null when nobody is seen. */
+  bodyBox: BodyBox | null;
+  /** What the patient is told right now: one mark, one word, one short instruction (see verdict/stageVerdict). */
+  stage: StageVerdict;
+  /** After several attempts in a row that did not count: point to the guide, and offer to finish for today. */
+  suggestDemo: boolean;
+  offerFinish: boolean;
   targetReps: number;
   done: boolean;
   cue: string;
@@ -60,6 +85,13 @@ export function initialUi(template: MovementTemplate, targetReps: number): Movem
     valid: 0,
     invalid: 0,
     partial: 0,
+    notCounted: 0,
+    verdict: null,
+    attempts: [],
+    bodyBox: null,
+    stage: deriveStageVerdict({ tracking: false, confidence: "LOW", advice: null, phase: "setup", paused: false, verdict: null }),
+    suggestDemo: false,
+    offerFinish: false,
     targetReps,
     done: false,
     cue: template.setup.instruction,
@@ -98,6 +130,13 @@ export function buildMovementUi(r: FrameResult, coach: CoachState, template: Mov
     valid: r.valid,
     invalid: r.invalid,
     partial: r.partial,
+    notCounted: r.invalid + r.partial,
+    verdict: coach.verdict,
+    attempts: coach.attemptMarks,
+    bodyBox: bodyBoxOf(r),
+    stage: deriveStageVerdict({ tracking: r.tracking, confidence: r.confidence, advice: r.advice, phase: r.phase, paused: coach.paused, verdict: coach.verdict }),
+    suggestDemo: coach.suggestDemo,
+    offerFinish: coach.offerFinish,
     targetReps: r.targetReps,
     done: r.done,
     cue: cue?.text ?? defaultCue(template, coach),
@@ -114,6 +153,23 @@ export function buildMovementUi(r: FrameResult, coach: CoachState, template: Mov
   };
 }
 
+/** The box around the joints the camera can see, in video fractions; null when nobody is in view. */
+export function bodyBoxOf(r: Pick<FrameResult, "tracking" | "raw" | "vis">): BodyBox | null {
+  if (!r.tracking) return null;
+  let x0 = 1, x1 = 0, y0 = 1, y1 = 0, n = 0;
+  for (let i = 0; i < 33; i++) {
+    if (r.vis[i] < 0.4) continue;
+    const x = r.raw[i * 3], y = r.raw[i * 3 + 1];
+    if (!Number.isFinite(x) || !Number.isFinite(y)) continue;
+    if (x < x0) x0 = x;
+    if (x > x1) x1 = x;
+    if (y < y0) y0 = y;
+    if (y > y1) y1 = y;
+    n++;
+  }
+  return n >= 4 ? { x0: Math.max(0, x0), x1: Math.min(1, x1), y0: Math.max(0, y0), y1: Math.min(1, y1) } : null;
+}
+
 /** A cheap fingerprint of everything on screen, so React state is only set when something changed. */
 export function uiSignature(ui: MovementUi): string {
   return [
@@ -127,6 +183,12 @@ export function uiSignature(ui: MovementUi): string {
     ui.valid,
     ui.invalid,
     ui.partial,
+    ui.verdict?.seq ?? 0,
+    ui.stage.kind,
+    ui.attempts.join(","),
+    ui.bodyBox ? [ui.bodyBox.x0, ui.bodyBox.x1, ui.bodyBox.y0, ui.bodyBox.y1].map((v) => Math.round(v * 20)).join(":") : "",
+    ui.suggestDemo ? 1 : 0,
+    ui.offerFinish ? 1 : 0,
     ui.targetReps,
     ui.cue,
     ui.cueTone,

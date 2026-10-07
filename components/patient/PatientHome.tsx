@@ -5,7 +5,9 @@ import { Button, DayTicks, EmptyState, Notice, SectionHeading, SetsGrid, StatusM
 import type { PlanSnapshot } from "@/lib/rehab/sessionService";
 import { getPrescribableExercise } from "@/lib/rehab/exerciseCatalog";
 import { exerciseGuideImage } from "@/lib/exercises/presentation";
-import { formatDateKey } from "@/lib/rehab/dates";
+import { addDays, formatDateKey } from "@/lib/rehab/dates";
+import { nextSessionLine, weekConsistency } from "@/lib/rehab/milestones";
+import ProgressRing from "@/components/exercise/ProgressRing";
 import { cn } from "@/lib/utils";
 
 export interface PatientHomeProps {
@@ -23,7 +25,7 @@ export interface PatientHomeProps {
 export function startHref(exerciseId: string, planId: string, exerciseKey: string, reviewId?: string) {
   const q = new URLSearchParams({ plan: planId, ex: exerciseKey });
   if (reviewId) q.set("review", reviewId);
-  return `/exercise/${exerciseId}/setup?${q.toString()}`;
+  return `/exercise/${exerciseId}/live?${q.toString()}`;
 }
 
 export default function PatientHome({ plan, liveConsultation, therapist, pendingReferral, lastSession, ...props }: PatientHomeProps) {
@@ -39,11 +41,17 @@ export default function PatientHome({ plan, liveConsultation, therapist, pending
   if (plan.state === "none") summary = "Your physiotherapist hasn’t prescribed a plan yet.";
   else if (plan.state === "paused") summary = "Your plan is paused.";
   else if (exercises.length === 0) summary = "Today is a rest day.";
-  else if (remaining === 0) summary = "Everything on today’s sheet is done.";
+  else if (remaining === 0) summary = "Today’s routine is complete. Well done.";
   else summary = `${remaining} of ${exercises.length} ${exercises.length === 1 ? "exercise" : "exercises"} left today.`;
   if (daily && plan.state === "active") summary = `Day ${daily.dayNumber} of ${daily.totalDays}. ${summary}`;
 
+  const loop = plan.state === "active" ? plan.therapistLoop : undefined;
+  const shortDate = (d: Date | string) => new Date(d).toLocaleDateString(undefined, { day: "numeric", month: "short" });
+  const reviewLine = loop?.lastReview ? (loop.lastReview.kind === "week" ? `Your therapist reviewed your ${loop.lastReview.label} report on ${shortDate(loop.lastReview.reviewedAt)}.` : `Your therapist reviewed your ${loop.lastReview.label} session on ${shortDate(loop.lastReview.reviewedAt)}.`) : null;
   const next = nextIndex >= 0 ? exercises[nextIndex] : null;
+  const showRing = plan.state === "active" && exercises.length > 0;
+  const weekLine = plan.state === "active" ? weekConsistency(plan.week) : null;
+  const nextLine = plan.state === "active" && remaining === 0 ? nextSessionLine(plan.upcoming, (day) => (day === addDays(plan.today, 1) ? "tomorrow" : `on ${formatDateKey(day, { weekday: "long", day: "numeric", month: "short" })}`)) : null;
   const nextCta = (e: NonNullable<typeof next>) => {
     const set = e.currentSetIndex !== null ? e.sets[e.currentSetIndex] : null;
     const started = e.completedReps > 0;
@@ -72,14 +80,41 @@ export default function PatientHome({ plan, liveConsultation, therapist, pending
           </Notice>
         )}
 
-        <header>
-          <p className="text-sm font-medium text-slate-600">{props.dateLabel}</p>
-          <h1 className="mt-0.5 text-3xl font-bold tracking-tight text-slate-900 sm:text-4xl">
-            {props.greeting}
-            {props.firstName ? `, ${props.firstName}` : ""}
-          </h1>
-          <p className="mt-1.5 text-base text-slate-700">{summary}</p>
+        <header className="flex items-center gap-5">
+          {showRing && (
+            <ProgressRing value={(exercises.length - remaining) / exercises.length} size={92} stroke={9} className="shrink-0">
+              <span className="font-mono text-2xl font-bold leading-none tabular text-slate-900">{exercises.length - remaining}<span className="text-base font-semibold text-slate-600">/{exercises.length}</span></span>
+              <span className="sr-only"> exercises done today</span>
+            </ProgressRing>
+          )}
+          <div className="min-w-0">
+            <p className="text-sm font-medium text-slate-700">{props.dateLabel}</p>
+            <h1 className="mt-0.5 text-3xl font-bold tracking-tight text-slate-900 sm:text-4xl">
+              {props.greeting}
+              {props.firstName ? `, ${props.firstName}` : ""}
+            </h1>
+            <p className="mt-1.5 text-lg text-slate-800">{summary}</p>
+            {(nextLine || weekLine) && <p className="mt-1 text-base text-slate-700">{[weekLine, nextLine].filter(Boolean).join(" ")}</p>}
+          </div>
         </header>
+
+        {(loop?.routineUpdate || loop?.lastReview) && (
+          <section aria-label="From your therapist" className="border-l-4 border-emerald-700 pl-4">
+            <h2 className="text-lg font-bold text-slate-900">From {rx?.doctorName || "your therapist"}</h2>
+            {loop?.routineUpdate && (
+              <div className="mt-1">
+                <p className="text-base text-slate-900">Your plan was updated on {shortDate(loop.routineUpdate.at)}.</p>
+                {loop.routineUpdate.note && <p className="hand mt-1 max-w-prose">“{loop.routineUpdate.note}”</p>}
+              </div>
+            )}
+            {reviewLine && (
+              <div className="mt-2">
+                <p className="text-base text-slate-900">{reviewLine}</p>
+                {loop?.lastReview?.note && <p className="hand mt-1 max-w-prose">“{loop.lastReview.note}”</p>}
+              </div>
+            )}
+          </section>
+        )}
 
         {plan.state === "paused" && (
           <Notice tone="warning" title={`${rx?.doctorName || "Your therapist"} has paused your plan`}>
@@ -115,15 +150,21 @@ export default function PatientHome({ plan, liveConsultation, therapist, pending
           {plan.state === "none" ? (
             <EmptyState
               className="mt-3"
-              title="No plan yet"
+              title={therapist ? "Your routine isn’t ready yet" : "No plan yet"}
               action={
                 <div className="flex flex-wrap gap-2">
-                  <Button asChild size="sm"><Link href="/discover">Find a physiotherapist</Link></Button>
+                  {therapist ? (
+                    <Button asChild size="sm"><Link href={therapist.chatHref}>Message {therapist.name}</Link></Button>
+                  ) : (
+                    <Button asChild size="sm"><Link href="/discover">Find a physiotherapist</Link></Button>
+                  )}
                   <Button asChild size="sm" variant="outline"><Link href="/exercise">Try an exercise</Link></Button>
                 </div>
               }
             >
-              When a physiotherapist prescribes your exercises they appear here as a numbered sheet with the sets and reps they chose. You can try an exercise from the library in the meantime.
+              {therapist
+                ? `${therapist.name} hasn’t set up your exercises yet. They will appear here, with the sets and reps they choose, as soon as they do. You can message them, or try an exercise from the library; if you’re unsure, check with them first.`
+                : "When a physiotherapist prescribes your exercises they appear here as a numbered sheet with the sets and reps they chose. You can try an exercise from the library in the meantime."}
             </EmptyState>
           ) : plan.state === "paused" ? null : exercises.length === 0 ? (
             <EmptyState className="mt-3" title="Nothing due today">
@@ -250,7 +291,7 @@ export default function PatientHome({ plan, liveConsultation, therapist, pending
         {plan.state !== "none" && plan.week && (
           <section aria-label="This week">
             <SectionHeading title="This week" description="Ticked from the sets you completed." />
-            <DayTicks days={plan.week.map((d) => ({ label: d.label, state: d.state, isToday: d.isToday }))} className="mt-4" />
+            <DayTicks days={plan.week.map((d) => ({ label: d.label, state: d.state === "missed" ? "todo" : d.state, isToday: d.isToday }))} className="mt-4" />
           </section>
         )}
 

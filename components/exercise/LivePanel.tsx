@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertTriangle, CheckCircle2, Info, Pause, Play, Volume2, VolumeX } from "lucide-react";
+import { AlertTriangle, BookOpen, CheckCircle2, Info, Pause, Play, Volume2, VolumeX } from "lucide-react";
 import { Authorship, Button, TickBox } from "@/components/ui";
 import { ConfidenceBadge } from "@/components/movement/ConfidenceBadge";
 import { JointStatusStrip } from "@/components/movement/JointStatusStrip";
@@ -15,6 +15,8 @@ export interface LivePanelProps {
   onTogglePause: () => void;
   onFinish: () => void;
   onOpenGuide: () => void;
+  /** Offered after several attempts in a row that did not count: save what was done and stop for today. */
+  onFinishEarly?: () => void;
   /** Prescribed sessions: which set this is, for example "Set 2 of 3". Shown above the rep count. */
   contextLabel?: string;
   /** Prescribed sessions: reps already saved for this set before this chunk. */
@@ -51,7 +53,8 @@ export default function LivePanel(p: LivePanelProps) {
   const tone = TONE[ui.cueTone] ?? TONE.default;
   const Icon = tone.icon;
   const status = p.paused ? "Paused" : ui.phase === "setup" ? (ui.tracking ? "Getting into position" : "Waiting for the camera") : ui.phaseLabel;
-  const flagged = ui.invalid;
+  const notCounted = ui.notCounted;
+  const verdict = !p.paused && ui.verdict && ui.verdict.kind !== "good" && ui.verdict.kind !== "corrected" ? ui.verdict : null;
 
   return (
     <div className="flex flex-col gap-4 p-4 sm:p-5">
@@ -67,21 +70,30 @@ export default function LivePanel(p: LivePanelProps) {
           <span className="text-5xl font-bold leading-none sm:text-7xl">{shown}</span>
           <span className="text-2xl font-semibold text-slate-500"> / {total}</span>
         </p>
-        <div className="mt-2.5 flex flex-wrap gap-1" role="img" aria-label={`${ui.valid} good, ${flagged} counted but flagged, of ${total} reps`}>
+        <div className="mt-2.5 flex flex-wrap gap-1" role="img" aria-label={`${ui.valid} good reps of ${total}${notCounted > 0 ? `, ${notCounted} attempts not counted` : ""}`}>
           {Array.from({ length: Math.min(total, 40) }, (_, i) => {
             const idx = i - before;
             const state = i < before ? "done" : idx >= 0 && idx < ui.repFlags.length ? (ui.repFlags[idx] ? "done" : "partial") : "todo";
             return <TickBox key={i} state={state} size={total > 12 ? 16 : 20} />;
           })}
         </div>
-        {(ui.counted > 0 || ui.partial > 0) && (
+        {(ui.counted > 0 || notCounted > 0) && (
           <p className="mt-2 text-xs text-slate-700">
-            <span className="tabular font-semibold">{ui.valid}</span> good form
-            {flagged > 0 && <>, <span className="tabular font-semibold">{flagged}</span> counted with a note</>}
+            <span className="tabular font-semibold">{ui.valid}</span> good {ui.valid === 1 ? "rep" : "reps"}
+            {ui.invalid > 0 && <>, <span className="tabular font-semibold">{ui.invalid}</span> not counted (a movement check)</>}
             {ui.partial > 0 && <>, <span className="tabular font-semibold">{ui.partial}</span> not counted (too short)</>}
           </p>
         )}
       </div>
+
+      {verdict && (
+        <div role="status" className="rounded-lg border border-amber-400 bg-amber-50 px-3.5 py-3">
+          <div className="flex items-start gap-2.5">
+            <AlertTriangle className="mt-0.5 size-5 shrink-0 text-slate-800" aria-hidden="true" />
+            <p className="flex-1 text-lg font-semibold leading-snug text-slate-900">{verdict.say ?? "That one wasn’t counted."}</p>
+          </div>
+        </div>
+      )}
 
       <div role="status" aria-live="polite" className={cn("rounded-lg border px-3.5 py-3", p.paused ? "border-slate-300 bg-slate-50" : tone.box)}>
         <div className="flex items-start gap-2.5">
@@ -111,6 +123,18 @@ export default function LivePanel(p: LivePanelProps) {
           {p.paused ? "Resume" : (p.pauseLabel ?? "Pause")}
         </Button>
       </div>
+
+      {ui.suggestDemo && !p.paused && (
+        <Button size="lg" variant="outline" onClick={p.onOpenGuide}>
+          <BookOpen className="size-4" aria-hidden="true" /> Show me how it goes
+        </Button>
+      )}
+      {ui.offerFinish && !p.paused && p.onFinishEarly && (
+        <div className="rounded-lg border border-slate-300 bg-slate-50 px-3.5 py-3">
+          <p className="text-sm text-slate-900">It’s fine to stop here. Your good reps are saved and your prescription doesn’t change.</p>
+          <Button size="lg" variant="secondary" className="mt-2 w-full" onClick={p.onFinishEarly}>Finish for today</Button>
+        </div>
+      )}
 
       <div className="flex flex-col gap-2.5">
         <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1">

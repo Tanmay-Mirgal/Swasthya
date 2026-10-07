@@ -59,15 +59,16 @@ test("reps stop counting at the target and the engine reports done", () => {
   assert.equal(eventsOf(r.events, "rep_completed").length, 3);
 });
 
-test("a shallow rep is counted but invalid, with a range error raised once", () => {
+test("a shallow rep is NOT counted: a partial attempt with a range error raised once", () => {
   const eng = new MovementEngine(knee(), { targetReps: 10 });
+  // Peak 0.62 is about 139 degrees: past the old halfway-credit line (130) but short of the full range (150).
   const r = run(eng, kneeSession({ peak: 0.62 }), LEAD + 2 * 4000 + 500);
-  const reps = eventsOf(r.events, "rep_completed");
-  assert.equal(reps.length, 2);
-  for (const e of reps) {
-    assert.equal(e.valid, false);
-    assert.deepEqual(e.reasons, ["insufficient_extension"]);
-  }
+  assert.equal(eventsOf(r.events, "rep_completed").length, 0, "nothing is credited");
+  const partials = eventsOf(r.events, "partial_rep");
+  assert.equal(partials.length, 2);
+  assert.ok(partials.every((e) => e.almost === true), "close enough to say 'almost'");
+  const s0 = eng.getSummary();
+  assert.deepEqual([s0.counted, s0.valid, s0.partial], [0, 0, 2]);
   const errs = eventsOf(r.events, "movement_error").filter((e) => e.error === "insufficient_extension");
   assert.equal(errs.length, 2, "one raise per shallow rep, not one per frame");
   assert.ok(errs.every((e) => e.oneShot && e.direction === "low"));
@@ -103,7 +104,8 @@ test("sustained trunk lean turns shoulder and hip red, then green again after co
   const eng = new MovementEngine(knee(), { targetReps: 10 });
   // Lean 28 degrees from 1.9s to 3.4s of the first rep; upright otherwise.
   const lean = (t: number) => (t > LEAD + 600 && t < LEAD + 2400 ? 28 : 0);
-  const r = run(eng, kneeSession({ lean }), LEAD + 4000 + 500, { trace: true });
+  // Two repetitions: the second is upright, so the flagged region clears and the fix is acknowledged.
+  const r = run(eng, kneeSession({ lean }), LEAD + 2 * 4000 + 500, { trace: true });
   const errs = eventsOf(r.events, "movement_error").filter((e) => e.error === "trunk_lean");
   assert.equal(errs.length, 1);
   assert.equal(errs[0].severity, "major");
@@ -114,9 +116,14 @@ test("sustained trunk lean turns shoulder and hip red, then green again after co
   assert.ok(red.length > 10, "shoulder and hip were red for a sustained period");
   assert.ok(r.trace.every((f) => f.joints[L.LEFT_KNEE] !== JOINT_ERROR), "knee is not blamed for a trunk problem");
   assert.equal(r.trace[r.trace.length - 1].joints[L.LEFT_SHOULDER], JOINT_OK);
-  const rep = eventsOf(r.events, "rep_completed")[0];
-  assert.equal(rep.valid, false);
-  assert.ok(rep.reasons.includes("trunk_lean"));
+  // The leaning rep reached the full range but broke a mandatory rule: it is NOT counted, and it does not credit the set.
+  const notCounted = eventsOf(r.events, "rep_not_counted")[0];
+  assert.ok(notCounted.reasons.includes("trunk_lean"));
+  assert.equal(notCounted.rep, 0, "the number of good reps did not move");
+  // The second, upright repetition is good, and is the proof that the lean was fixed.
+  assert.equal(eventsOf(r.events, "rep_completed").length, 1);
+  const s1 = eng.getSummary();
+  assert.deepEqual([s1.counted, s1.valid, s1.invalid], [1, 1, 1]);
 });
 
 test("a single noisy frame does not raise an error (sustain gate)", () => {
@@ -216,7 +223,8 @@ test("seated bicep curl: clean reps count; elbow drift and a shallow curl are ca
 
   const shallow = run(new MovementEngine(curl(), { targetReps: 10 }), curlSession(0.7, () => 0), LEAD + 4000 + 400);
   assert.ok(eventsOf(shallow.events, "movement_error").some((e) => e.error === "insufficient_curl"));
-  assert.equal(eventsOf(shallow.events, "rep_completed")[0].valid, false);
+  assert.equal(eventsOf(shallow.events, "rep_completed").length, 0, "a shallow curl does not count");
+  assert.equal(eventsOf(shallow.events, "partial_rep").length, 1);
 });
 
 test("neck rotation: turns to either side count, independent of camera distance", () => {

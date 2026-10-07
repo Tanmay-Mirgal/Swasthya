@@ -13,6 +13,8 @@ interface FocusFrameProps {
   actions?: ReactNode;
   camera: ReactNode;
   panel: ReactNode;
+  /** Shown above the controls, outside their scroll position (for example captions). */
+  panelTop?: ReactNode;
 }
 
 /**
@@ -20,7 +22,7 @@ interface FocusFrameProps {
  * Solid bars above and beside the camera mean nothing is ever drawn over the body or the skeleton.
  * Phone: camera on top, controls underneath within thumb reach. Desktop: camera left, panel right.
  */
-export default function FocusFrame({ title, subtitle, backHref, backLabel = "Back", onBack, actions, camera, panel }: FocusFrameProps) {
+export default function FocusFrame({ title, subtitle, backHref, backLabel = "Back", onBack, actions, camera, panel, panelTop }: FocusFrameProps) {
   const backClass =
     "-ml-1 inline-flex h-10 items-center gap-1 rounded-lg px-2 text-sm font-semibold text-slate-800 hover:bg-slate-100";
   return (
@@ -54,6 +56,7 @@ export default function FocusFrame({ title, subtitle, backHref, backLabel = "Bac
           className="max-h-[50dvh] shrink-0 overflow-y-auto border-t border-slate-900 bg-[var(--paper)] lg:max-h-none lg:w-[24rem] lg:border-l lg:border-t-0"
           style={{ paddingBottom: "env(safe-area-inset-bottom, 0px)" }}
         >
+          {panelTop}
           {panel}
         </section>
       </div>

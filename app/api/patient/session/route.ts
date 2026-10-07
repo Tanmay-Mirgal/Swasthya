@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import ExerciseSession, { type IExerciseSession } from "@/models/ExerciseSession";
 import { errorResponse, HttpError, readJson, requireIdentity, requirePatient } from "@/lib/rehab/auth";
-import { avgRepSecondsOf, cleanQuality, formAccuracyOf } from "@/lib/rehab/chunkQuality";
+import { avgRepSecondsOf, cleanQuality, formShareOf } from "@/lib/rehab/chunkQuality";
 import { issueLabel } from "@/lib/rehab/issueLabels";
 import { getMovementTemplate } from "@/lib/movement/template/registry";
 
@@ -60,7 +60,7 @@ export async function POST(req: Request) {
       targetReps,
       rom: Number.isFinite(Number(body.rom)) ? Math.min(360, Math.max(0, Number(body.rom))) : 0,
       targetRom: Number(body.targetRom) > 0 ? Number(body.targetRom) : undefined,
-      formAccuracy: judged ? formAccuracyOf(q.validReps, q.invalidReps) : undefined,
+      formAccuracy: judged ? formShareOf({ engineVersion: q.engine, validReps: q.validReps, invalidReps: q.invalidReps, partialReps: q.partialReps }) : undefined,
       targetMet: completedReps >= targetReps,
       date: Number.isNaN(date.getTime()) ? new Date() : date,
       ...(judged

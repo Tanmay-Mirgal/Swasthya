@@ -1,11 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import { Camera } from "lucide-react";
+import { Camera, Check } from "lucide-react";
 import { Button, Notice, PageHeader, SectionHeading, SetsGrid, StatusMark } from "@/components/ui";
 import type { ExerciseProgress } from "@/lib/rehab/schedule";
 import { cn } from "@/lib/utils";
 import SessionReportCard from "@/components/reports/SessionReportCard";
+import ProgressRing from "./ProgressRing";
+import { PartyPopperIcon } from "./Celebration";
+import { routineLines, sessionHighlight, sessionSummaryLines, type DaySummary, type SessionFacts } from "@/lib/rehab/milestones";
 
 export const DISCOMFORT_LEVELS = [
   { id: "none", label: "No discomfort" },
@@ -26,10 +29,16 @@ interface IntroProps {
   reviewRecordingChosen: boolean;
   onChooseRecording: (record: boolean) => void;
   onStart: () => void;
+  /** Carry on without the camera: the patient counts their own reps. */
+  onManual: () => void;
+  /** Plain steps for doing the exercise, shown before the camera starts. */
+  steps?: string[];
+  /** How last time went, only when earlier judged sessions make it true. */
+  lastTime?: string | null;
 }
 
 /** What the patient sees before a set: the dose they were prescribed, where they are, and (on review day) the recording choice. */
-export function SessionIntro({ name, progress, doctorName, instructions, modifications, askRecording, recordingOn, reviewRecordingChosen, onChooseRecording, onStart }: IntroProps) {
+export function SessionIntro({ name, progress, doctorName, instructions, modifications, askRecording, recordingOn, reviewRecordingChosen, onChooseRecording, onStart, onManual, steps, lastTime }: IntroProps) {
   const set = progress.currentSetIndex !== null ? progress.sets[progress.currentSetIndex] : null;
   const started = progress.completedReps > 0;
   return (
@@ -42,10 +51,21 @@ export function SessionIntro({ name, progress, doctorName, instructions, modific
             {started ? <>Next: <span className="font-semibold">set {set.index + 1}</span>, <span className="tabular">{set.remainingReps}</span> {set.remainingReps === 1 ? "rep" : "reps"} to go.</> : <>Start with <span className="font-semibold">set 1</span>: {set.targetReps} reps.</>}
           </p>
         )}
-        <p className="mt-2 max-w-prose text-sm text-slate-700">If {progress.targetReps} in a row is too many, you can pause and rest part-way through a set. Your reps are added together, and the target your therapist set stays the same.</p>
+        <p className="mt-2 max-w-prose text-sm text-slate-700">Only good repetitions count toward your target: the whole movement, done with care. A movement that isn’t counted never changes your target, and you can simply try it again. If {progress.targetReps} in a row is too many, you can pause and rest part-way through a set.</p>
+        {lastTime && <p className="mt-3 max-w-prose text-lg font-semibold text-slate-900">{lastTime}</p>}
         {instructions && <p className="hand mt-3 max-w-prose">“{instructions}”</p>}
         {modifications && <p className="mt-2 text-sm text-slate-700"><span className="font-semibold">For you:</span> {modifications}</p>}
       </div>
+
+      {steps && steps.length > 0 && (
+        <section aria-label="How to do it">
+          <h2 className="text-lg font-bold text-slate-900">Here’s how to do it</h2>
+          <ol className="mt-2 list-decimal space-y-1.5 pl-5 text-base leading-relaxed text-slate-800">
+            {steps.map((s, i) => <li key={i}>{s}</li>)}
+          </ol>
+          <p className="mt-2 text-base font-semibold text-slate-900">Stop if you feel sharp pain.</p>
+        </section>
+      )}
 
       {askRecording ? (
         <div className="border-t-2 border-slate-900 pt-4" role="group" aria-labelledby="rec-title">
@@ -64,6 +84,7 @@ export function SessionIntro({ name, progress, doctorName, instructions, modific
         <div className="flex flex-wrap items-center gap-3">
           <Button size="lg" onClick={onStart}>{started ? `Continue set ${set ? set.index + 1 : ""}`.trim() : "Start set 1"}</Button>
           <Button asChild size="lg" variant="ghost"><Link href="/">Not now</Link></Button>
+          <Button size="lg" variant="ghost" onClick={onManual}>Continue without the camera</Button>
           {recordingOn && <StatusMark kind="info">Recording on</StatusMark>}
         </div>
       )}
@@ -84,13 +105,65 @@ interface DoneProps {
   romUnit?: "deg" | "pct";
   /** The saved session this summary is about; when present a performance summary is shown. */
   sessionId?: string | null;
+  /** Recorded facts about this exercise today. Absent when the last save is still queued (offline). */
+  facts?: SessionFacts | null;
+  /** Set when this exercise finished today's whole routine. */
+  routine?: { summary: DaySummary; weekLine: string | null; nextLine: string | null } | null;
+  /** Comparisons with earlier sessions that cleared the evidence bar, best first. Preferred over the single-session highlight. */
+  highlights?: string[];
+  /** The finish was just celebrated (not a revisit of an exercise done earlier), so the party popper is shown. */
+  celebrate?: boolean;
 }
 
+const CheckLines = ({ lines }: { lines: string[] }) => (
+  <ul className="mt-3 space-y-2">
+    {lines.map((l) => (
+      <li key={l} className="flex items-center gap-2.5 text-lg text-slate-900">
+        <Check className="size-5 shrink-0 text-emerald-700" aria-hidden="true" /> {l}
+      </li>
+    ))}
+  </ul>
+);
+
 /** The end of an exercise: the sets as they were really done, an optional "how did that feel", and what to do next. */
-export function SessionDone({ progress, bestRom, discomfort, onDiscomfort, recording, saveNotice, next, romUnit = "deg", sessionId }: DoneProps) {
+export function SessionDone({ progress, bestRom, discomfort, onDiscomfort, recording, saveNotice, next, romUnit = "deg", sessionId, facts, routine, highlights, celebrate }: DoneProps) {
+  const complete = progress.status === "complete";
+  const highlight = complete ? (highlights?.[0] ?? (facts ? sessionHighlight(facts) : null)) : null;
+  const lines = facts ? sessionSummaryLines(facts) : [`${progress.completedSets} ${progress.completedSets === 1 ? "set" : "sets"} completed`, `${progress.completedReps} ${progress.completedReps === 1 ? "rep" : "reps"} counted`];
   return (
     <div className="mx-auto max-w-xl space-y-7 pt-2">
-      <PageHeader title={progress.status === "complete" ? `${progress.name} is done for today` : progress.name} description={`${progress.completedSets} of ${progress.targetSets} sets completed.`} />
+      {complete ? (
+        <section aria-label="Exercise complete" className="flex items-start gap-4">
+          <ProgressRing value={1} size={88} stroke={8} drawIn className="shrink-0">
+            <Check className="size-10 text-emerald-700" aria-hidden="true" />
+          </ProgressRing>
+          <div className="min-w-0">
+            <h1 className="text-3xl font-bold leading-tight text-slate-900">Exercise complete</h1>
+            <p className="text-lg text-slate-800">{progress.name}</p>
+          </div>
+          {celebrate && <PartyPopperIcon popping className="ml-auto size-16 shrink-0" />}
+        </section>
+      ) : (
+        <PageHeader title={progress.name} description={`${progress.completedSets} of ${progress.targetSets} sets completed. Your reps are saved.`} />
+      )}
+
+      {complete && <section aria-label="This exercise"><CheckLines lines={lines} /></section>}
+
+      {routine && (
+        <section aria-label="Today’s routine complete" className="border-y-2 border-slate-900 py-5">
+          <h2 className="text-2xl font-bold text-slate-900">Today’s routine complete</h2>
+          <CheckLines lines={routineLines(routine.summary)} />
+          {routine.weekLine && <p className="mt-4 text-lg text-slate-900">{routine.weekLine}</p>}
+          {routine.nextLine && <p className="mt-1 text-lg text-slate-800">{routine.nextLine}</p>}
+        </section>
+      )}
+
+      {highlight && (
+        <section aria-label="Today’s highlight">
+          <h2 className="text-lg font-bold text-slate-900">Today’s highlight</h2>
+          <p className="mt-1 text-lg text-slate-900">{highlight}</p>
+        </section>
+      )}
       <section aria-label="Your sets">
         <SetsGrid sets={progress.targetSets} reps={progress.targetReps} completedReps={progress.completedReps} size={progress.targetReps > 12 ? 14 : 18} />
         <ul className="mt-3 border-t border-slate-900">

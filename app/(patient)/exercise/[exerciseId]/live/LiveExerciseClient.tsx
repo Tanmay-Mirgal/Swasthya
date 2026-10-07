@@ -63,7 +63,7 @@ function FreePracticeSession({ template }: { template: MovementTemplate }) {
   const [paused, setPaused] = useState(false);
   const [isGuideOpen, setIsGuideOpen] = useState(false);
   const [confirmEnd, setConfirmEnd] = useState(false);
-  const { voiceEnabled, toggleVoice } = useVoicePreference();
+  const { voiceEnabled, toggleVoice, language } = useVoicePreference();
 
   const [startedAt] = useState(() => Date.now());
   const endingRef = useRef(false);
@@ -74,7 +74,7 @@ function FreePracticeSession({ template }: { template: MovementTemplate }) {
     targetReps: plannedReps,
     paused,
     voiceEnabled,
-    llmEnabled: true,
+    llmEnabled: language === "en", // model-written wording is English only; other languages use the reviewed catalogue
     getToken,
     onDone: () => finishRef.current(),
   });
@@ -142,7 +142,7 @@ function FreePracticeSession({ template }: { template: MovementTemplate }) {
     <>
       <FocusFrame
         title={exercise.name}
-        subtitle={`${completedReps} of ${ui.targetReps} reps`}
+        subtitle={`${completedReps} of ${ui.targetReps} good reps`}
         backLabel="End"
         onBack={() => (completedReps > 0 ? setConfirmEnd(true) : router.push("/exercise"))}
         actions={
@@ -180,8 +180,8 @@ function FreePracticeSession({ template }: { template: MovementTemplate }) {
         title="End this session?"
         description={
           completedReps > 0
-            ? `Your ${completedReps} completed ${completedReps === 1 ? "rep is" : "reps are"} saved.`
-            : "No reps have been counted yet, so nothing will be saved."
+            ? `Your ${completedReps} good ${completedReps === 1 ? "rep is" : "reps are"} saved.`
+            : "No good reps yet, so nothing will be saved."
         }
         footer={
           <>

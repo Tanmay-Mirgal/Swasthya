@@ -13,8 +13,37 @@
 
 export type ErrorSeverity = "minor" | "moderate" | "major";
 
+export type StoredOutcome = "valid" | "invalid" | "partial" | "uncertain" | "discarded";
+export type StoredAttemptReason = "short_range" | "dropout" | "timeout" | "debounce" | "rule_broken" | "low_visibility" | "rule_unevaluable";
+
+/** A cycle that began and was not counted (engine v3+). Kept so nothing the person did vanishes. */
+export interface StoredAttempt {
+  outcome: "invalid" | "partial" | "uncertain" | "discarded";
+  reason: StoredAttemptReason;
+  /** How far toward the peak, 0..1. */
+  reached: number;
+  ms: number;
+  conf: number;
+  /** For `invalid`: the mandatory rules that were broken. */
+  reasons?: string[];
+  /** For `invalid`: the range reached (display units). */
+  rom?: number;
+}
+
+/**
+ * Engine v4 credits GOOD reps only: a chunk's `reps` are its valid reps, and the attempts that did not count
+ * (broke a rule, fell short) are stored beside them and can outnumber `reps`. Before v4, `reps` also included
+ * reps that were flagged, so the two meanings must never be mixed in one number.
+ */
+export const GOOD_ONLY_ENGINE = 4;
+export const creditsGoodRepsOnly = (engine?: number): boolean => (engine ?? 0) >= GOOD_ONLY_ENGINE;
+
 export interface StoredRep {
   n: number;
+  /** Engine v3+. Older records carry only `valid`. */
+  outcome?: "valid" | "invalid";
+  /** Engine v4+: how clean a good rep was. Chooses wording; never shown as a score. */
+  quality?: "excellent" | "good";
   valid: boolean;
   reasons: string[];
   errors: string[];
@@ -29,12 +58,31 @@ export interface StoredObservation {
   ofReps: number;
 }
 
+/** The gates actually applied to a stretch of work (the template's, with any prescription tolerance), kept for audit. */
+export interface ThresholdsUsed {
+  /** Minimum range accepted as a good rep, in the exercise's display unit. */
+  minRange: number;
+  unit: "deg" | "pct";
+  /** Hold required at the peak, in ms, or null. */
+  holdMs: number | null;
+  /** True when a prescription tolerance made the range more lenient than the template's default. */
+  rangeOverridden: boolean;
+}
+
 export interface ChunkQuality {
+  /** "manual" = the patient counted these reps themselves (no camera); no movement judgment exists for them. */
+  source?: "camera" | "manual";
   /** Version of the movement engine that produced these numbers. Absent on older records. */
   engine?: number;
   validReps?: number;
   invalidReps?: number;
   partialReps?: number;
+  /** Cycles that could not be judged because the camera lost the person mid-rep (engine v3+). */
+  uncertainReps?: number;
+  /** Rules that were not being checked because their landmarks could not be measured (engine v3+). */
+  unevaluable?: string[];
+  attempts?: StoredAttempt[];
+  thresholdsUsed?: ThresholdsUsed;
   /** Mean visibility of the joints the exercise needs while judging, 0..1. */
   avgConfidence?: number;
   lowConfidenceMs?: number;
@@ -47,6 +95,8 @@ export interface ChunkQuality {
 
 const CODE = /^[A-Z][A-Z_]{2,39}$/;
 const SEVERITIES: ErrorSeverity[] = ["minor", "moderate", "major"];
+const ATTEMPT_OUTCOMES = ["invalid", "partial", "uncertain", "discarded"] as const;
+const ATTEMPT_REASONS: StoredAttemptReason[] = ["short_range", "dropout", "timeout", "debounce", "rule_broken", "low_visibility", "rule_unevaluable"];
 
 const int = (v: unknown, lo: number, hi: number): number | undefined => {
   const n = Math.round(Number(v));
@@ -63,19 +113,56 @@ const codes = (v: unknown, max: number): string[] =>
 export function cleanQuality(raw: unknown, reps: number): ChunkQuality {
   if (!raw || typeof raw !== "object") return {};
   const r = raw as Record<string, unknown>;
+  // Reps the patient counted by hand carry no judgment: whatever else was sent with them is ignored.
+  if (r.source === "manual") return { source: "manual" };
   const out: ChunkQuality = {};
+  if (r.source === "camera") out.source = "camera";
 
   const engine = int(r.engine, 1, 99);
   if (engine !== undefined) out.engine = engine;
 
   if (r.validReps !== undefined || r.invalidReps !== undefined) {
     const valid = Math.min(int(r.validReps, 0, 1000) ?? 0, reps);
-    const invalid = Math.min(int(r.invalidReps, 0, 1000) ?? 0, reps - valid);
+    // Engine v4: `reps` are the good reps, so the attempts that did not count are bounded on their own, not by `reps`.
+    const invalid = creditsGoodRepsOnly(out.engine) ? (int(r.invalidReps, 0, 500) ?? 0) : Math.min(int(r.invalidReps, 0, 1000) ?? 0, reps - valid);
     out.validReps = valid;
     out.invalidReps = invalid;
   }
   const partial = int(r.partialReps, 0, 1000);
   if (partial !== undefined) out.partialReps = partial;
+  if (r.thresholdsUsed && typeof r.thresholdsUsed === "object") {
+    const t = r.thresholdsUsed as Record<string, unknown>;
+    const minRange = num(t.minRange, 0, 360);
+    const unit = t.unit === "deg" || t.unit === "pct" ? t.unit : undefined;
+    const holdMs = t.holdMs === null ? null : (int(t.holdMs, 0, 60_000) ?? null);
+    if (minRange !== undefined && unit) out.thresholdsUsed = { minRange: Math.round(minRange * 100) / 100, unit, holdMs, rangeOverridden: t.rangeOverridden === true };
+  }
+  const uncertain = int(r.uncertainReps, 0, 1000);
+  if (uncertain !== undefined) out.uncertainReps = uncertain;
+  const unevaluable = codes(r.unevaluable, 8);
+  if (unevaluable.length) out.unevaluable = unevaluable;
+  if (Array.isArray(r.attempts)) {
+    const list: StoredAttempt[] = [];
+    for (const item of r.attempts.slice(0, 200)) {
+      if (!item || typeof item !== "object") continue;
+      const x = item as Record<string, unknown>;
+      const outcome = ATTEMPT_OUTCOMES.find((o) => o === x.outcome);
+      const reason = ATTEMPT_REASONS.find((o) => o === x.reason);
+      if (!outcome || !reason) continue;
+      const reasons = codes(x.reasons, 6);
+      const rom = int(x.rom, 0, 360);
+      list.push({
+        outcome,
+        reason,
+        reached: Math.round((num(x.reached, 0, 1) ?? 0) * 100) / 100,
+        ms: int(x.ms, 0, 600_000) ?? 0,
+        conf: Math.round((num(x.conf, 0, 1) ?? 0) * 100) / 100,
+        ...(outcome === "invalid" && reasons.length ? { reasons } : {}),
+        ...(outcome === "invalid" && rom !== undefined ? { rom } : {}),
+      });
+    }
+    if (list.length) out.attempts = list;
+  }
   const conf = num(r.avgConfidence, 0, 1);
   if (conf !== undefined) out.avgConfidence = Math.round(conf * 100) / 100;
   const low = int(r.lowConfidenceMs, 0, 3_600_000);
@@ -107,9 +194,13 @@ export function cleanQuality(raw: unknown, reps: number): ChunkQuality {
       const x = item as Record<string, unknown>;
       const n = int(x.n, 1, 200);
       if (n === undefined || typeof x.valid !== "boolean") continue;
+      const outcome = x.outcome === "valid" || x.outcome === "invalid" ? x.outcome : undefined;
       recs.push({
         n,
+        // The outcome can never contradict the validity flag.
+        ...(outcome && (outcome === "valid") === x.valid ? { outcome } : {}),
         valid: x.valid,
+        ...(x.quality === "excellent" || x.quality === "good" ? { quality: x.quality } : {}),
         reasons: codes(x.reasons, 6),
         errors: codes(x.errors, 8),
         rom: int(x.rom, 0, 360) ?? 0,
@@ -139,7 +230,7 @@ export function cleanQuality(raw: unknown, reps: number): ChunkQuality {
 export function clampQuality<T extends ChunkQuality>(q: T, credited: number): T {
   if (q.validReps === undefined && q.invalidReps === undefined) return q;
   const valid = Math.min(q.validReps ?? 0, credited);
-  const invalid = Math.min(q.invalidReps ?? 0, credited - valid);
+  const invalid = creditsGoodRepsOnly(q.engine) ? (q.invalidReps ?? 0) : Math.min(q.invalidReps ?? 0, credited - valid);
   return { ...q, validReps: valid, invalidReps: invalid, repRecords: q.repRecords?.slice(0, credited) };
 }
 
@@ -148,6 +239,10 @@ export interface QualityRollup {
   validReps?: number;
   invalidReps?: number;
   partialReps?: number;
+  uncertainReps?: number;
+  unevaluable?: string[];
+  /** The gates in force for the newest chunk. */
+  thresholdsUsed?: ThresholdsUsed;
   correctionAttempts?: number;
   correctionsSucceeded?: number;
   avgConfidence?: number;
@@ -181,6 +276,11 @@ export function rollupQuality(chunks: Array<{ reps: number } & ChunkQuality>): Q
   out.validReps = sum((c) => c.validReps);
   out.invalidReps = sum((c) => c.invalidReps);
   out.partialReps = sum((c) => c.partialReps);
+  out.uncertainReps = sum((c) => c.uncertainReps);
+  const unevaluable = [...new Set(chunks.flatMap((c) => c.unevaluable ?? []))];
+  if (unevaluable.length) out.unevaluable = unevaluable;
+  const withGates = chunks.filter((c) => c.thresholdsUsed);
+  if (withGates.length) out.thresholdsUsed = withGates[withGates.length - 1].thresholdsUsed;
   out.correctionAttempts = sum((c) => c.corrections?.attempted);
   out.correctionsSucceeded = sum((c) => c.corrections?.succeeded);
   out.lowConfidenceMs = sum((c) => c.lowConfidenceMs);
@@ -215,11 +315,20 @@ export function rollupQuality(chunks: Array<{ reps: number } & ChunkQuality>): Q
   return out;
 }
 
-/** Form accuracy as the share of counted reps that were valid; undefined when the engine did not judge any. */
-export function formAccuracyOf(validReps?: number, invalidReps?: number): number | undefined {
+/**
+ * Form accuracy as the share of judged attempts that were good; undefined when the engine did not judge any.
+ * Before engine v4 only counted reps were judged (valid / (valid + invalid)). From v4 every attempt is, so attempts that
+ * fell short (`partialReps`) are part of the denominator; pass them for v4 data (see `formShareOf`).
+ */
+export function formAccuracyOf(validReps?: number, invalidReps?: number, partialReps = 0): number | undefined {
   if (validReps === undefined || invalidReps === undefined) return undefined;
-  const total = validReps + invalidReps;
+  const total = validReps + invalidReps + partialReps;
   return total > 0 ? Math.round((100 * validReps) / total) : undefined;
+}
+
+/** `formAccuracyOf` with the right basis for the engine that produced the numbers. */
+export function formShareOf(s: { engineVersion?: number; validReps?: number; invalidReps?: number; partialReps?: number }): number | undefined {
+  return formAccuracyOf(s.validReps, s.invalidReps, creditsGoodRepsOnly(s.engineVersion) ? (s.partialReps ?? 0) : 0);
 }
 
 /** Correction success as a percentage; undefined when no correction was attempted. */

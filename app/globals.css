@@ -315,6 +315,13 @@
   stroke-dasharray: 24;
   stroke-dashoffset: 0;
 }
+/* A completion ring that draws itself once (a finished set or exercise). Reduced motion shows it already drawn. */
+@keyframes ring-draw {
+  from { stroke-dashoffset: var(--ring-c); }
+  to { stroke-dashoffset: var(--ring-to); }
+}
+.ring-draw { animation: ring-draw 700ms cubic-bezier(0.22, 1, 0.36, 1) both; }
+
 .tick-animate .tick-path {
   animation: tick-draw 260ms cubic-bezier(0.22, 1, 0.36, 1) both;
   animation-delay: var(--tick-delay, 0ms);
@@ -328,3 +335,42 @@ body { top: 0 !important; }
 #google_translate_element { display: none !important; }
 .goog-text-highlight { background: none !important; box-shadow: none !important; }
 font[style] { background: transparent !important; box-shadow: none !important; }
+
+/* ── The live exercise stage (read from across a room) ─────────────────────────────────────────────────────────
+   Sizes come from visual angle (see lib/movement/ui/distance.ts), as a share of the stage's shorter side, with a floor
+   in CSS px so that browser zoom enlarges them instead of cancelling out, and a cap so they cannot swamp a huge screen.
+   --vs is the patient's own reading-distance scale (1 to 2). */
+.stage,
+.stage-lane {
+  --vs: 1.25;
+  /* --lane-w is the width a card has for text. A word must fit its lane, so the size is the smaller of "what the distance
+     needs" and "what fits": the longest word of a verdict is about 5.2 em wide, a counter about 3 em. */
+  --t-counter: min(clamp(72px, calc(15.2vmin * var(--vs)), 300px), calc((var(--lane-w, 600px) - 56px) / 3));
+  --t-verdict: min(clamp(40px, calc(10vmin * var(--vs)), 180px), calc((var(--lane-w, 600px) - 56px) / 5.2));
+  --t-instr: clamp(26px, calc(6.1vmin * var(--vs)), 104px);
+  --t-detail: clamp(18px, calc(2.6vmin * var(--vs)), 30px);
+  --t-glyph: clamp(44px, calc(11vmin * var(--vs)), 200px);
+}
+@keyframes verdict-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: none; }
+}
+.verdict-in { animation: verdict-in 200ms ease-out both; }
+@keyframes ambient-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+.ambient { animation: ambient-in 300ms ease-out both; }
+
+/* A finished set: the party popper tips and settles once; a milestone slides in under the title. Reduced motion shows both at rest. */
+@keyframes popper-pop {
+  0% { transform: rotate(-14deg) scale(0.9); }
+  45% { transform: rotate(8deg) scale(1.08); }
+  100% { transform: none; }
+}
+.popper-pop { animation: popper-pop 400ms cubic-bezier(0.22, 1, 0.36, 1) both; }
+@keyframes milestone-in {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: none; }
+}
+.milestone-in { animation: milestone-in 320ms ease-out both; animation-delay: var(--mi-delay, 0ms); }

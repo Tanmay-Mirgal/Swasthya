@@ -15,7 +15,7 @@
 import { COACH_CONFIG, type CoachConfig } from "./config";
 import type { Phase } from "../types";
 
-export type SpeechKind = "camera" | "error" | "ack" | "praise" | "setup";
+export type SpeechKind = "camera" | "error" | "ack" | "praise" | "setup" | "milestone" | "pacing" | "verdict";
 
 export interface SpeechCandidate {
   /** Stable key for the thing being said, e.g. "err:trunk_lean", "camera:too_close". */
@@ -62,7 +62,7 @@ export function decideSpeech(v: VoiceState, c: SpeechCandidate, now: number, cfg
   // Do not talk over a patient who is mid-movement about something that can wait a moment.
   const moving = c.phase === "out" || c.phase === "back";
   if (moving && c.kind === "error" && c.priority > 3) return no("movement", true);
-  if (moving && c.kind === "praise") return no("movement", true);
+  if (moving && (c.kind === "praise" || c.kind === "milestone" || c.kind === "pacing")) return no("movement", true);
 
   const gap = now - v.lastAt;
   const minGap = c.kind === "ack" ? cfg.voiceAckGapMs : cfg.voiceMinGapMs;

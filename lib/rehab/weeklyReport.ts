@@ -13,7 +13,7 @@ import { addDays, type DateKey } from "./dates";
 import { adherenceBetween, adherencePercent, computeDailyPlan, type ExerciseDayLog } from "./schedule";
 import { groupLogsByDay } from "./adherence";
 import { toScheduleInput } from "./prescriptionService";
-import { formAccuracyOf } from "./chunkQuality";
+import { creditsGoodRepsOnly, formAccuracyOf } from "./chunkQuality";
 import { getMovementTemplate } from "@/lib/movement/template/registry";
 
 const avg = (nums: number[]): number | undefined => (nums.length ? Math.round(nums.reduce((a, b) => a + b, 0) / nums.length) : undefined);
@@ -26,10 +26,23 @@ export interface ReportInput {
   sessions: IExerciseSession[];
   today: DateKey;
   previousFormScore?: number;
-  previousFormBasis?: "engine2" | "legacy";
+  previousFormBasis?: "engine2" | "engine4" | "legacy";
 }
 
 /** Pure: turns a plan, a date range and the stored sessions into a report. */
+type Judgeable = { engineVersion?: number; validReps?: number };
+
+/**
+ * The sessions judged by the engine, on ONE basis. From engine v4 the form share counts every attempt, so if a week holds
+ * both v4 and older sessions only the v4 ones are used; shares on different bases are never mixed.
+ */
+function judgedOf<T extends Judgeable>(list: T[]): { list: T[]; basis: "engine2" | "engine4" | "legacy" } {
+  const judged = list.filter((s) => (s.engineVersion ?? 0) >= 2 && s.validReps !== undefined);
+  const v4 = judged.filter((s) => creditsGoodRepsOnly(s.engineVersion));
+  if (v4.length) return { list: v4, basis: "engine4" };
+  return { list: judged, basis: judged.length ? "engine2" : "legacy" };
+}
+
 export function buildReport(input: ReportInput): IWeeklyReport {
   const { prescription, weekNumber, weekStart, weekEnd, sessions, today } = input;
   const schedule = toScheduleInput(prescription);
@@ -75,24 +88,24 @@ export function buildReport(input: ReportInput): IWeeklyReport {
   for (const row of perExercise.values()) {
     const mine = inWeek.filter((s) => s.prescriptionExerciseKey === row.exerciseKey);
     row.averageRom = avg(mine.map((s) => s.rom ?? 0).filter((n) => n > 0));
-    const judged = mine.filter((s) => (s.engineVersion ?? 0) >= 2 && s.validReps !== undefined);
+    const { list: judged, basis } = judgedOf(mine);
     row.validReps = judged.length ? judged.reduce((a, s) => a + (s.validReps ?? 0), 0) : undefined;
     row.invalidReps = judged.length ? judged.reduce((a, s) => a + (s.invalidReps ?? 0), 0) : undefined;
     // Per-rep judgment when there is any this week; otherwise the older score. Never a mixture.
     row.averageFormScore = judged.length
-      ? formAccuracyOf(row.validReps, row.invalidReps)
+      ? formAccuracyOf(row.validReps, row.invalidReps, basis === "engine4" ? judged.reduce((a, s) => a + (s.partialReps ?? 0), 0) : 0)
       : avg(mine.map((s) => s.formAccuracy).filter((n): n is number => typeof n === "number"));
   }
 
   const issueTotals: Record<string, number> = {};
   for (const s of inWeek) for (const [code, n] of Object.entries((s.issueCounts ?? {}) as Record<string, number>)) issueTotals[code] = (issueTotals[code] ?? 0) + n;
 
-  const judgedWeek = inWeek.filter((s) => (s.engineVersion ?? 0) >= 2 && s.validReps !== undefined);
-  const formBasis: "engine2" | "legacy" = judgedWeek.length ? "engine2" : "legacy";
+  const { list: judgedWeek, basis: formBasis } = judgedOf(inWeek);
   const weekValid = judgedWeek.reduce((a, s) => a + (s.validReps ?? 0), 0);
   const weekInvalid = judgedWeek.reduce((a, s) => a + (s.invalidReps ?? 0), 0);
+  const weekPartial = judgedWeek.reduce((a, s) => a + (s.partialReps ?? 0), 0);
   const formScore =
-    formBasis === "engine2" ? formAccuracyOf(weekValid, weekInvalid) : avg(inWeek.map((s) => s.formAccuracy).filter((n): n is number => typeof n === "number"));
+    formBasis !== "legacy" ? formAccuracyOf(weekValid, weekInvalid, formBasis === "engine4" ? weekPartial : 0) : avg(inWeek.map((s) => s.formAccuracy).filter((n): n is number => typeof n === "number"));
   const confSessions = judgedWeek.filter((s) => s.avgConfidence !== undefined && s.completedReps > 0);
   const confReps = confSessions.reduce((a, s) => a + s.completedReps, 0);
   const sevRank = { minor: 0, moderate: 1, major: 2 } as const;

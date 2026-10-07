@@ -46,7 +46,12 @@ interface PatientSession {
   reviewedAt?: string;
   romUnit?: "deg" | "pct";
   avgRepSeconds?: number;
+  /** Reps the patient counted by hand without the camera. Not measured, not judged. */
+  manualReps?: number;
+  /** Times the patient chose "Finish for today" after attempts kept not counting. */
+  finishedEarly?: { setIndex: number; at: string; good: number; notCounted: number; topLabel?: string }[];
   quality?: {
+    goodOnly?: boolean;
     validReps: number;
     invalidReps: number;
     partialReps: number;
@@ -242,14 +247,34 @@ export default function PatientDetailPage({ params }: { params: Promise<{ patien
                           {s.rom > 0 && <> · <span className="font-mono font-semibold tabular">{Math.round(s.rom)}{s.romUnit === "pct" ? "%" : "°"}</span> range</>}
                           {s.durationSeconds > 0 && <> · <span className="font-mono tabular">{Math.floor(s.durationSeconds / 60)}:{String(s.durationSeconds % 60).padStart(2, "0")}</span></>}
                         </p>
+                        {(s.manualReps ?? 0) > 0 && (
+                          <p className="mt-1 text-sm text-slate-800">
+                            <span className="font-mono font-semibold tabular">{s.manualReps}</span> {s.manualReps === 1 ? "rep was" : "reps were"} counted by the patient without the camera, so no range or form was measured for them.
+                          </p>
+                        )}
                         {s.quality && (
                           <p className="mt-1 text-sm text-slate-800">
-                            <span className="font-mono font-semibold tabular">{s.quality.validReps}</span> met the form checks
-                            {s.quality.invalidReps > 0 && <>, <span className="font-mono font-semibold tabular">{s.quality.invalidReps}</span> counted with a note</>}
-                            {s.quality.partialReps > 0 && <>, <span className="font-mono font-semibold tabular">{s.quality.partialReps}</span> partial</>}
+                            {s.quality.goodOnly ? (
+                              <>
+                                <span className="font-mono font-semibold tabular">{s.quality.validReps}</span> good reps (the only ones credited)
+                                {s.quality.invalidReps > 0 && <>; not counted: <span className="font-mono font-semibold tabular">{s.quality.invalidReps}</span> broke a movement check</>}
+                                {s.quality.partialReps > 0 && <>{s.quality.invalidReps > 0 ? "," : "; not counted:"} <span className="font-mono font-semibold tabular">{s.quality.partialReps}</span> did not reach the full range</>}
+                              </>
+                            ) : (
+                              <>
+                                <span className="font-mono font-semibold tabular">{s.quality.validReps}</span> met the form checks
+                                {s.quality.invalidReps > 0 && <>, <span className="font-mono font-semibold tabular">{s.quality.invalidReps}</span> counted with a note</>}
+                                {s.quality.partialReps > 0 && <>, <span className="font-mono font-semibold tabular">{s.quality.partialReps}</span> partial</>}
+                              </>
+                            )}
                             {s.quality.errors[0] && <> · most often: {s.quality.errors[0].label.toLowerCase()} ({s.quality.errors[0].reps})</>}
                           </p>
                         )}
+                        {(s.finishedEarly ?? []).map((f, i) => (
+                          <p key={i} className="mt-1 text-sm font-semibold text-amber-900">
+                            <span className="bg-amber-100 px-1">Finished early on set {f.setIndex + 1}: {f.good} good {f.good === 1 ? "rep" : "reps"}, {f.notCounted} not counted{f.topLabel ? `; most often: ${f.topLabel.toLowerCase()}` : ""}. The prescription is unchanged.</span>
+                          </p>
+                        ))}
                         {s.quality?.observations.map((o) => (
                           <p key={o.code} className="mt-1 text-sm font-semibold text-amber-900">
                             <span className="bg-amber-100 px-1">Repeated: {o.label.toLowerCase()} in {o.repsAffected} of {o.ofReps} reps</span>

@@ -4,10 +4,10 @@ import { useEffect, useMemo, useRef } from "react";
 import FocusFrame from "@/components/exercise/FocusFrame";
 import LivePanel from "@/components/exercise/LivePanel";
 import { drawOverlay } from "@/components/movement/overlay";
-import { LEAD_MS, kneeExtensionSession, replayUntil } from "@/lib/movement/testing/scenarios";
+import { LEAD_MS, MIXED_PLAN, STUCK_PLAN, kneeExtensionSession, repPlanSession, replayUntil } from "@/lib/movement/testing/scenarios";
 import { PoseLandmark as L } from "@/lib/movement/landmarks";
 
-export type ReplayScenario = "ok" | "error" | "lowconf" | "camera" | "setup" | "paused";
+export type ReplayScenario = "ok" | "error" | "lowconf" | "camera" | "setup" | "paused" | "notcounted" | "stuck";
 
 const PERIOD = 4000;
 
@@ -32,6 +32,12 @@ export default function ReplayScreen({ scenario }: { scenario: ReplayScenario })
         const vis = (t: number) => (t > LEAD_MS + 2 * PERIOD ? { [L.LEFT_KNEE]: 0.15 } : undefined);
         return replayUntil("seated-knee-extension", kneeExtensionSession({ vis }), LEAD_MS + 2 * PERIOD + 2200);
       }
+      // good, good, then a leaning rep that does NOT count: the screen says so, and the count stays at 2 of 8.
+      case "notcounted":
+        return replayUntil("seated-knee-extension", repPlanSession(MIXED_PLAN), LEAD_MS + 12_400, 8);
+      // Several attempts in a row that fell short: the guide and "finish for today" are offered.
+      case "stuck":
+        return replayUntil("seated-knee-extension", repPlanSession(STUCK_PLAN), LEAD_MS + 4 * PERIOD + 3000, 8);
       case "camera":
         return replayUntil("seated-knee-extension", kneeExtensionSession({ frame: { pxPerM: 700, cy: 400 } }), 2500);
       case "setup":
@@ -78,6 +84,7 @@ export default function ReplayScreen({ scenario }: { scenario: ReplayScenario })
           onTogglePause={() => undefined}
           onFinish={() => undefined}
           onOpenGuide={() => undefined}
+          onFinishEarly={() => undefined}
         />
       }
     />

@@ -21,13 +21,15 @@ import { LandmarkStabilizer, type StabilizerOptions } from "../signal/stabilizer
 import { ConfidenceTracker, type ConfidenceReading } from "../signal/confidence";
 import { CameraAdvisor, rawCameraAdvice, type RequiredJoint } from "../framing/cameraCheck";
 import { MetricEvaluator } from "./metrics";
-import type { ContinuousRule, MovementTemplate, RepRules } from "../template/schema";
+import type { ContinuousRule, MovementTemplate, RepRules, RepSpec } from "../template/schema";
+import { effectiveRep, type EngineTolerance } from "../template/tolerance";
 import {
   JOINT_ERROR,
   JOINT_NEUTRAL,
   JOINT_OK,
   JOINT_UNCERTAIN,
   type ActiveDeviation,
+  type AttemptRecord,
   type CameraAdvice,
   type ConfidenceLevel,
   type MovementEvent,
@@ -41,8 +43,16 @@ const EMPTY_EVENTS: readonly MovementEvent[] = Object.freeze([]);
 const SEVERITY_RANK: Record<Severity, number> = { minor: 0, moderate: 1, major: 2 };
 /** How long a one-shot (per-rep) problem stays red on screen. */
 const ONE_SHOT_DISPLAY_MS = 1800;
+/** How long the part of the body that made a rep not count stays highlighted after it, so the patient sees WHERE. */
+const FLAG_REGION_HOLD_MS = 3000;
 /** Tracking lost for this long mid-rep abandons the rep without counting it. */
 const DROPOUT_ABANDON_MS = 2000;
+/** A rule whose landmarks cannot be measured for this long is reported as not being checked. */
+const UNEVALUABLE_AFTER_MS = 1200;
+/** Most non-counted attempts kept per chunk. */
+const MAX_ATTEMPTS = 100;
+/** Unseen time a cycle may contain and still be called short of the range (instead of 'not seen'). */
+const PARTIAL_LOW_TOLERANCE_MS = 300;
 /** A rule that is active when its phase ends is released after this long, without an acknowledgement. */
 const OUT_OF_PHASE_GRACE_MS = 500;
 
@@ -81,9 +91,12 @@ export interface FrameResult {
 }
 
 export interface ChunkSummary {
+  /** GOOD reps: the only ones that credit the prescription. Equal to `valid` since engine v4. */
   counted: number;
   valid: number;
+  /** Attempts that reached the full range but broke a mandatory rule. NOT counted. */
   invalid: number;
+  /** Attempts that did not reach the full range. NOT counted. */
   partial: number;
   /** Best range of motion in any counted rep, display units. */
   rom: number;
@@ -95,6 +108,14 @@ export interface ChunkSummary {
   errors: Record<string, { count: number; severity: Severity }>;
   corrections: { attempted: number; succeeded: number };
   reps: RepRecord[];
+  /** Cycles that began but could not be judged (tracking lost mid-rep). Not counted, not a mistake. */
+  uncertain: number;
+  /** Every cycle that began and was not counted: short of the count line, bounced, timed out or unseen. */
+  attempts: AttemptRecord[];
+  /** Rules (UPPER_SNAKE) that had no measurable landmarks for a while, so were not checked. */
+  unevaluable: string[];
+  /** The gates actually applied this chunk (the template's, with any prescription tolerance), kept for audit. */
+  thresholds: { minRange: number; unit: "deg" | "pct"; holdMs: number | null; rangeOverridden: boolean };
 }
 
 interface RuleState {
@@ -105,6 +126,10 @@ interface RuleState {
   outOfPhaseSince: number;
   active: ActiveDeviation | null;
   direction: "low" | "high";
+  /** When the metric last became unmeasurable (-1 while it is measurable). */
+  nanSince: number;
+  /** True while the rule has been unmeasurable long enough that it is not really being checked. */
+  unevaluable: boolean;
 }
 
 interface OneShot {
@@ -114,7 +139,7 @@ interface OneShot {
   deviation: ActiveDeviation;
 }
 
-export interface EngineOptions {
+export interface EngineOptions extends EngineTolerance {
   targetReps: number;
   stabilizer?: Partial<StabilizerOptions>;
 }
@@ -122,6 +147,8 @@ export interface EngineOptions {
 export class MovementEngine {
   readonly template: MovementTemplate;
   readonly result: FrameResult;
+  /** The rep spec in force: the template's, with this patient's hold and minimum range applied. */
+  private rep: RepSpec;
 
   private readonly stab: LandmarkStabilizer;
   private readonly conf = new ConfidenceTracker();
@@ -157,19 +184,31 @@ export class MovementEngine {
   private extreme = -Infinity;
   private backMin = Infinity;
   private repStart = 0;
-  private lastCountedT = -Infinity;
+  /** When the last cycle that reached the full range ended (good or not). Debounces a double detection of one movement. */
+  private lastAttemptT = -Infinity;
   private peakEnteredT = -1;
   private peakHeldMs = 0;
   private backSince = -1;
   private reachedPeak = false;
   private inRep = false;
+  /** Time the camera could not see the movement during the current cycle. Past a small tolerance the cycle cannot be judged. */
+  private repLowMs = 0;
+  /** Mandatory rules that could not be measured during the current cycle: a rep cannot be called good while they are unchecked. */
+  private unevaluableInRep = new Set<string>();
   private touched = new Set<string>();
   private oneShots = new Map<string, OneShot>();
+  /** Rules (ids) that were raised and have not been acknowledged as fixed yet. A good rep that avoids them acknowledges them. */
+  private unresolved = new Set<string>();
+  /** The body region that made the last rep not count, kept painted for a few seconds. */
+  private flagRegion: { until: number; codes: string[] } | null = null;
   private openOneShots = new Set<string>();
 
   // chunk accounting
   private errors = new Map<string, { count: number; severity: Severity }>();
   private repRecords: RepRecord[] = [];
+  private uncertain = 0;
+  private attemptRecords: AttemptRecord[] = [];
+  private unevaluableCodes = new Set<string>();
   private romSum = 0;
   private romBest = 0;
   private confSum = 0;
@@ -181,6 +220,7 @@ export class MovementEngine {
 
   constructor(template: MovementTemplate, opts: EngineOptions) {
     this.template = template;
+    this.rep = effectiveRep(template, opts);
     this.targetReps = opts.targetReps;
     this.stab = new LandmarkStabilizer(opts.stabilizer);
     this.metrics = new MetricEvaluator(template);
@@ -195,6 +235,8 @@ export class MovementEngine {
       outOfPhaseSince: -1,
       active: null,
       direction: "low",
+      nanSince: -1,
+      unevaluable: false,
     }));
     this.result = {
       t: 0,
@@ -226,12 +268,24 @@ export class MovementEngine {
 
   // ── Public ───────────────────────────────────────────────────────────────────
 
+  /** Applies (or clears) this patient's hold and minimum range. Takes effect from the next cycle. */
+  configure(tol: EngineTolerance) {
+    this.rep = effectiveRep(this.template, tol);
+  }
+
   /** Starts a new stretch of work (next set or chunk). Keeps the camera model and baseline. */
   reset(targetReps: number) {
     this.targetReps = targetReps;
     this.counted = this.valid = this.invalid = this.partial = 0;
     this.errors.clear();
     this.repRecords = [];
+    this.uncertain = 0;
+    this.attemptRecords = [];
+    this.unevaluableCodes.clear();
+    for (const rs of this.rules) {
+      rs.nanSince = -1;
+      rs.unevaluable = false;
+    }
     this.romSum = this.romBest = 0;
     this.confSum = this.confN = 0;
     this.lowMs = this.trackedMs = 0;
@@ -240,9 +294,11 @@ export class MovementEngine {
     this.clearRules(false);
     this.oneShots.clear();
     this.openOneShots.clear();
+    this.unresolved.clear();
+    this.flagRegion = null;
     this.phase = "setup";
     this.setupSince = -1;
-    this.lastCountedT = -Infinity;
+    this.lastAttemptT = -Infinity;
   }
 
   getSummary(): ChunkSummary {
@@ -261,6 +317,15 @@ export class MovementEngine {
       errors,
       corrections: { attempted: this.attempted, succeeded: this.succeeded },
       reps: this.repRecords.slice(),
+      uncertain: this.uncertain,
+      attempts: this.attemptRecords.slice(),
+      unevaluable: [...this.unevaluableCodes],
+      thresholds: {
+        minRange: Math.round(this.rep.peakThreshold * this.scale * 100) / 100,
+        unit: this.template.rep.unit,
+        holdMs: this.rep.minPeakHoldMs ?? null,
+        rangeOverridden: this.rep.peakThreshold !== this.template.rep.peakThreshold,
+      },
     };
   }
 
@@ -388,6 +453,7 @@ export class MovementEngine {
 
   private onLowConfidence(t: number, dt: number, none = false) {
     this.lowMs += dt;
+    if (this.inRep) this.repLowMs += dt;
     if (this.lowSince < 0) this.lowSince = t;
     // Nothing is judged while the camera cannot see: freeze timers, drop pending detections.
     for (const rs of this.rules) {
@@ -395,6 +461,7 @@ export class MovementEngine {
       rs.inSince = -1;
     }
     if (this.inRep && t - this.lowSince >= DROPOUT_ABANDON_MS) {
+      this.markUncertain(t, "dropout", Math.round(t - this.repStart), 0);
       this.abortRep();
       this.setPhase(t, "setup");
       this.setupSince = -1;
@@ -406,7 +473,7 @@ export class MovementEngine {
   // ── Set-up ───────────────────────────────────────────────────────────────────
 
   private inRestZone(value: number): boolean {
-    const r = this.template.rep;
+    const r = this.rep;
     return this.sign * value <= this.sign * r.restThreshold;
   }
 
@@ -452,8 +519,43 @@ export class MovementEngine {
     this.events.push({ type: "phase_changed", t, phase, rep: this.counted });
   }
 
+  /** A cycle that could not be judged: kept as an attempt, never credited, never called a mistake. */
+  private markUncertain(t: number, reason: "dropout" | "low_visibility" | "rule_unevaluable", durationMs: number, confidence: number) {
+    const reached = this.reachedFraction();
+    this.uncertain++;
+    this.recordAttempt({ outcome: "uncertain", reason, reached, durationMs, confidence });
+    this.events.push({ type: "uncertain_rep", t, reached, reason });
+  }
+
+  /** The joint (named for the person) a rule is about, for events that name one. */
+  private jointOfCode(code: string): string {
+    const rule = this.paintable(code);
+    return rule ? this.describe(rule.landmarks[0]) : "";
+  }
+
+  /** The landmarks and bones a rule colours, whether it is a continuous rule or a per-rep rule. */
+  private paintable(code: string): { landmarks: LandmarkRef[]; bones?: [LandmarkRef, LandmarkRef][] } | null {
+    const cont = this.template.rules.find((r) => r.id === code);
+    if (cont) return cont;
+    for (const r of Object.values(this.template.repRules)) if (r && r.id === code) return r;
+    return null;
+  }
+
+  /** How far the current rep got toward its peak, 0..1. */
+  private reachedFraction(): number {
+    const r = this.rep;
+    const span = this.sign * r.peakThreshold - this.sign * r.restThreshold;
+    return span > 0 ? Math.max(0, Math.min(1, (this.extreme - this.sign * r.restThreshold) / span)) : 0;
+  }
+
+  private recordAttempt(a: AttemptRecord) {
+    if (this.attemptRecords.length < MAX_ATTEMPTS) this.attemptRecords.push(a);
+  }
+
   private abortRep() {
     this.inRep = false;
+    this.repLowMs = 0;
+    this.unevaluableInRep.clear();
     this.extreme = -Infinity;
     this.backMin = Infinity;
     this.reachedPeak = false;
@@ -464,7 +566,7 @@ export class MovementEngine {
   }
 
   private stepRep(t: number, value: number, reading: ConfidenceReading) {
-    const r = this.template.rep;
+    const r = this.rep;
     const s = this.sign;
     const u = s * value;
     const uRest = s * r.restThreshold;
@@ -532,34 +634,64 @@ export class MovementEngine {
 
   /** The movement has stopped heading out and is now heading back. */
   private turnaround(t: number, reading: ConfidenceReading) {
-    const r = this.template.rep;
+    const r = this.rep;
     this.backMin = this.sign * this.metrics.values[this.primaryIndex];
     this.backSince = t;
-    if (this.extreme < this.sign * r.peakThreshold) this.raiseOneShot(t, "range", reading, this.extreme / this.sign);
+    // Not if the camera missed part of the movement: a peak that went unseen must not be coached as 'go farther'.
+    if (this.extreme < this.sign * r.peakThreshold && this.repLowMs <= PARTIAL_LOW_TOLERANCE_MS) this.raiseOneShot(t, "range", reading, this.extreme / this.sign);
     this.setPhase(t, "back");
   }
 
   private abandon(t: number) {
+    this.recordAttempt({ outcome: "discarded", reason: "timeout", reached: this.reachedFraction(), durationMs: Math.round(t - this.repStart), confidence: 0 });
     this.abortRep();
     this.setPhase(t, "setup");
     this.setupSince = -1;
   }
 
+  /**
+   * A cycle has returned to rest. Since engine v4 the rule is strict:
+   *
+   *   GOOD (credited)     reached the full range (`peakThreshold`) and broke no mandatory rule
+   *   NOT COUNTED invalid reached the full range but broke a mandatory rule
+   *   NOT COUNTED partial moved clearly out but did not reach the full range (the old `countThreshold` no longer credits)
+   *
+   * Only a good rep adds to `counted`, which is what credits the prescription. Everything else is recorded as an attempt.
+   */
   private finishRep(t: number, reading: ConfidenceReading) {
-    const r = this.template.rep;
+    const r = this.rep;
+    const conf = Math.round(reading.score * 100) / 100;
     const durationMs = t - this.repStart;
     const extremeRaw = this.extreme / this.sign;
     const romValue = Math.max(0, this.extreme - this.restMinU) * this.scale;
-    const reachedCount = this.extreme >= this.sign * r.countThreshold;
-    const gapOk = t - this.lastCountedT >= r.debounceMs;
+    const reachedFullRange = this.extreme >= this.sign * r.peakThreshold;
+    const movedOut = this.extreme >= this.sign * r.leaveThreshold + r.returnDrop;
+    const gapOk = t - this.lastAttemptT >= r.debounceMs;
 
-    if (!reachedCount || !gapOk) {
-      if (!reachedCount && this.extreme >= this.sign * r.leaveThreshold + r.returnDrop) {
+    // The camera could not see enough of this cycle to judge it: it is neither good nor wrong, and the person is not blamed.
+    // A cycle that looks good tolerates some unseen time; one that fell short tolerates far less, so a peak the camera
+    // missed is never blamed on the person.
+    const lowTolerance = reachedFullRange ? (this.template.validity.lowToleranceMs ?? 1000) : Math.min(this.template.validity.lowToleranceMs ?? 1000, PARTIAL_LOW_TOLERANCE_MS);
+    if ((movedOut || reachedFullRange) && this.repLowMs > lowTolerance) {
+      this.markUncertain(t, "low_visibility", Math.round(durationMs), conf);
+      this.abortRep();
+      this.enterRest(t);
+      return;
+    }
+
+    if (!reachedFullRange || !gapOk) {
+      if (!reachedFullRange && movedOut) {
         this.partial++;
-        const span = this.sign * r.peakThreshold - this.sign * r.restThreshold;
-        const reached = span > 0 ? Math.max(0, Math.min(1, (this.extreme - this.sign * r.restThreshold) / span)) : 0;
+        const reached = this.reachedFraction();
+        const almost = this.extreme >= this.sign * r.countThreshold;
+        this.recordAttempt({ outcome: "partial", reason: "short_range", reached, durationMs: Math.round(durationMs), confidence: conf });
         this.raiseOneShot(t, "range", reading, extremeRaw);
-        this.events.push({ type: "partial_rep", t, reached });
+        this.flagRegion = { until: t + FLAG_REGION_HOLD_MS, codes: [this.template.repRules.range.id] };
+        for (const code of this.touched) this.bumpError(code);
+        this.events.push({ type: "partial_rep", t, reached, almost });
+      } else if (reachedFullRange) {
+        // Reached the full range too soon after the last cycle: one movement detected twice, not a new rep.
+        this.recordAttempt({ outcome: "discarded", reason: "debounce", reached: this.reachedFraction(), durationMs: Math.round(durationMs), confidence: conf });
       }
       this.abortRep();
       this.enterRest(t);
@@ -568,12 +700,7 @@ export class MovementEngine {
 
     // Per-rep rules that are only known now.
     const reasons: string[] = [];
-    if (!this.reachedPeak && this.repRulesOf("range")) {
-      this.touched.add(this.template.repRules.range.id);
-      if (this.template.repRules.range.invalidatesRep) reasons.push(this.template.repRules.range.id);
-    } else if (this.openOneShots.has("range")) {
-      this.acknowledge(t, "range");
-    }
+    if (this.openOneShots.has("range")) this.acknowledge(t, "range");
     if (durationMs < r.minRepMs && this.template.repRules.tooFast) {
       this.raiseOneShot(t, "tooFast", reading, durationMs / 1000);
       if (this.template.repRules.tooFast.invalidatesRep) reasons.push(this.template.repRules.tooFast.id);
@@ -582,35 +709,74 @@ export class MovementEngine {
       this.raiseOneShot(t, "tooSlow", reading, durationMs / 1000);
       if (this.template.repRules.tooSlow.invalidatesRep) reasons.push(this.template.repRules.tooSlow.id);
     } else if (this.openOneShots.has("tooSlow")) this.acknowledge(t, "tooSlow");
-    if (r.minPeakHoldMs && this.reachedPeak && this.peakHeldMs < r.minPeakHoldMs && this.template.repRules.shortHold) {
-      this.raiseOneShot(t, "shortHold", reading, this.peakHeldMs / 1000);
-      if (this.template.repRules.shortHold.invalidatesRep) reasons.push(this.template.repRules.shortHold.id);
+    // MANDATORY tempo floor: a cycle this fast was flicked through, not performed.
+    const floor = this.template.validity.tempoFloorMs;
+    if (floor > 0 && durationMs < floor) {
+      const id = this.template.repRules.tooFast?.id ?? "too_fast";
+      if (!reasons.includes(id)) reasons.push(id);
+    }
+    // MANDATORY hold when one is required (the template's, or the prescription's), with a small tolerance.
+    const holdTolerance = this.template.validity.holdTolerance ?? 0.8;
+    if (r.minPeakHoldMs && this.peakHeldMs < r.minPeakHoldMs * holdTolerance) {
+      if (this.template.repRules.shortHold) this.raiseOneShot(t, "shortHold", reading, this.peakHeldMs / 1000);
+      const id = this.template.repRules.shortHold?.id ?? "short_hold";
+      if (!reasons.includes(id)) reasons.push(id);
     } else if (this.openOneShots.has("shortHold")) this.acknowledge(t, "shortHold");
     if (this.openOneShots.has("incompleteReturn")) this.acknowledge(t, "incompleteReturn");
 
     for (const rs of this.rules) if (rs.active) this.touched.add(rs.rule.id);
     for (const rs of this.rules) if (this.touched.has(rs.rule.id) && rs.rule.invalidatesRep && !reasons.includes(rs.rule.id)) reasons.push(rs.rule.id);
 
-    const valid = reasons.length === 0;
-    this.counted++;
-    if (valid) this.valid++;
-    else this.invalid++;
-    this.lastCountedT = t;
-    this.romSum += romValue;
-    this.romBest = Math.max(this.romBest, romValue);
+    // A rep cannot be called good while a mandatory rule could not be checked: it is uncertain, not valid.
+    if (reasons.length === 0) {
+      const unchecked = new Set(this.unevaluableInRep);
+      for (const rs of this.rules) if (rs.unevaluable && rs.rule.invalidatesRep) unchecked.add(rs.rule.id);
+      if (unchecked.size > 0) {
+        this.markUncertain(t, "rule_unevaluable", Math.round(durationMs), conf);
+        this.abortRep();
+        this.enterRest(t);
+        return;
+      }
+    }
 
+    const valid = reasons.length === 0;
+    this.lastAttemptT = t;
     const errors = [...this.touched];
     for (const code of errors) this.bumpError(code);
-    this.repRecords.push({
-      n: this.counted,
-      valid,
-      reasons: reasons.map((c) => c.toUpperCase()),
-      errors: errors.map((c) => c.toUpperCase()),
-      rom: Math.round(romValue),
-      durationMs: Math.round(durationMs),
-      confidence: Math.round(reading.score * 100) / 100,
-    });
-    this.events.push({ type: "rep_completed", t, rep: this.counted, valid, reasons: reasons.slice(), rom: Math.round(romValue), durationMs: Math.round(durationMs), confidence: reading.score });
+
+    // Internal only: it picks the wording for a good rep, and is never shown as a grade.
+    const quality: "excellent" | "good" = reading.level === "HIGH" && errors.length === 0 ? "excellent" : "good";
+    if (valid) {
+      // The loop closes here: a good rep that avoids what was flagged is the proof it was fixed.
+      for (const code of [...this.unresolved]) {
+        if (this.touched.has(code) || this.rules.some((rs) => rs.rule.id === code && rs.active) || this.openOneShots.has(code)) continue;
+        this.unresolved.delete(code);
+        this.succeeded++;
+        this.events.push({ type: "movement_corrected", t, error: code, joint: this.jointOfCode(code), afterMs: 0, rep: this.counted + 1 });
+      }
+      this.flagRegion = null;
+      this.counted++;
+      this.valid++;
+      this.romSum += romValue;
+      this.romBest = Math.max(this.romBest, romValue);
+      this.repRecords.push({
+        n: this.counted,
+        outcome: "valid",
+        valid: true,
+        quality,
+        reasons: [],
+        errors: errors.map((c) => c.toUpperCase()),
+        rom: Math.round(romValue),
+        durationMs: Math.round(durationMs),
+        confidence: conf,
+      });
+      this.events.push({ type: "rep_completed", t, rep: this.counted, valid: true, reasons: [], rom: Math.round(romValue), durationMs: Math.round(durationMs), confidence: reading.score, quality });
+    } else {
+      this.invalid++;
+      this.flagRegion = { until: t + FLAG_REGION_HOLD_MS, codes: reasons.slice() };
+      this.recordAttempt({ outcome: "invalid", reason: "rule_broken", reached: 1, durationMs: Math.round(durationMs), confidence: conf, reasons: reasons.map((c) => c.toUpperCase()), rom: Math.round(romValue) });
+      this.events.push({ type: "rep_not_counted", t, rep: this.counted, reasons: reasons.slice(), rom: Math.round(romValue), durationMs: Math.round(durationMs), confidence: reading.score });
+    }
     this.abortRep();
     this.enterRest(t);
   }
@@ -646,7 +812,7 @@ export class MovementEngine {
     const rule = this.template.repRules[key];
     if (!rule) return;
     const existing = this.oneShots.get(key);
-    const r = this.template.rep;
+    const r = this.rep;
     const expected = key === "range" ? r.peakThreshold : key === "tooFast" ? r.minRepMs / 1000 : key === "tooSlow" ? (r.maxRepMs ?? 0) / 1000 : key === "shortHold" ? (r.minPeakHoldMs ?? 0) / 1000 : r.restThreshold;
     const direction: "low" | "high" = key === "range" ? (this.sign === 1 ? "low" : "high") : key === "tooSlow" || key === "incompleteReturn" ? "high" : "low";
     if (existing) {
@@ -657,6 +823,7 @@ export class MovementEngine {
     const deviation: ActiveDeviation = { error: rule.id.toUpperCase(), joint: this.describe(rule.landmarks[0]), severity: rule.severity, direction, measured: measured * (key === "range" ? this.scale : 1), expected: expected * (key === "range" ? this.scale : 1), sinceMs: t };
     this.oneShots.set(key, { id: key, rule, until: t + ONE_SHOT_DISPLAY_MS, deviation });
     this.openOneShots.add(key);
+    this.unresolved.add(rule.id);
     this.attempted++;
     this.touched.add(rule.id);
     this.events.push({
@@ -680,6 +847,7 @@ export class MovementEngine {
     const rule = (this.template.repRules as unknown as Record<string, { id: string; landmarks: LandmarkRef[] } | undefined>)[key];
     this.openOneShots.delete(key);
     if (!rule) return;
+    this.unresolved.delete(rule.id);
     this.succeeded++;
     this.events.push({ type: "movement_corrected", t, error: rule.id, joint: this.describe(rule.landmarks[0]), afterMs: 0, rep: this.counted + 1 });
   }
@@ -697,6 +865,8 @@ export class MovementEngine {
       }
       rs.active = null;
       rs.outSince = rs.inSince = rs.outOfPhaseSince = -1;
+      rs.nanSince = -1;
+      rs.unevaluable = false;
     }
     this.result.active.length = 0;
   }
@@ -711,6 +881,8 @@ export class MovementEngine {
       const inPhase = rule.phases.includes(this.phase);
       if (!inPhase) {
         rs.outSince = -1;
+        rs.nanSince = -1;
+        rs.unevaluable = false;
         if (rs.active) {
           if (rs.outOfPhaseSince < 0) rs.outOfPhaseSince = t;
           if (t - rs.outOfPhaseSince >= OUT_OF_PHASE_GRACE_MS) this.deactivate(rs, t, false);
@@ -719,7 +891,19 @@ export class MovementEngine {
       }
       rs.outOfPhaseSince = -1;
       const v = this.metrics.values[rs.metricIndex];
-      if (!Number.isFinite(v)) continue;
+      if (!Number.isFinite(v)) {
+        // The landmarks this rule needs cannot be measured: it is not being checked. Say so rather than pass silently.
+        if (rs.nanSince < 0) rs.nanSince = t;
+        if (!rs.unevaluable && t - rs.nanSince >= UNEVALUABLE_AFTER_MS) {
+          rs.unevaluable = true;
+          this.unevaluableCodes.add(rule.id.toUpperCase());
+          if (this.inRep && rule.invalidatesRep) this.unevaluableInRep.add(rule.id);
+          this.events.push({ type: "rule_unevaluable", t, rule: rule.id });
+        }
+        continue;
+      }
+      rs.nanSince = -1;
+      rs.unevaluable = false;
 
       const wasActive = rs.active !== null;
       const lowTrip = rule.min !== undefined && v < (wasActive && rs.direction === "low" ? rule.min + rule.release : rule.min);
@@ -753,6 +937,7 @@ export class MovementEngine {
     rs.active = dev;
     rs.inSince = -1;
     this.result.active.push(dev);
+    this.unresolved.add(rule.id);
     this.attempted++;
     if (this.inRep) this.touched.add(rule.id);
     else this.bumpError(rule.id);
@@ -781,6 +966,7 @@ export class MovementEngine {
     const i = this.result.active.indexOf(dev);
     if (i >= 0) this.result.active.splice(i, 1);
     if (corrected) {
+      this.unresolved.delete(rs.rule.id);
       this.succeeded++;
       this.events.push({ type: "movement_corrected", t, error: rs.rule.id, joint: dev.joint, afterMs: t - dev.sinceMs, rep: this.counted + (this.inRep ? 1 : 0) });
     }
@@ -811,6 +997,8 @@ export class MovementEngine {
       for (const i of reading.cutOff) uncertain.add(i);
     }
     for (const i of this.relevant) joints[i] = uncertain.has(i) ? JOINT_UNCERTAIN : JOINT_OK;
+    // A rule that cannot be measured is not being checked, so its joints are yellow, never a quiet green.
+    for (const rs of this.rules) if (rs.unevaluable) for (const ref of rs.rule.landmarks) joints[resolveRef(ref, this.side)] = JOINT_UNCERTAIN;
 
     if (res.confidence !== "LOW") {
       const paint = (rule: { landmarks: LandmarkRef[]; bones?: [LandmarkRef, LandmarkRef][] }) => {
@@ -822,6 +1010,13 @@ export class MovementEngine {
       };
       for (const rs of this.rules) if (rs.active) paint(rs.rule);
       for (const o of this.oneShots.values()) paint(o.rule);
+      // The part of the body that made the last rep not count stays marked for a few seconds, even after the rule has released.
+      if (this.flagRegion && res.t < this.flagRegion.until) {
+        for (const code of this.flagRegion.codes) {
+          const rule = this.paintable(code);
+          if (rule) paint(rule);
+        }
+      } else if (this.flagRegion) this.flagRegion = null;
     }
     return res;
   }

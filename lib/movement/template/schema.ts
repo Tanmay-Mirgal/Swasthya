@@ -56,9 +56,12 @@ export interface Condition {
  * from rest toward peak, so a curl (angle decreases) and an extension (angle increases)
  * share one state machine.
  *
- * A cycle that reaches `countThreshold` is COUNTED (it credits the prescription). It is
- * VALID only if it also reaches `peakThreshold`, is not too fast, and raises no rule that
- * invalidates a rep. A cycle that never reaches `countThreshold` is a partial attempt.
+ * Since engine v4 a rep is GOOD (credited) only if it reaches `peakThreshold` (the minimum range),
+ * returns to rest, holds if a hold is required, is not faster than the tempo floor, was seen
+ * well enough to judge, and raises no rule that invalidates a rep. A cycle that moves clearly out
+ * but never reaches `peakThreshold` is a partial attempt; one that reaches it but breaks a
+ * mandatory rule is invalid. Neither is counted. `countThreshold` no longer credits anything: it
+ * only marks the "almost there" band, so the wording can say "a little farther".
  */
 export interface RepSpec {
   metric: string;
@@ -88,19 +91,24 @@ export interface RepSpec {
 
 /** Wording for one kind of deviation. `texts` escalate: first mention, repeat, persistent. */
 export interface RuleMessage {
-  /** At least three. Each says WHAT is wrong, WHERE, and HOW to fix it. */
+  /**
+   * What is SHOWN on screen, read from across a room: at most 24 characters, five words, one instruction
+   * ("Straighten your knee more"). The full sentences in `texts` are what is spoken and captioned.
+   */
+  show: string;
+  /** At least three. Each says WHAT is wrong, WHERE, and HOW to fix it. Spoken and captioned. */
   texts: [string, string, string, ...string[]];
   /** Plain observation handed to the language model as a fact, never a measurement. */
   observation: string;
 }
 
-interface RuleBase {
+export interface RuleBase {
   /** Error code. snake_case; stored upper-snake in session data. */
   id: string;
   /** Short name for therapist-facing summaries. */
   label: string;
   severity: Severity;
-  /** When raised during a rep, the rep is counted but marked invalid. */
+  /** MANDATORY when true: raised during a rep, the rep is NOT counted. When false the rule only coaches. */
   invalidatesRep: boolean;
   /** Joints turned RED while the rule is active. */
   landmarks: LandmarkRef[];
@@ -135,6 +143,35 @@ export interface RepRules {
   tooSlow?: RuleBase;
   incompleteReturn?: RuleBase;
   shortHold?: RuleBase;
+}
+
+// ── Validity ───────────────────────────────────────────────────────────────────
+
+export type ThresholdSource = "engineering-default" | "physio-reviewed";
+
+/**
+ * What makes a rep GOOD, beyond the rep spec and the rules, in one place a physiotherapist can review.
+ * Every threshold of this exercise is explained in `rationale`, and `source` says whether a physiotherapist has
+ * signed it off. Nothing here is clinical advice until `source` is "physio-reviewed".
+ */
+export interface TemplateValidity {
+  /**
+   * MANDATORY tempo floor, in ms for a whole cycle. A cycle faster than this was flicked through, not performed, and
+   * is NOT counted. It must be below `rep.minRepMs`, which only coaches ("slow down").
+   */
+  tempoFloorMs: number;
+  /** Share of a required hold that must be met (the template's `minPeakHoldMs` or the prescription's hold). Default 0.8. */
+  holdTolerance?: number;
+  /** Time the camera may be unable to see the movement during one cycle before it cannot be judged. Default 1000 ms (300 ms when the rep fell short). */
+  lowToleranceMs?: number;
+  /**
+   * One sentence per group of thresholds saying why they are what they are. Required keys: `minRange`, `almostBand`,
+   * `setup`, `tempoFloor`, `hold`, `return`, `visibility`, plus one per continuous rule id.
+   */
+  rationale: Record<string, string>;
+  source: ThresholdSource;
+  reviewedBy?: string;
+  reviewedAt?: string;
 }
 
 // ── Template ───────────────────────────────────────────────────────────────────
@@ -188,6 +225,7 @@ export interface MovementTemplate {
   rep: RepSpec;
   repRules: RepRules;
   rules: ContinuousRule[];
+  validity: TemplateValidity;
 
   /** Joints shown in the status strip, in order, with their label. */
   statusJoints: { label: string; ref: LandmarkRef }[];

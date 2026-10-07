@@ -250,7 +250,9 @@ test("praise is occasional: a good rep three speaks, others stay quiet, and neve
   const inputs: CoachInput[] = [];
   for (let n = 1; n <= 6; n++) inputs.push(rep(8000 * n, n));
   const { effects } = drive(inputs);
-  assert.equal(spoken(effects).length, 2);
+  // "Great start." on the first good rep, then the occasional nod on reps three and six; reps two, four and five stay quiet.
+  assert.equal(spoken(effects).length, 3);
+  assert.equal(spoken(effects)[0], "Great start.");
 
   const blocked = drive([err(1000), rep(2000, 3)]);
   assert.ok(!spoken(blocked.effects).some((t) => /nice rep|control|smooth/i.test(t)));

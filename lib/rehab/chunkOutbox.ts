@@ -21,6 +21,8 @@ export interface OutboxChunk extends ChunkQuality {
   rom?: number;
   formScore?: number;
   issues?: Record<string, number>;
+  /** The patient chose "Finish for today" after several attempts did not count. */
+  finishedEarly?: { reason: "not_counted" };
   /** Local calendar day it was done; a chunk from a past day is dropped rather than credited to today. */
   day: string;
 }

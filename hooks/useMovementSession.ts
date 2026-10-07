@@ -16,13 +16,13 @@
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 import { FilesetResolver, HandLandmarker, PoseLandmarker } from "@mediapipe/tasks-vision";
-import { MovementEngine, type ChunkSummary } from "@/lib/movement/judge/engine";
+import { MovementEngine, type ChunkSummary, type FrameResult } from "@/lib/movement/judge/engine";
 import { createCoachState, reduceCoach, type CoachEffect, type CoachInput, type CoachState, type Observation } from "@/lib/movement/coach/coachState";
 import { buildMovementUi, initialUi, uiSignature, type MovementUi } from "@/lib/movement/ui/movementUi";
 import { requestCoachCue } from "@/lib/movement/coach/llm";
 import { HAND_MODEL_PATH, MEDIAPIPE_WASM_BASE, POSE_MODEL_PATH } from "@/lib/movement/runtime/mediapipe";
 import type { MovementTemplate } from "@/lib/movement/template/schema";
-import type { MovementEvent } from "@/lib/movement/types";
+import { JOINT_ERROR, JOINT_OK, type MovementEvent } from "@/lib/movement/types";
 import { drawOverlay } from "@/components/movement/overlay";
 import VoiceService from "@/services/voice/voiceService";
 
@@ -41,6 +41,13 @@ export interface UseMovementSessionOptions {
   /** Called once when the target number of reps has been counted. */
   onDone?: () => void;
   onRepCompleted?: (e: Extract<MovementEvent, { type: "rep_completed" }>) => void;
+  /** Every line the coach would say, whether or not the voice is on, so captions can show it. */
+  onSpoken?: (text: string) => void;
+  /**
+   * While `paused`, keep the camera view alive: the skeleton, "can I see you" and framing advice still update, so the camera check,
+   * the countdown, a pause and a rest all show the person as they are. Nothing is judged or counted and the coach hears nothing.
+   */
+  observe?: boolean;
 }
 
 export type { MovementUi, JointStatus } from "@/lib/movement/ui/movementUi";
@@ -81,6 +88,11 @@ export function useMovementSession(opts: UseMovementSessionOptions) {
   const lastRepMsRef = useRef(0);
   const repFlagsRef = useRef<boolean[]>([]);
   const pausedRef = useRef(false);
+  // Observe-only: a second engine of the same template that only answers "is anyone there, and can I see them" while not judging.
+  // Its events are dropped and it never touches the judging engine, the coach or any count.
+  const watcherRef = useRef<MovementEngine | null>(null);
+  const watchedRef = useRef<FrameResult | null>(null);
+  const calmJointsRef = useRef(new Uint8Array(33));
   // Development aid: ?landmarkDebug=1 overlays coordinates and sizes. Off unless asked for.
   const debugRef = useRef(false);
   useEffect(() => {
@@ -93,7 +105,12 @@ export function useMovementSession(opts: UseMovementSessionOptions) {
     const engine = engineRef.current;
     const coach = coachRef.current;
     if (!engine || !coach) return;
-    const next = buildMovementUi(engine.result, coach, optsRef.current.template, {
+    // While observing (not judging), tracking, confidence, framing advice and the joints come from the watcher; counts and phase stay the engine's.
+    const w = pausedRef.current && optsRef.current.observe ? watchedRef.current : null;
+    const frame: FrameResult = w
+      ? { ...engine.result, tracking: w.tracking, confidence: w.confidence, confidenceScore: w.confidenceScore, advice: w.advice, setupProgress: w.setupProgress, side: w.side, joints: w.joints, raw: w.raw, vis: w.vis }
+      : engine.result;
+    const next = buildMovementUi(frame, coach, optsRef.current.template, {
       status: statusRef.current,
       rom: bestRomRef.current,
       lastRepMs: lastRepMsRef.current,
@@ -119,6 +136,7 @@ export function useMovementSession(opts: UseMovementSessionOptions) {
 
       function runEffect(fx: CoachEffect) {
         if (fx.kind === "speak") {
+          optsRef.current.onSpoken?.(fx.text);
           if (optsRef.current.voiceEnabled !== false) VoiceService.speak(fx.text, { interrupt: fx.interrupt });
         } else if (fx.kind === "stop_speech") {
           VoiceService.stop();
@@ -243,7 +261,24 @@ export function useMovementSession(opts: UseMovementSessionOptions) {
           }
           const ctx = canvas.getContext("2d");
           if (pausedRef.current) {
-            ctx?.clearRect(0, 0, canvas.width, canvas.height);
+            const watcher = watcherRef.current;
+            if (optsRef.current.observe && watcher) {
+              const res = landmarker.detectForVideo(v, now);
+              const seen = watcher.process({
+                t: now,
+                image: res.landmarks && res.landmarks.length ? res.landmarks[0] : null,
+                world: res.worldLandmarks && res.worldLandmarks.length ? res.worldLandmarks[0] : null,
+                aspect: v.videoWidth / Math.max(1, v.videoHeight),
+              });
+              // A watched person is never shown as "wrong": nothing is being judged, so any red becomes plain green.
+              const calm = calmJointsRef.current;
+              for (let i = 0; i < 33; i++) calm[i] = seen.joints[i] === JOINT_ERROR ? JOINT_OK : seen.joints[i];
+              watchedRef.current = { ...seen, joints: calm, redSegments: [] };
+              if (ctx) drawOverlay(ctx, watchedRef.current, canvas.width, canvas.height);
+            } else {
+              watchedRef.current = null;
+              ctx?.clearRect(0, 0, canvas.width, canvas.height);
+            }
           } else {
             const hl = handLandmarkerRef.current;
             if (hl && ++handFrameRef.current % 3 === 0) {
@@ -318,7 +353,9 @@ export function useMovementSession(opts: UseMovementSessionOptions) {
   useEffect(() => {
     const o = optsRef.current;
     engineRef.current = new MovementEngine(o.template, { targetReps: o.targetReps });
-    coachRef.current = createCoachState(o.template, { set: o.set ?? 1 });
+    watcherRef.current = new MovementEngine(o.template, { targetReps: 1 });
+    watchedRef.current = null;
+    coachRef.current = { ...createCoachState(o.template, { set: o.set ?? 1 }), chunkTarget: o.targetReps };
     observationsRef.current = [];
     doneFiredRef.current = false;
     bestRomRef.current = 0;
@@ -336,20 +373,25 @@ export function useMovementSession(opts: UseMovementSessionOptions) {
     dispatch({ type: "paused", t: performance.now(), paused: Boolean(opts.paused) });
   }, [opts.paused, dispatch]);
 
-  /** Starts a fresh stretch of work (next set, or the next chunk of a set). Camera and model keep running. */
+  /** Starts a fresh stretch of work (next set, or the next chunk of a set). Camera and model keep running. `repsBefore` = reps of this set already saved. */
   const reset = useCallback(
-    (targetReps: number, set?: number) => {
+    (targetReps: number, set?: number, repsBefore = 0) => {
       engineRef.current?.reset(targetReps);
       doneFiredRef.current = false;
       bestRomRef.current = 0;
       lastRepMsRef.current = 0;
       repFlagsRef.current = [];
       observationsRef.current = [];
-      dispatch({ type: "set_started", t: performance.now(), set: set ?? optsRef.current.set ?? 1 });
+      dispatch({ type: "set_started", t: performance.now(), set: set ?? optsRef.current.set ?? 1, targetReps, repsBefore });
       syncUi(true);
     },
     [dispatch, syncUi]
   );
+
+  /** Applies this patient's hold and accepted range (from the prescription) to the engine. Does not touch the frame loop. */
+  const configure = useCallback((tol: { holdMs?: number | null; minRange?: number | null }) => {
+    engineRef.current?.configure(tol);
+  }, []);
 
   /** The chunk's measurements so far: counted / valid / invalid reps, errors, corrections, confidence. */
   const getSummary = useCallback((): (ChunkSummary & { observations: Observation[] }) | null => {
@@ -360,5 +402,5 @@ export function useMovementSession(opts: UseMovementSessionOptions) {
   /** Tells the coach a set finished (praise), without touching the engine. */
   const announceSetComplete = useCallback(() => dispatch({ type: "set_complete", t: performance.now() }), [dispatch]);
 
-  return { videoRef, canvasRef, ui, error, start, stop, reset, getSummary, announceSetComplete };
+  return { videoRef, canvasRef, ui, error, start, stop, reset, configure, getSummary, announceSetComplete };
 }

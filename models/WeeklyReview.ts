@@ -30,7 +30,8 @@ export interface IWeeklyReportExercise {
 }
 
 /** What the report's form score is measured against. Scores on different bases are never compared. */
-export type FormBasis = "engine2" | "legacy";
+/** engine2 = share of counted reps that were valid; engine4 = share of ALL attempts that were good reps; legacy = pace-based. Never compared with each other. */
+export type FormBasis = "engine2" | "engine4" | "legacy";
 
 export interface IWeeklyReport {
   generatedAt: Date;

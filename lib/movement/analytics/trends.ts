@@ -6,7 +6,7 @@
  * range but are never given a form score. Nothing here interprets a trend: it reports
  * what the numbers did.
  */
-import { correctionRateOf, formAccuracyOf } from "@/lib/rehab/chunkQuality";
+import { correctionRateOf, creditsGoodRepsOnly, formShareOf } from "@/lib/rehab/chunkQuality";
 
 export interface TrendInput {
   id: string;
@@ -19,6 +19,8 @@ export interface TrendInput {
   rom: number;
   unit?: "deg" | "pct";
   judged: boolean;
+  /** Engine version behind the numbers. From v4 the share counts every attempt, so v4 and older shares are never compared. */
+  engineVersion?: number;
   validReps?: number;
   invalidReps?: number;
   partialReps?: number;
@@ -80,7 +82,7 @@ export function buildTrends(sessions: TrendInput[], opts: { now?: Date; lastSess
       id: s.id,
       date: s.date,
       completionPercent: s.targetReps > 0 ? Math.round((100 * s.completedReps) / s.targetReps) : 0,
-      validShare: s.judged ? formAccuracyOf(s.validReps, s.invalidReps) : undefined,
+      validShare: s.judged ? formShareOf(s) : undefined,
       rom: s.rom > 0 ? Math.round(s.rom) : undefined,
       correctionRate: s.judged ? correctionRateOf(s.correctionAttempts, s.correctionsSucceeded) : undefined,
       avgConfidence: s.judged ? s.avgConfidence : undefined,
@@ -89,8 +91,11 @@ export function buildTrends(sessions: TrendInput[], opts: { now?: Date; lastSess
     }));
 
     const judged = recent.filter((s) => s.judged);
-    const shares = points.filter((p) => p.validShare !== undefined);
-    const validShareChange = shares.length >= 2 ? (shares[shares.length - 1].validShare as number) - (shares[0].validShare as number) : undefined;
+    // The share means something different from engine v4 (every attempt counts in the denominator), so only sessions on the
+    // same basis as the latest one are compared with each other.
+    const latestBasis = creditsGoodRepsOnly(recent[recent.length - 1]?.engineVersion);
+    const shares = recent.map((s, i) => ({ share: points[i].validShare, basis: creditsGoodRepsOnly(s.engineVersion) })).filter((x) => x.share !== undefined && x.basis === latestBasis);
+    const validShareChange = shares.length >= 2 ? (shares[shares.length - 1].share as number) - (shares[0].share as number) : undefined;
 
     const seen = new Map<string, RepeatedError>();
     for (const s of judged) {

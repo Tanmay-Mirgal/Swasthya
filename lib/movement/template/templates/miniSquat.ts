@@ -93,6 +93,7 @@ export const miniSquat: MovementTemplate = {
       invalidatesRep: true,
       landmarks: [{ joint: "knee", side: "left" }, { joint: "knee", side: "right" }],
       low: {
+        show: "Bend your knees more",
         observation: "the knees did not bend as far as the target depth",
         texts: [
           "Bend your knees a little further, pushing your hips back.",
@@ -109,6 +110,7 @@ export const miniSquat: MovementTemplate = {
       invalidatesRep: false,
       landmarks: [{ joint: "knee", side: "left" }, { joint: "knee", side: "right" }],
       low: {
+        show: "Slow down",
         observation: "the squat was quicker than the controlled pace",
         texts: [
           "Slow down. Lower your hips over about two seconds.",
@@ -118,6 +120,23 @@ export const miniSquat: MovementTemplate = {
       },
       ack: "Nice, that was a controlled pace.",
     },
+    shortHold: {
+      id: "short_hold",
+      label: "Did not hold at the top",
+      severity: "minor",
+      invalidatesRep: true,
+      landmarks: [{ joint: "knee", side: "left" }, { joint: "knee", side: "right" }],
+      low: {
+        show: "Hold a little longer",
+        observation: "there was no pause at the top of the movement",
+        texts: [
+          "Hold your knees bent at the bottom for a moment.",
+          "Pause at the bottom and count to two before standing. Keep your knees steady.",
+          "Hold your body steady at the bottom for the time your therapist set.",
+        ],
+      },
+      ack: "Good, that was a steady hold.",
+    },
     incompleteReturn: {
       id: "incomplete_return",
       label: "Did not stand fully",
@@ -125,6 +144,7 @@ export const miniSquat: MovementTemplate = {
       invalidatesRep: false,
       landmarks: [{ joint: "hip", side: "left" }, { joint: "hip", side: "right" }],
       high: {
+        show: "Stand all the way up",
         observation: "the person did not stand all the way back up before the next squat",
         texts: [
           "Stand all the way up, with your hips and knees straight, before the next squat.",
@@ -150,6 +170,7 @@ export const miniSquat: MovementTemplate = {
       landmarks: [{ joint: "knee", side: "left" }],
       bones: [[{ joint: "hip", side: "left" }, { joint: "knee", side: "left" }], [{ joint: "knee", side: "left" }, { joint: "ankle", side: "left" }]],
       high: {
+        show: "Keep your left knee out",
         observation: "the left knee is drifting toward the middle of the body",
         texts: [
           "Your left knee is drifting inward. Keep it in line with your left foot.",
@@ -174,6 +195,7 @@ export const miniSquat: MovementTemplate = {
       landmarks: [{ joint: "knee", side: "right" }],
       bones: [[{ joint: "hip", side: "right" }, { joint: "knee", side: "right" }], [{ joint: "knee", side: "right" }, { joint: "ankle", side: "right" }]],
       high: {
+        show: "Keep your right knee out",
         observation: "the right knee is drifting toward the middle of the body",
         texts: [
           "Your right knee is drifting inward. Keep it in line with your right foot.",
@@ -184,6 +206,23 @@ export const miniSquat: MovementTemplate = {
       ack: "Good correction, your right knee is lined up.",
     },
   ],
+  validity: {
+    tempoFloorMs: 1100,
+    holdTolerance: 0.8,
+    lowToleranceMs: 1000,
+    rationale: {
+      minRange: "A good rep is one where the thigh-to-shin depth ratio drops by 18% from standing (a shallow squat). Engineering default, not tuned on real footage.",
+      almostBand: "The old halfway-credit line is now only the 'almost there' band, so the wording can say a little farther. That line is at 12%: past it the squat is nearly deep enough.",
+      setup: "The starting position is held for about a second so the person's own resting position is captured before any rep is judged.",
+      tempoFloor: "A whole cycle faster than 1.1 seconds is flicked through, not performed. This is half of the coaching pace and the only new mandatory tempo rule.",
+      hold: "A hold is mandatory only when one is required: the template's own, or the hold the therapist prescribed, with 20% tolerance so a slight early release is not punished.",
+      return: "A rep ends only when the movement returns to the starting zone, so a return is always required; a very slow return is coached, not rejected.",
+      visibility: "If the camera cannot see the movement for more than a second of a cycle (a third of a second when the rep fell short, so a missed peak is never blamed on the person), or cannot check a mandatory rule, the cycle is 'not seen', never wrong.",
+      knee_inward_left: "A knee drifting toward the middle is a common alignment fault in squats; 0.25 hip-widths is clearly visible from the front.",
+      knee_inward_right: "As for the left knee.",
+    },
+    source: "engineering-default",
+  },
   statusJoints: [
     { label: "Left hip", ref: { joint: "hip", side: "left" } },
     { label: "Left knee", ref: { joint: "knee", side: "left" } },

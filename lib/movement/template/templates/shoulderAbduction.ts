@@ -33,8 +33,9 @@ export const shoulderAbduction: MovementTemplate = {
   },
   sideMode: "auto",
   landmarks: {
-    required: [{ joint: "shoulder" }, { joint: "elbow" }, { joint: "wrist" }],
-    optional: [{ joint: "hip" }, { joint: "ear" }],
+    // The ear and hip are required because "shoulder shrug" and "trunk lean" are mandatory rules that measure them.
+    required: [{ joint: "shoulder" }, { joint: "elbow" }, { joint: "wrist" }, { joint: "ear" }, { joint: "hip" }],
+    optional: [],
   },
   metrics: {
     arm: { kind: "fromVertical", a: { joint: "shoulder" }, b: { joint: "elbow" } },
@@ -79,6 +80,7 @@ export const shoulderAbduction: MovementTemplate = {
       landmarks: [{ joint: "elbow" }, { joint: "wrist" }],
       bones: [[{ joint: "shoulder" }, { joint: "elbow" }]],
       low: {
+        show: "Lift your arm higher",
         observation: "the arm stopped below the target height",
         texts: [
           "Lift your arm a little higher, up toward shoulder height.",
@@ -95,6 +97,7 @@ export const shoulderAbduction: MovementTemplate = {
       invalidatesRep: false,
       landmarks: [{ joint: "elbow" }],
       low: {
+        show: "Slow down",
         observation: "the arm movement was quicker than the controlled pace",
         texts: [
           "Slow down. Take about two seconds to lift your arm.",
@@ -104,6 +107,23 @@ export const shoulderAbduction: MovementTemplate = {
       },
       ack: "Nice, that was a controlled pace.",
     },
+    shortHold: {
+      id: "short_hold",
+      label: "Did not hold at the top",
+      severity: "minor",
+      invalidatesRep: true,
+      landmarks: [{ joint: "elbow" }, { joint: "wrist" }],
+      low: {
+        show: "Hold a little longer",
+        observation: "there was no pause at the top of the movement",
+        texts: [
+          "Hold your arm out at the top for a moment.",
+          "Pause with your arm lifted and count to two before lowering.",
+          "Hold your arm steady at the top for the time your therapist set.",
+        ],
+      },
+      ack: "Good, that was a steady hold.",
+    },
     incompleteReturn: {
       id: "incomplete_return",
       label: "Did not lower fully",
@@ -111,6 +131,7 @@ export const shoulderAbduction: MovementTemplate = {
       invalidatesRep: false,
       landmarks: [{ joint: "elbow" }, { joint: "wrist" }],
       high: {
+        show: "Lower your arm fully",
         observation: "the arm was not lowered back to the side",
         texts: [
           "Lower your arm all the way to your side before lifting again.",
@@ -136,6 +157,7 @@ export const shoulderAbduction: MovementTemplate = {
       landmarks: [{ joint: "elbow" }, { joint: "wrist" }],
       bones: [[{ joint: "shoulder" }, { joint: "elbow" }]],
       high: {
+        show: "Stop at shoulder height",
         observation: "the arm went above shoulder height",
         texts: [
           "Lower your arm a little. Stop when it is level with your shoulder.",
@@ -159,6 +181,7 @@ export const shoulderAbduction: MovementTemplate = {
       invalidatesRep: true,
       landmarks: [{ joint: "shoulder" }, { joint: "ear" }],
       high: {
+        show: "Relax your shoulders",
         observation: "the shoulder is rising toward the ear",
         texts: [
           "Keep your shoulder relaxed and down, away from your ear, as your arm lifts.",
@@ -183,6 +206,7 @@ export const shoulderAbduction: MovementTemplate = {
       landmarks: [{ joint: "elbow" }],
       bones: [[{ joint: "elbow" }, { joint: "wrist" }]],
       low: {
+        show: "Keep your arm straight",
         observation: "the elbow is bending instead of the arm staying nearly straight",
         texts: [
           "Keep your arm nearly straight as you lift it out to the side.",
@@ -206,6 +230,7 @@ export const shoulderAbduction: MovementTemplate = {
       landmarks: [{ joint: "shoulder" }, { joint: "hip" }],
       bones: [[{ joint: "shoulder" }, { joint: "hip" }]],
       high: {
+        show: "Keep your body upright",
         observation: "the upper body is leaning to the side",
         texts: [
           "You are leaning to the side. Stay tall and let only your arm move.",
@@ -216,6 +241,25 @@ export const shoulderAbduction: MovementTemplate = {
       ack: "Good correction, you are standing tall.",
     },
   ],
+  validity: {
+    tempoFloorMs: 1000,
+    holdTolerance: 0.8,
+    lowToleranceMs: 1000,
+    rationale: {
+      minRange: "A good rep is one where the arm reaches 85 degrees from the side of the body (close to shoulder height). Engineering default, not tuned on real footage.",
+      almostBand: "The old halfway-credit line is now only the 'almost there' band, so the wording can say a little farther. That line is at 70 degrees: past it the lift is nearly there.",
+      setup: "The starting position is held for about a second so the person's own resting position is captured before any rep is judged.",
+      tempoFloor: "A whole cycle faster than 1 seconds is flicked through, not performed. This is half of the coaching pace and the only new mandatory tempo rule.",
+      hold: "A hold is mandatory only when one is required: the template's own, or the hold the therapist prescribed, with 20% tolerance so a slight early release is not punished.",
+      return: "A rep ends only when the movement returns to the starting zone, so a return is always required; a very slow return is coached, not rejected.",
+      visibility: "If the camera cannot see the movement for more than a second of a cycle (a third of a second when the rep fell short, so a missed peak is never blamed on the person), or cannot check a mandatory rule, the cycle is 'not seen', never wrong.",
+      arm_too_high: "Above shoulder height changes which structures are loaded; 105 degrees leaves a margin over the 85 degree target.",
+      shoulder_shrug: "A rising shoulder is the usual substitute for lifting the arm.",
+      elbow_bent: "A bent elbow shortens the lever; it only coaches.",
+      trunk_lean: "Leaning sideways to lift the arm higher; 15 degrees is clearly visible from the front.",
+    },
+    source: "engineering-default",
+  },
   statusJoints: [
     { label: "Shoulder", ref: { joint: "shoulder" } },
     { label: "Elbow", ref: { joint: "elbow" } },

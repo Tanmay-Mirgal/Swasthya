@@ -15,7 +15,7 @@ import ExerciseSession, { type IExerciseSession } from "@/models/ExerciseSession
 import WeeklyReview from "@/models/WeeklyReview";
 import { addDays, dateKeyInTimezone, weekdayOf, type DateKey } from "./dates";
 import { applyChunk, totalRepsOf, type SetRecord } from "./chunking";
-import { cleanQuality, formAccuracyOf, rollupQuality, type ChunkQuality } from "./chunkQuality";
+import { cleanQuality, creditsGoodRepsOnly, formShareOf, rollupQuality, type ChunkQuality } from "./chunkQuality";
 import {
   adherenceBetween,
   computeDailyPlan,
@@ -27,6 +27,10 @@ import {
 } from "./schedule";
 import { completeElapsedPrescriptions, getLivePrescription, toScheduleInput } from "./prescriptionService";
 import { HttpError, patientTimezone } from "./auth";
+import { summarizeDay, type DaySummary, type SessionFacts } from "./milestones";
+import { progressFacts } from "./progressFacts";
+import { historyFor, toHistory } from "./progressService";
+import { getMovementTemplate } from "@/lib/movement/template/registry";
 
 export interface PlanSnapshot {
   state: "none" | "paused" | "active";
@@ -53,6 +57,7 @@ export interface PlanSnapshot {
       sets: number;
       reps: number;
       holdSeconds?: number;
+      minRangeOverride?: number;
       targetRom?: number;
       tempoSeconds?: number;
       modifications?: string;
@@ -63,6 +68,15 @@ export interface PlanSnapshot {
   daily?: DailyPlan;
   /** Monday-first week containing today: what really happened on each day. */
   week?: { day: DateKey; label: string; state: "done" | "partial" | "missed" | "todo"; isToday: boolean }[];
+  /** What the patient's therapist has actually done, from stored records. Each part is absent unless a record exists. */
+  therapistLoop?: {
+    /** The most recent review the therapist wrote (a session note or a weekly note). */
+    lastReview?: { kind: "session" | "week"; label: string; note?: string; reviewedAt: Date };
+    /** Set when the live plan is a revision of an earlier one, within the last 14 days. */
+    routineUpdate?: { at: Date; version: number; note?: string };
+  };
+  /** What today's work adds up to, from the stored sessions. Present when something is due today. */
+  todaySummary?: DaySummary;
   /** The next days (after today) with exercises due, for the "coming up" list. */
   upcoming?: { day: DateKey; exercises: string[] }[];
   /** Set when today is a weekly review day. */
@@ -74,6 +88,52 @@ export interface PlanSnapshot {
     recordingExerciseKey?: string;
     recordingDone: boolean;
   } | null;
+}
+
+const isJudged = (s: Pick<IExerciseSession, "engineVersion" | "validReps" | "invalidReps">) => (s.engineVersion ?? 0) >= 2 && s.validReps !== undefined && s.invalidReps !== undefined;
+
+/** The encouraging facts about one stored exercise-day (see lib/rehab/milestones). Only what was recorded. */
+export function sessionFactsOf(s: IExerciseSession, progress: Pick<ExerciseProgress, "completedSets" | "targetSets">): SessionFacts {
+  const judged = isJudged(s);
+  return {
+    exerciseId: s.exerciseId,
+    completedSets: progress.completedSets,
+    targetSets: progress.targetSets,
+    completedReps: s.completedReps,
+    judged,
+    goodOnly: judged && creditsGoodRepsOnly(s.engineVersion),
+    ...(judged ? { validReps: s.validReps, invalidReps: s.invalidReps, partialReps: s.partialReps, correctionAttempts: s.correctionAttempts, correctionsSucceeded: s.correctionsSucceeded } : {}),
+    rom: s.rom > 0 ? s.rom : undefined,
+    targetRom: s.targetRom,
+    romUnit: getMovementTemplate(s.exerciseId)?.rep.unit,
+  };
+}
+
+/** The therapist's real activity for this patient: a review they wrote, and whether they revised the plan lately. */
+async function therapistLoopFor(patientId: string, live: IPrescription): Promise<PlanSnapshot["therapistLoop"]> {
+  const [sessionReview, weekReview] = await Promise.all([
+    ExerciseSession.findOne({ patientId, reviewedAt: { $exists: true } }, { exerciseName: 1, therapistNote: 1, reviewedAt: 1 }).sort({ reviewedAt: -1 }).lean<IExerciseSession | null>(),
+    WeeklyReview.findOne({ patientId, status: "reviewed", reviewedAt: { $exists: true } }, { weekNumber: 1, therapistNotes: 1, reviewedAt: 1 }).sort({ reviewedAt: -1 }).lean(),
+  ]);
+  const candidates: NonNullable<NonNullable<PlanSnapshot["therapistLoop"]>["lastReview"]>[] = [];
+  if (sessionReview?.reviewedAt) candidates.push({ kind: "session", label: sessionReview.exerciseName, note: sessionReview.therapistNote, reviewedAt: sessionReview.reviewedAt });
+  if (weekReview?.reviewedAt) candidates.push({ kind: "week", label: `week ${weekReview.weekNumber}`, note: weekReview.therapistNotes, reviewedAt: weekReview.reviewedAt });
+  const lastReview = candidates.sort((a, b) => b.reviewedAt.getTime() - a.reviewedAt.getTime())[0];
+
+  const recent = Date.now() - live.createdAt.getTime() <= 14 * 86_400_000;
+  const routineUpdate = live.version > 1 && recent ? { at: live.createdAt, version: live.version, note: live.statusHistory?.[0]?.note || undefined } : undefined;
+  return lastReview || routineUpdate ? { lastReview, routineUpdate } : undefined;
+}
+
+/** Comparisons with earlier sessions of this exercise. Never fails the save: no history just means no highlight. */
+async function highlightsFor(patientId: string, session: IExerciseSession): Promise<string[]> {
+  try {
+    const current = toHistory(session);
+    if (!current) return [];
+    return progressFacts(current, await historyFor(patientId, session.exerciseId)).highlights;
+  } catch {
+    return [];
+  }
 }
 
 function logsOf(sessions: Pick<IExerciseSession, "prescriptionExerciseKey" | "sets">[]): ExerciseDayLog[] {
@@ -107,6 +167,7 @@ export function serializePrescription(p: IPrescription): NonNullable<PlanSnapsho
       sets: e.sets,
       reps: e.reps,
       holdSeconds: e.holdSeconds,
+      minRangeOverride: e.minRangeOverride,
       targetRom: e.targetRom,
       tempoSeconds: e.tempoSeconds,
       modifications: e.modifications,
@@ -167,6 +228,8 @@ export async function getPlanSnapshot(patientId: string, timezone?: string): Pro
     today,
     week,
     upcoming,
+    therapistLoop: await therapistLoopFor(patientId, live),
+    todaySummary: daily.totalExercises > 0 && live.status !== "paused" ? summarizeDay(daily, sessions.map((s) => ({ completedReps: s.completedReps, judged: isJudged(s), validReps: s.validReps, invalidReps: s.invalidReps }))) : undefined,
     review: reviewRow
       ? {
           id: reviewRow._id.toString(),
@@ -194,6 +257,8 @@ export interface RecordChunkInput extends ChunkQuality {
   formScore?: number;
   /** Movement-feedback codes raised during this chunk, with counts. */
   issues?: Record<string, number>;
+  /** Set when the patient chose "Finish for today" after several attempts did not count. */
+  finishedEarly?: { reason?: string };
   /** Optional self-report, usually sent with the last chunk of an exercise. */
   discomfort?: "none" | "mild" | "moderate" | "severe";
 }
@@ -206,6 +271,10 @@ export interface RecordChunkResult {
   exerciseComplete: boolean;
   dayComplete: boolean;
   sessionId: string;
+  /** The facts about this exercise so far today, for the summary screen. */
+  session: SessionFacts;
+  /** Encouraging comparisons with earlier sessions that cleared the evidence bar. Only set once the exercise is complete. */
+  highlights: string[];
 }
 
 const MAX_ATTEMPTS = 5;
@@ -242,17 +311,26 @@ export async function recordChunk(patientId: string, input: RecordChunkInput): P
   const exercise = exercisesDueOn(schedule, today).find((e) => e.key === input.exerciseKey);
   if (!exercise) throw new HttpError(409, "That exercise is not part of today's plan.");
 
+  const chunkQuality = cleanQuality(input, Number(input.reps));
+  // Reps the patient counted by hand have no measured range, form score or issues, whatever the client sent.
+  const manual = chunkQuality.source === "manual";
   const chunk = {
     chunkId: String(input.chunkId ?? ""),
     reps: Number(input.reps),
     startedAt: parseDate(input.startedAt),
     endedAt: parseDate(input.endedAt),
-    rom: Number.isFinite(Number(input.rom)) && Number(input.rom) > 0 ? Math.min(360, Number(input.rom)) : undefined,
-    formScore: Number.isFinite(Number(input.formScore)) ? Math.max(0, Math.min(100, Math.round(Number(input.formScore)))) : undefined,
-    issues: cleanIssues(input.issues),
-    ...cleanQuality(input, Number(input.reps)),
+    rom: !manual && Number.isFinite(Number(input.rom)) && Number(input.rom) > 0 ? Math.min(360, Number(input.rom)) : undefined,
+    formScore: !manual && Number.isFinite(Number(input.formScore)) ? Math.max(0, Math.min(100, Math.round(Number(input.formScore)))) : undefined,
+    issues: manual ? undefined : cleanIssues(input.issues),
+    ...chunkQuality,
   };
   const discomfort = ["none", "mild", "moderate", "severe"].includes(input.discomfort ?? "") ? input.discomfort : undefined;
+  // "Finish for today": objective counts only, taken from the chunk's own sanitised quality, never from free text.
+  const topCode = Object.entries(chunkQuality.flags ?? {}).sort((a, b) => b[1].count - a[1].count)[0]?.[0];
+  const finishedEarly =
+    input.finishedEarly?.reason === "not_counted" && creditsGoodRepsOnly(chunkQuality.engine)
+      ? { setIndex: Number(input.setIndex), at: new Date(), reason: "not_counted" as const, good: Number(chunkQuality.validReps ?? 0), notCounted: (chunkQuality.invalidReps ?? 0) + (chunkQuality.partialReps ?? 0), ...(topCode ? { topCode } : {}) }
+      : undefined;
 
   const key = {
     patientId,
@@ -299,7 +377,7 @@ export async function recordChunk(patientId: string, input: RecordChunkInput): P
       // carry a tempo-based score; it is used only when no chunk has per-rep judgment.
       const forms = allChunks.filter((c) => typeof c.formScore === "number" && c.reps > 0);
       const formAccuracy =
-        formAccuracyOf(quality.validReps, quality.invalidReps) ??
+        formShareOf({ engineVersion: quality.engineVersion, validReps: quality.validReps, invalidReps: quality.invalidReps, partialReps: quality.partialReps }) ??
         (forms.length ? Math.round(forms.reduce((sum, c) => sum + c.formScore! * c.reps, 0) / forms.reduce((sum, c) => sum + c.reps, 0)) : undefined);
       const seconds = allChunks.reduce(
         (sum, c) => sum + (c.startedAt && c.endedAt ? Math.max(0, Math.min(3600, (c.endedAt.getTime() - c.startedAt.getTime()) / 1000)) : 0),
@@ -327,6 +405,7 @@ export async function recordChunk(patientId: string, input: RecordChunkInput): P
             validReps: quality.validReps,
             invalidReps: quality.invalidReps,
             partialReps: quality.partialReps,
+            uncertainReps: quality.uncertainReps,
             correctionAttempts: quality.correctionAttempts,
             correctionsSucceeded: quality.correctionsSucceeded,
             avgConfidence: quality.avgConfidence,
@@ -335,6 +414,7 @@ export async function recordChunk(patientId: string, input: RecordChunkInput): P
             ...(discomfort ? { discomfort } : {}),
             date: new Date(),
           },
+          ...(finishedEarly ? { $push: { finishedEarly: { $each: [finishedEarly], $slice: -20 } } } : {}),
           $inc: { rev: 1 },
         },
         { returnDocument: "after" }
@@ -352,6 +432,8 @@ export async function recordChunk(patientId: string, input: RecordChunkInput): P
       exerciseComplete: progress.status === "complete",
       dayComplete: day.totalSets > 0 && day.completedSets >= day.totalSets,
       sessionId: doc._id.toString(),
+      session: sessionFactsOf(allToday.find((s) => s.prescriptionExerciseKey === exercise.key) ?? (doc as IExerciseSession), progress),
+      highlights: progress.status === "complete" ? await highlightsFor(patientId, allToday.find((s) => s.prescriptionExerciseKey === exercise.key) ?? (doc as IExerciseSession)) : [],
     };
   }
   throw new HttpError(409, "Your progress is being saved from another screen. Please try again in a moment.");

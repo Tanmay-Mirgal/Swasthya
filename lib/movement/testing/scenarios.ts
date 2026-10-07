@@ -38,6 +38,30 @@ export function kneeExtensionSession(opts: KneeSessionOptions = {}): FrameBuilde
   };
 }
 
+/** One repetition of a seated knee extension: how far the leg goes (1 = full range) and whether the trunk leans during it. */
+export interface RepPlan {
+  peak: number;
+  lean?: boolean;
+}
+
+/** A session made of repetitions that each go their own way. `period` ms per repetition. */
+export function repPlanSession(plan: RepPlan[], period = 4000): FrameBuilder {
+  return (t: number) => {
+    const tt = t - LEAD_MS;
+    const idx = tt < 0 ? 0 : Math.min(plan.length - 1, Math.floor(tt / period));
+    const p = plan[idx];
+    const k = tt < 0 ? 0 : repCurve(tt, period, p.peak);
+    const leaning = Boolean(p.lean) && tt >= 0 && Math.floor(tt / period) === idx;
+    return sideFrame({ knee: lerp(92, 168, k), torsoTilt: leaning ? 28 : 0 }, { noisePx: 1.2, seed: Math.round(t) });
+  };
+}
+
+/** Good, good, flagged (leaning), good, short, good: with 8 prescribed, the main count is 4 / 8, never 6 / 8. */
+export const MIXED_PLAN: RepPlan[] = [{ peak: 1 }, { peak: 1 }, { peak: 1, lean: true }, { peak: 1 }, { peak: 0.55 }, { peak: 1 }];
+
+/** A patient who gets close to the range every time but never reaches it. */
+export const STUCK_PLAN: RepPlan[] = Array.from({ length: 8 }, () => ({ peak: 0.55 }));
+
 export interface Replay {
   engine: MovementEngine;
   coach: CoachState;

@@ -36,6 +36,8 @@ export interface IPrescriptionExercise {
   holdSeconds?: number;
   /** Target range of motion in degrees, where the exercise supports one. */
   targetRom?: number;
+  /** Least range accepted as a good rep for this patient (display unit); only ever more lenient than the exercise default. */
+  minRangeOverride?: number;
   tempoSeconds?: number;
   modifications?: string;
   instructions?: string;
@@ -143,6 +145,7 @@ const PrescriptionSchema = new Schema(
         reps: { type: Number, required: true, min: 1, max: 50 },
         holdSeconds: { type: Number, min: 0, max: 120 },
         targetRom: { type: Number, min: 1, max: 180 },
+        minRangeOverride: { type: Number, min: 0, max: 360 },
         tempoSeconds: { type: Number, min: 1, max: 20 },
         modifications: { type: String, maxlength: 1000 },
         instructions: { type: String, maxlength: 1000 },

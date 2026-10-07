@@ -2,7 +2,7 @@
 
 import Script from "next/script";
 import { useEffect, useState } from "react";
-import { getSelectedLanguage } from "@/lib/i18n/languages";
+import { syncTranslateCookie } from "@/lib/i18n/languages";
 
 declare global {
   interface Window {
@@ -52,7 +52,8 @@ export default function GoogleTranslate() {
   const [active, setActive] = useState(false);
 
   useEffect(() => {
-    const lang = getSelectedLanguage();
+    // Reconcile Google's cookie with the person's choice BEFORE its script is loaded and reads it.
+    const lang = syncTranslateCookie();
     if (lang === "en") return;
     patchDomForTranslation();
     window.googleTranslateElementInit = () => {

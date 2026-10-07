@@ -8,7 +8,7 @@ import { adherenceForPlans } from "@/lib/rehab/adherence";
 import { serializePrescription } from "@/lib/rehab/sessionService";
 import User from "@/models/User";
 import { issueLabel } from "@/lib/rehab/issueLabels";
-import { avgRepSecondsOf } from "@/lib/rehab/chunkQuality";
+import { avgRepSecondsOf, creditsGoodRepsOnly } from "@/lib/rehab/chunkQuality";
 import { getMovementTemplate } from "@/lib/movement/template/registry";
 
 export async function GET(
@@ -41,9 +41,11 @@ export async function GET(
     }
 
     // Verify assignment
-    const assignment = await TherapistAssignment.findOne({ 
+    // Only an active assignment grants access: a pending or ended one must not.
+    const assignment = await TherapistAssignment.findOne({
       patientId: patientId,
-      therapistId: clerkUserId 
+      therapistId: clerkUserId,
+      status: "active",
     }).lean();
 
     if (!assignment) {
@@ -64,6 +66,7 @@ export async function GET(
       targetReps: e.reps,
       targetRom: e.targetRom,
       holdSeconds: e.holdSeconds,
+      minRangeOverride: e.minRangeOverride,
       tempoSeconds: e.tempoSeconds,
       frequency: livePlan?.frequency,
       instructions: e.instructions,
@@ -87,6 +90,7 @@ export async function GET(
       therapistAssessment?: string;
       reviewedAt?: Date;
       engineVersion?: number;
+      finishedEarly?: { setIndex: number; at: Date; reason: string; good: number; notCounted: number; topCode?: string }[];
       validReps?: number;
       invalidReps?: number;
       partialReps?: number;
@@ -96,7 +100,7 @@ export async function GET(
       issueCounts?: Record<string, number>;
       issueSeverity?: Record<string, "minor" | "moderate" | "major">;
       observations?: { code: string; repsAffected: number; ofReps: number }[];
-      sets?: { chunks?: { repRecords?: { ms: number }[] }[] }[];
+      sets?: { chunks?: { source?: string; reps?: number; repRecords?: { ms: number }[] }[] }[];
     }[]).map((s) => ({
       id: s._id.toString(),
       exerciseId: s.exerciseId,
@@ -112,10 +116,15 @@ export async function GET(
       reviewedAt: s.reviewedAt,
       romUnit: getMovementTemplate(s.exerciseId)?.rep.unit ?? "deg",
       avgRepSeconds: avgRepSecondsOf(s.sets as never),
+      // Reps the patient counted by hand, with no camera: credited to the plan but never measured or judged.
+      finishedEarly: (s.finishedEarly ?? []).map((f) => ({ setIndex: f.setIndex, at: f.at, good: f.good, notCounted: f.notCounted, topLabel: f.topCode ? issueLabel(f.topCode) : undefined })),
+      manualReps: (s.sets ?? []).flatMap((x) => x.chunks ?? []).filter((c) => c.source === "manual").reduce((n, c) => n + (c.reps ?? 0), 0),
       // Per-rep movement judgment (engine v2). Absent on older sessions: nothing is filled in.
       quality:
         (s.engineVersion ?? 0) >= 2 && s.validReps !== undefined
           ? {
+              /** Engine v4: reps credited are good reps only; invalid and partial are attempts that did not count. */
+              goodOnly: creditsGoodRepsOnly(s.engineVersion),
               validReps: s.validReps,
               invalidReps: s.invalidReps ?? 0,
               partialReps: s.partialReps ?? 0,

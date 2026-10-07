@@ -11,6 +11,8 @@ import { getPrescribableExercises } from "@/lib/rehab/exerciseCatalog";
 import { addDays, dateKeyInTimezone, formatDateKey, isDateKey } from "@/lib/rehab/dates";
 import { endDateFor } from "@/lib/rehab/schedule";
 import { cn } from "@/lib/utils";
+import { getMovementTemplate } from "@/lib/movement/template/registry";
+import { rangeOverrideBounds } from "@/lib/movement/template/tolerance";
 
 export interface ExistingPlan {
   id: string;
@@ -20,7 +22,7 @@ export interface ExistingPlan {
   instructions?: string;
   doctorNotes?: string;
   weeklyReview: { enabled: boolean; cycleDay: number; requireRecording: boolean; recordingExerciseKey?: string };
-  exercises: { key: string; exerciseId: string; sets: number; reps: number; holdSeconds?: number; targetRom?: number; tempoSeconds?: number; modifications?: string; instructions?: string }[];
+  exercises: { key: string; exerciseId: string; sets: number; reps: number; holdSeconds?: number; targetRom?: number; minRangeOverride?: number; tempoSeconds?: number; modifications?: string; instructions?: string }[];
   medicines?: { name: string; dosage?: string; frequency?: string; duration?: string; instructions?: string; startDate?: string; endDate?: string }[];
 }
 
@@ -32,9 +34,34 @@ interface DraftExercise {
   reps: string;
   holdSeconds: string;
   targetRom: string;
+  /** The least range accepted as a good rep for this patient. Blank = the exercise's own standard. */
+  minRangeOverride: string;
   tempoSeconds: string;
   modifications: string;
   instructions: string;
+}
+
+/**
+ * "Accept movements from…": the least range counted as a good rep for this patient. Only ever more lenient than the
+ * exercise's own standard, and never below its "almost" line, so the app's standard cannot be lowered by accident.
+ * Left blank, the exercise's own standard applies. The value actually used is stored with every session.
+ */
+function RangeAcceptance({ exerciseId, value, onChange, uid: id }: { exerciseId: string; value: string; onChange: (v: string) => void; uid: string }) {
+  const template = getMovementTemplate(exerciseId);
+  if (!template) return null;
+  const b = rangeOverrideBounds(template);
+  const unit = b.unit === "pct" ? "%" : "°";
+  const lo = Math.min(b.strict, b.lenient);
+  const hi = Math.max(b.strict, b.lenient);
+  return (
+    <Field
+      label={`Accept movements from (${unit})`}
+      htmlFor={`accept-${id}`}
+      hint={`Leave blank to use the standard (${b.strict}${unit}). Allowed ${lo} to ${hi}${unit}. Only for a patient who can’t reach the standard yet; a movement that doesn’t reach it never counts as a good rep.`}
+    >
+      <Input id={`accept-${id}`} type="number" min={lo} max={hi} step="any" inputMode="decimal" value={value} onChange={(ev) => onChange(ev.target.value)} className="max-w-[10rem]" />
+    </Field>
+  );
 }
 
 interface DraftMedicine {
@@ -58,7 +85,7 @@ const uid = () => `d${++counter}`;
 
 const fromCatalog = (ex: CatalogExercise): DraftExercise => ({
   uid: uid(), exerciseId: ex.id, name: ex.name, sets: "3", reps: String(ex.defaultReps),
-  holdSeconds: "", targetRom: "", tempoSeconds: "", modifications: "", instructions: "",
+  holdSeconds: "", targetRom: "", minRangeOverride: "", tempoSeconds: "", modifications: "", instructions: "",
 });
 
 interface Props {
@@ -86,7 +113,7 @@ export function PlanBuilder({ patientId, patientName, consultationId, existing, 
     (existing?.exercises ?? []).map((e) => ({
       uid: uid(), exerciseId: e.exerciseId, name: catalog.find((c) => c.id === e.exerciseId)?.name ?? e.exerciseId,
       sets: String(e.sets), reps: String(e.reps), holdSeconds: e.holdSeconds ? String(e.holdSeconds) : "",
-      targetRom: e.targetRom ? String(e.targetRom) : "", tempoSeconds: e.tempoSeconds ? String(e.tempoSeconds) : "",
+      targetRom: e.targetRom ? String(e.targetRom) : "", minRangeOverride: e.minRangeOverride ? String(e.minRangeOverride) : "", tempoSeconds: e.tempoSeconds ? String(e.tempoSeconds) : "",
       modifications: e.modifications ?? "", instructions: e.instructions ?? "",
     }))
   );
@@ -158,7 +185,7 @@ export function PlanBuilder({ patientId, patientName, consultationId, existing, 
           frequency,
           exercises: exercises.map((e) => ({
             exerciseId: e.exerciseId, sets: Number(e.sets), reps: Number(e.reps), holdSeconds: num(e.holdSeconds),
-            targetRom: num(e.targetRom), tempoSeconds: num(e.tempoSeconds), modifications: e.modifications, instructions: e.instructions,
+            targetRom: num(e.targetRom), minRangeOverride: num(e.minRangeOverride), tempoSeconds: num(e.tempoSeconds), modifications: e.modifications, instructions: e.instructions,
           })),
           weeklyReview: { enabled: reviewOn, cycleDay: reviewDay, requireRecording: reviewOn && needRecording, recordingExerciseId: effectiveRecordingId },
           instructions,
@@ -213,6 +240,7 @@ export function PlanBuilder({ patientId, patientName, consultationId, existing, 
                         <Field label="Target range (°)" htmlFor={`rom-${e.uid}`}><Input id={`rom-${e.uid}`} type="number" min={1} max={180} inputMode="numeric" value={e.targetRom} onChange={(ev) => patch(e.uid, { targetRom: ev.target.value })} /></Field>
                         <Field label="Seconds per rep" htmlFor={`tempo-${e.uid}`}><Input id={`tempo-${e.uid}`} type="number" min={1} max={20} inputMode="numeric" value={e.tempoSeconds} onChange={(ev) => patch(e.uid, { tempoSeconds: ev.target.value })} /></Field>
                       </div>
+                      <RangeAcceptance exerciseId={e.exerciseId} value={e.minRangeOverride} onChange={(v) => patch(e.uid, { minRangeOverride: v })} uid={e.uid} />
                       <Field label="Instructions for the patient" htmlFor={`ins-${e.uid}`}><Textarea id={`ins-${e.uid}`} rows={2} maxLength={1000} value={e.instructions} onChange={(ev) => patch(e.uid, { instructions: ev.target.value })} /></Field>
                       <Field label="Modifications" htmlFor={`mod-${e.uid}`} hint="For example: limit range to 90°, use a chair with arm rests."><Textarea id={`mod-${e.uid}`} rows={2} maxLength={1000} value={e.modifications} onChange={(ev) => patch(e.uid, { modifications: ev.target.value })} /></Field>
                     </div>

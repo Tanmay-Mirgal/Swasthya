@@ -77,21 +77,58 @@ export type MovementEvent =
     }
   | { type: "movement_corrected"; t: number; error: string; joint: string; afterMs: number; rep: number }
   | {
+      /** A GOOD rep: it reached the full range, returned, and broke no mandatory rule. Only these are credited. */
       type: "rep_completed";
       t: number;
+      /** Number of good reps so far in this chunk, including this one. */
       rep: number;
+      /** Always true since engine v4 (a flagged rep is `rep_not_counted`); kept so older readers keep working. */
       valid: boolean;
       reasons: string[];
       rom: number;
       durationMs: number;
       confidence: number;
+      /** How clean the good rep was. Chooses the wording ("Smooth and steady"); never shown as a number or a score. */
+      quality?: RepQuality;
     }
-  | { type: "partial_rep"; t: number; reached: number };
+  /** The movement reached the full range but broke a mandatory rule, so it was NOT counted. */
+  | { type: "rep_not_counted"; t: number; reasons: string[]; rom: number; durationMs: number; confidence: number; /** Good reps so far (unchanged by this attempt). */ rep: number }
+  /** The movement did not reach the full range, so it was NOT counted. `almost` = it got past the old halfway-credit line. */
+  | { type: "partial_rep"; t: number; reached: number; almost?: boolean }
+  /** A rep was under way when the camera lost the person, so it could not be judged. Not a mistake, not counted. */
+  | { type: "uncertain_rep"; t: number; reached: number; reason: AttemptReason }
+  /** A rule has had no measurable landmarks for a while, so it is not being checked. Quiet; never an error. */
+  | { type: "rule_unevaluable"; t: number; rule: string };
+
+/** What became of one cycle of the movement. Since engine v4 only `valid` ones are counted; the rest are attempts. */
+export type RepOutcome = "valid" | "invalid" | "partial" | "uncertain" | "discarded";
+
+/** Why a cycle that began did not become a counted rep. */
+export type AttemptReason = "short_range" | "dropout" | "timeout" | "debounce" | "rule_broken" | "low_visibility" | "rule_unevaluable";
+
+/** A cycle that began but was not counted. Kept so that nothing the person did simply disappears. */
+export interface AttemptRecord {
+  outcome: Exclude<RepOutcome, "valid">;
+  reason: AttemptReason;
+  /** How far toward the peak it got, 0..1. */
+  reached: number;
+  durationMs: number;
+  confidence: number;
+  /** For `invalid`: the mandatory rules (UPPER_SNAKE) that were broken. */
+  reasons?: string[];
+  /** For `invalid`: the range reached, in display units. */
+  rom?: number;
+}
+
+/** `excellent`: seen clearly and nothing even to coach. `good`: counted, with something to coach or a less clear view. */
+export type RepQuality = "excellent" | "good";
 
 export interface RepRecord {
   /** 1-based number of the counted repetition within this chunk. */
   n: number;
+  outcome: "valid" | "invalid";
   valid: boolean;
+  quality?: RepQuality;
   /** Error codes that made the rep invalid (empty when valid). */
   reasons: string[];
   /** Every error code raised during the rep, valid or not. */

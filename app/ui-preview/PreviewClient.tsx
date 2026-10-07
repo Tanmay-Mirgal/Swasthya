@@ -12,6 +12,12 @@ import OverviewTab from "@/components/therapist/OverviewTab";
 import PatientsTable from "@/components/therapist/PatientsTable";
 import type { TherapistConsultationItem, TherapistPatientItem, TherapistPendingRequestItem } from "@/components/therapist/types";
 
+import Countdown from "@/components/exercise/Countdown";
+import RestPanel from "@/components/exercise/RestPanel";
+import ReadyCheck from "@/components/exercise/ReadyCheck";
+import ManualCounter from "@/components/exercise/ManualCounter";
+import SettingsSheet from "@/components/exercise/SettingsSheet";
+import CaptionsBar from "@/components/exercise/CaptionsBar";
 import { SessionDone, SessionIntro } from "@/components/exercise/SessionViews";
 import { PlanBuilder } from "@/components/prescription/PlanBuilder";
 import PlanSection from "@/components/therapist/PlanSection";
@@ -19,8 +25,11 @@ import ReportView from "@/components/review/ReportView";
 import ReviewsTab from "@/components/review/ReviewsTab";
 import type { ReviewListItem, WeeklyReportData } from "@/components/review/types";
 import { computeExerciseProgress } from "@/lib/rehab/schedule";
-import { getAllExercises } from "@/lib/exercises/registry";
+import { getAllExercises, getExerciseById } from "@/lib/exercises/registry";
 import ReplayScreen, { type ReplayScenario } from "./ReplayScreen";
+import DistanceReport from "./DistanceReport";
+import CelebrationLab from "./CelebrationLab";
+import StageScreen, { type StageScenario } from "./StageScreen";
 import StageSmoke from "./StageSmoke";
 import QualityTrend from "@/components/progress/QualityTrend";
 import { ReportBody } from "@/components/reports/SessionReportCard";
@@ -163,6 +172,20 @@ export default function PreviewClient() {
   const screen = useSearchParams().get("screen") || "home";
 
   if (screen === "stage") return <StageSmoke />;
+  if (screen === "celebrate") return <CelebrationLab />;
+
+  // The new live stage (?screen=stage-notcounted&vs=1.5&report=1).
+  if (screen.startsWith("stage-")) return <StageScreen scenario={screen.slice(6) as StageScenario} />;
+
+  // The distance lab: any replay screen with the readability check on top (for example ?screen=distance-error).
+  if (screen.startsWith("distance-")) {
+    return (
+      <>
+        <ReplayScreen scenario={screen.slice(9) as ReplayScenario} />
+        <DistanceReport />
+      </>
+    );
+  }
 
   if (screen === "live" || screen === "setup" || screen.startsWith("replay-")) {
     const scenario: ReplayScenario = screen === "live" ? "ok" : screen === "setup" ? "camera" : (screen.slice(7) as ReplayScenario);
@@ -171,12 +194,12 @@ export default function PreviewClient() {
 
   return (
     <AppShell title="Preview" maxWidth="wide">
-      {(screen === "home" || screen === "review" || screen === "paused" || screen === "empty") && (
+      {(screen === "home" || screen === "review" || screen === "paused" || screen === "empty" || screen === "empty-therapist") && (
         <PatientHome
           firstName="Asha"
           greeting="Good morning"
           dateLabel="Monday, 5 October"
-          plan={fixturePlan(screen === "home" ? "active" : screen === "empty" ? "none" : (screen as "review" | "paused"))}
+          plan={screen === "home" ? { ...fixturePlan("active"), therapistLoop: { routineUpdate: { at: new Date("2026-10-03"), version: 2, note: "Added a neck exercise; keep the knee work as it is." }, lastReview: { kind: "session", label: "Seated Knee Extension", note: "Lovely control on the way down. Keep it up.", reviewedAt: new Date("2026-10-04") } } } : fixturePlan(screen === "empty" || screen === "empty-therapist" ? "none" : (screen as "review" | "paused"))}
           liveConsultation={screen === "home" ? { id: "demo", doctorName: "Dr. A. Rao", issue: "Knee rehabilitation" } : null}
           therapist={screen === "empty" ? null : { name: "Dr. A. Rao", specialization: "Orthopaedic physiotherapy", chatHref: "#", profileHref: "#", unread: 2 }}
           lastSession={screen === "empty" ? null : { exerciseName: "Seated Knee Extension", dateLabel: "Sun, Oct 4", reps: 45, targetReps: 45, rom: 84, durationLabel: "6:12" }}
@@ -189,8 +212,14 @@ export default function PreviewClient() {
       {screen === "report" && <div className="max-w-3xl"><ReportView report={sampleReport} /></div>}
       {screen === "reviews" && <ReviewsTab reviews={sampleReviews} />}
       {screen === "reviews-empty" && <ReviewsTab reviews={[]} />}
-      {screen === "intro" && <SessionIntro name="Seated Knee Extension" progress={sampleProgress([15, 8])} doctorName="Dr. A. Rao" instructions="Slow on the way down." askRecording={false} recordingOn={false} reviewRecordingChosen={false} onChooseRecording={() => undefined} onStart={() => undefined} />}
-      {screen === "intro-record" && <SessionIntro name="Seated Knee Extension" progress={sampleProgress([])} doctorName="Dr. A. Rao" askRecording recordingOn={false} reviewRecordingChosen onChooseRecording={() => undefined} onStart={() => undefined} />}
+      {screen === "intro" && <SessionIntro name="Seated Knee Extension" progress={sampleProgress([15, 8])} doctorName="Dr. A. Rao" instructions="Slow on the way down." askRecording={false} recordingOn={false} reviewRecordingChosen={false} onChooseRecording={() => undefined} onStart={() => undefined} onManual={() => undefined} steps={getExerciseById("seated-knee-extension")?.instructions} />}
+      {screen === "intro-record" && <SessionIntro name="Seated Knee Extension" progress={sampleProgress([])} doctorName="Dr. A. Rao" askRecording recordingOn={false} reviewRecordingChosen onChooseRecording={() => undefined} onStart={() => undefined} onManual={() => undefined} />}
+      {screen === "countdown" && <div className="mx-auto h-80 w-full max-w-xl overflow-hidden rounded-lg bg-slate-900"><Countdown count={3} /></div>}
+      {screen === "rest" && <div className="mx-auto max-w-xl"><RestPanel setDone={1} totalSets={3} nextSetReps={10} targetReps={10} completedReps={10} restSeconds={42} onStartNext={() => undefined} onStop={() => undefined} /></div>}
+      {screen === "ready" && <div className="mx-auto max-w-sm"><ReadyCheck hint="Sit side-on to the camera so it can see your whole leg." ui={{ tracking: true, confidence: "MEDIUM", advice: { code: "too_close", message: "Please move back a little." }, joints: [{ label: "Shoulder", state: 0 }, { label: "Hip", state: 0 }, { label: "Knee", state: 2 }, { label: "Ankle", state: 2 }] }} onReady={() => undefined} onManual={() => undefined} /></div>}
+      {screen === "sound" && <><CaptionsBar lines={["Get ready", "Two", "5 done. Nice and steady."]} /><SettingsSheet open onClose={() => undefined} voiceEnabled onVoiceEnabled={() => undefined} settings={{ volume: 0.8, rate: 0.9, voiceURI: null, voiceByLang: {}, captions: true, celebrations: true }} onChange={() => undefined} language="en" /></>}
+      {screen === "manual" && <ManualCounter name="Seated Knee Extension" setLabel="Set 1 of 3" count={4} target={10} instruction="Sit tall and slowly straighten your knee." paused={false} onAdd={() => undefined} onUndo={() => undefined} onPause={() => undefined} onResume={() => undefined} onFinish={() => undefined} />}
+      {screen === "routine" && <SessionDone progress={sampleProgress([15, 15, 15])} bestRom={92} facts={{ exerciseId: "seated-knee-extension", completedSets: 3, targetSets: 3, completedReps: 45, judged: true, validReps: 38, invalidReps: 7, partialReps: 1, correctionAttempts: 3, correctionsSucceeded: 2, rom: 92, targetRom: 90, romUnit: "deg" }} routine={{ summary: { exercisesDone: 3, exercisesDue: 3, setsDone: 9, setsDue: 9, repsCounted: 120, validReps: 101, goodFormShare: 88, routineComplete: true }, weekLine: "You’ve done your exercises on 4 days this week.", nextLine: "Your next session is tomorrow." }} discomfort={null} onDiscomfort={() => undefined} saveNotice={null} next={null} />}
       {screen === "done" && <SessionDone progress={sampleProgress([15, 15, 15])} bestRom={86} discomfort="moderate" onDiscomfort={() => undefined} recording={{ state: "sent", error: null, onRetry: () => undefined }} saveNotice={null} next={{ href: "#", name: "Neck Rotation" }} />}
       {screen === "library" && <ExerciseLibrary exercises={getAllExercises()} suggestion={{ exerciseId: "neck-rotation", reason: "it matches the neck stiffness in your profile" }} prescribedIds={["seated-knee-extension"]} />}
       {screen === "progress" && <ProgressView sessions={sessions} />}

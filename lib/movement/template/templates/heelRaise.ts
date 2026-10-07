@@ -34,8 +34,9 @@ export const heelRaise: MovementTemplate = {
   },
   sideMode: "auto",
   landmarks: {
-    required: [{ joint: "knee" }, { joint: "ankle" }, { joint: "heel" }, { joint: "foot" }],
-    optional: [{ joint: "hip" }, { joint: "shoulder" }],
+    // The hip is required because "knees bent" is a mandatory rule that measures hip-knee-ankle.
+    required: [{ joint: "hip" }, { joint: "knee" }, { joint: "ankle" }, { joint: "heel" }, { joint: "foot" }],
+    optional: [{ joint: "shoulder" }],
   },
   metrics: {
     lift: { kind: "offsetY", point: { joint: "foot" }, from: { joint: "heel" }, scale: "shin", baseline: "delta" },
@@ -80,6 +81,7 @@ export const heelRaise: MovementTemplate = {
       landmarks: [{ joint: "heel" }, { joint: "ankle" }],
       bones: [[{ joint: "ankle" }, { joint: "heel" }]],
       low: {
+        show: "Lift your heels higher",
         observation: "the heels stopped below the target height",
         texts: [
           "Rise a little higher onto your toes.",
@@ -96,6 +98,7 @@ export const heelRaise: MovementTemplate = {
       invalidatesRep: false,
       landmarks: [{ joint: "heel" }],
       low: {
+        show: "Slow down",
         observation: "the heel raise was quicker than the controlled pace",
         texts: [
           "Slow down. Take about two seconds to rise onto your toes.",
@@ -109,9 +112,10 @@ export const heelRaise: MovementTemplate = {
       id: "short_hold",
       label: "Did not pause at the top",
       severity: "minor",
-      invalidatesRep: false,
+      invalidatesRep: true,
       landmarks: [{ joint: "heel" }],
       low: {
+        show: "Hold at the top",
         observation: "there was no pause at the top of the raise",
         texts: [
           "Pause for a moment on your toes before you lower your heels.",
@@ -127,6 +131,7 @@ export const heelRaise: MovementTemplate = {
       invalidatesRep: false,
       landmarks: [{ joint: "heel" }, { joint: "ankle" }],
       high: {
+        show: "Lower your heels fully",
         observation: "the heels were not lowered all the way to the floor",
         texts: [
           "Lower your heels all the way to the floor before the next raise.",
@@ -152,6 +157,7 @@ export const heelRaise: MovementTemplate = {
       landmarks: [{ joint: "knee" }, { joint: "hip" }],
       bones: [[{ joint: "hip" }, { joint: "knee" }], [{ joint: "knee" }, { joint: "ankle" }]],
       low: {
+        show: "Keep your knees straight",
         observation: "the knee is bending instead of staying straight",
         texts: [
           "Keep your knees straight as you rise onto your toes.",
@@ -176,6 +182,7 @@ export const heelRaise: MovementTemplate = {
       landmarks: [{ joint: "shoulder" }, { joint: "hip" }],
       bones: [[{ joint: "shoulder" }, { joint: "hip" }]],
       high: {
+        show: "Stand tall",
         observation: "the upper body is leaning instead of staying upright",
         texts: [
           "You are leaning. Stand tall with your shoulders over your hips.",
@@ -186,6 +193,23 @@ export const heelRaise: MovementTemplate = {
       ack: "Good correction, you are standing tall.",
     },
   ],
+  validity: {
+    tempoFloorMs: 1000,
+    holdTolerance: 0.8,
+    lowToleranceMs: 1000,
+    rationale: {
+      minRange: "A good rep is one where the heel lifts 15% of the shin length. Engineering default, not tuned on real footage.",
+      almostBand: "The old halfway-credit line is now only the 'almost there' band, so the wording can say a little farther. That line is at 10%: past it the raise is nearly there.",
+      setup: "The starting position is held for about a second so the person's own resting position is captured before any rep is judged.",
+      tempoFloor: "A whole cycle faster than 1 seconds is flicked through, not performed. This is half of the coaching pace and the only new mandatory tempo rule.",
+      hold: "A hold is mandatory only when one is required: the template's own, or the hold the therapist prescribed, with 20% tolerance so a slight early release is not punished.",
+      return: "A rep ends only when the movement returns to the starting zone, so a return is always required; a very slow return is coached, not rejected.",
+      visibility: "If the camera cannot see the movement for more than a second of a cycle (a third of a second when the rep fell short, so a missed peak is never blamed on the person), or cannot check a mandatory rule, the cycle is 'not seen', never wrong.",
+      knee_bent: "Bending the knees turns a calf raise into a squat; under 160 degrees is clearly bent.",
+      trunk_lean: "Leaning for balance; it only coaches because it is a safety support, not a fault.",
+    },
+    source: "engineering-default",
+  },
   statusJoints: [
     { label: "Knee", ref: { joint: "knee" } },
     { label: "Ankle", ref: { joint: "ankle" } },

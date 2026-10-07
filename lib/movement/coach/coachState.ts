@@ -18,7 +18,7 @@
  * therapist say only what was measured and how often.
  */
 import { COACH_CONFIG, type CoachConfig } from "./config";
-import { ackFor, labelFor, observationFor, priorityOf, PRIORITY, textFor } from "./messages";
+import { ackFor, findRule, labelFor, messageFor, observationFor, priorityOf, PRIORITY, showFor, textFor } from "./messages";
 import { decideSpeech, initialVoiceState, type SpeechCandidate, type VoiceState } from "./voicePolicy";
 import { buildCueRequest } from "./llm";
 import type { CoachCueRequest } from "./llmTypes";
@@ -26,6 +26,24 @@ import type { MovementTemplate } from "../template/schema";
 import type { CameraAdvice, ConfidenceLevel, MovementEvent, Phase, Severity } from "../types";
 
 export type CueTone = "info" | "correction" | "praise" | "camera" | "setup";
+
+/** The result of the last attempt, for the screen: a good rep, or one that was NOT counted. Expires on its own. */
+export interface Verdict {
+  kind: "good" | "not_counted" | "partial" | "uncertain" | "corrected";
+  /** Increases with every verdict, so the screen can tell two identical ones apart. */
+  seq: number;
+  at: number;
+  /** For `partial`: it got close to the full range. */
+  almost?: boolean;
+  /** The one short instruction that goes with it ("Sit tall"). */
+  show?: string | null;
+  /** The sentence spoken (and captioned) for it: the same words the screen is built from. */
+  say?: string | null;
+  /** The rule this verdict is about, when it is about one. */
+  code?: string;
+  /** For a good rep: how clean it was. Chooses the wording only. */
+  quality?: "excellent" | "good";
+}
 
 export interface Cue {
   text: string;
@@ -85,13 +103,34 @@ export interface CoachState {
   llm: { usedThisSet: number; lastAt: number };
   paused: boolean;
   praiseCount: number;
+  /** Reps of this set already saved before this chunk, and the reps this chunk is meant to count. For rep milestones. */
+  repsBefore: number;
+  chunkTarget: number;
+  /** Range of each counted rep in this chunk, in order. For the pacing observation. */
+  setRoms: number[];
+  paceNoted: boolean;
+  /** Attempts finished in this chunk (good or not), for stable per-attempt keys. */
+  attemptNo: number;
+  verdict: Verdict | null;
+  verdictSeq: number;
+  /** Attempts in a row that did not count; reset by a good rep. Uncertain ones (the camera's fault) change nothing. */
+  streak: number;
+  notCountedInChunk: number;
+  validInChunk: number;
+  /** After several attempts that did not count: show the guide / offer to finish for today. Reset each chunk. */
+  suggestDemo: boolean;
+  offerFinish: boolean;
+  /** What became of each attempt in this chunk, in order (the last 24). For the attempt strip on screen. */
+  attemptMarks: AttemptMark[];
 }
+
+export type AttemptMark = "good" | "not_counted" | "partial" | "uncertain";
 
 export type CoachInput =
   | MovementEvent
   | { type: "tick"; t: number }
   | { type: "llm_result"; t: number; code: string; tier: number; text: string | null }
-  | { type: "set_started"; t: number; set: number }
+  | { type: "set_started"; t: number; set: number; targetReps?: number; repsBefore?: number }
   | { type: "set_complete"; t: number }
   | { type: "paused"; t: number; paused: boolean };
 
@@ -155,6 +194,19 @@ export function createCoachState(template: MovementTemplate, ctx: { set?: number
     llm: { usedThisSet: 0, lastAt: -Infinity },
     paused: false,
     praiseCount: 0,
+    repsBefore: 0,
+    chunkTarget: 0,
+    setRoms: [],
+    paceNoted: false,
+    attemptNo: 0,
+    verdict: null,
+    verdictSeq: 0,
+    streak: 0,
+    notCountedInChunk: 0,
+    validInChunk: 0,
+    suggestDemo: false,
+    offerFinish: false,
+    attemptMarks: [],
   };
 }
 
@@ -199,8 +251,14 @@ export function reduceCoach(prev: CoachState, input: CoachInput, template: Movem
     case "rep_completed":
       nodeRepOutcome(c, input);
       break;
+    case "rep_not_counted":
+      nodeNotCounted(c, "invalid", undefined, input.reasons);
+      break;
     case "partial_rep":
-      s.sessionMetrics.partial++;
+      nodeNotCounted(c, "partial", input.almost);
+      break;
+    case "uncertain_rep":
+      nodeUncertain(c);
       break;
     case "tick":
       nodeTick(c);
@@ -211,6 +269,18 @@ export function reduceCoach(prev: CoachState, input: CoachInput, template: Movem
     case "set_started":
       s.currentSet = input.set;
       s.currentRep = 0;
+      s.repsBefore = input.repsBefore ?? 0;
+      s.chunkTarget = input.targetReps ?? 0;
+      s.setRoms = [];
+      s.paceNoted = false;
+      s.attemptNo = 0;
+      s.verdict = null;
+      s.streak = 0;
+      s.notCountedInChunk = 0;
+      s.validInChunk = 0;
+      s.suggestDemo = false;
+      s.offerFinish = false;
+      s.attemptMarks = [];
       s.llm = { usedThisSet: 0, lastAt: s.llm.lastAt };
       s.pending = null;
       for (const k of Object.keys(s.issues)) s.issues[k] = { ...s.issues[k], active: false };
@@ -255,7 +325,8 @@ function nodeIdentifyError(c: Ctx, e: Extract<MovementEvent, { type: "movement_e
   s.confidence = "HIGH";
   const key = e.error;
   const prev = s.issues[key];
-  const repKey = `${s.currentSet}.${e.rep}`;
+  // One key per ATTEMPT (not per good rep), so several tries at the same rep count as several.
+  const repKey = `${s.currentSet}.${s.repsBefore}.${s.attemptNo}`;
   const issue: IssueHistory = prev
     ? { ...prev, direction: e.direction, severity: e.severity, active: true, occurrences: prev.occurrences + 1, repsAffected: prev.repsAffected.includes(repKey) ? prev.repsAffected : [...prev.repsAffected, repKey], measured: e.measured, expected: e.expected }
     : {
@@ -328,6 +399,7 @@ function nodeAcknowledge(c: Ctx, code: string) {
   if (issue.attempts === 0) return;
   const text = ackFor(template, code, issue.correctedCount);
   if (s.cue && s.cue.tone === "correction" && s.cue.code !== code && isIssueActive(s, s.cue.code)) return; // another correction is still on screen
+  setVerdict(c, "corrected", { code, say: text });
   s.cue = { text, tone: "praise", code, priority: PRIORITY.praise, shownAt: now, source: "template" };
   s.lastFeedback = { text, at: now, code };
   c.fx.push({ kind: "cue", cue: s.cue });
@@ -336,14 +408,78 @@ function nodeAcknowledge(c: Ctx, code: string) {
 
 function nodeRepOutcome(c: Ctx, e: Extract<MovementEvent, { type: "rep_completed" }>) {
   const { s, cfg } = c;
+  // A good rep (engine v4: only good reps arrive here). It resets the run of attempts that did not count.
   s.currentRep = e.rep;
   s.sessionMetrics.counted++;
-  if (e.valid) s.sessionMetrics.valid++;
-  else s.sessionMetrics.invalid++;
+  s.sessionMetrics.valid++;
+  s.attemptNo++;
+  s.validInChunk++;
+  s.streak = 0;
+  mark(c, "good");
   s.movementMetrics = { lastRom: e.rom, lastRepMs: e.durationMs };
+  // The acknowledgement of a fix arrives in the same frame as the good rep that proves it: keep showing the fix.
+  if (!(s.verdict?.kind === "corrected" && s.verdict.at === c.now)) setVerdict(c, "good", e.quality ? { quality: e.quality } : {});
+  checkObservations(c);
 
-  // Persistent problems become a therapist observation: what was measured, how often. No cause.
-  const total = s.sessionMetrics.counted;
+  s.setRoms = [...s.setRoms, e.rom];
+  const anyActive = Object.values(s.issues).some((i) => i.active);
+  if (anyActive) return;
+
+  // At most one positive line per rep. Order: a pacing note, a milestone, "nearly there", the first good rep, then the occasional general nod.
+  const pace = paceNote(s, cfg);
+  if (pace) {
+    s.paceNoted = true;
+    positive(c, "pacing", "pacing", pace, "info");
+    return;
+  }
+  const n = s.repsBefore + e.rep;
+  const setTotal = s.repsBefore + s.chunkTarget;
+  const remaining = setTotal - n;
+  if (s.chunkTarget > 0 && remaining > 0) {
+    if (n % cfg.milestoneEvery === 0) return positive(c, `milestone:${n}`, "milestone", `${n} done. ${MILESTONE_TAIL[(n / cfg.milestoneEvery - 1) % MILESTONE_TAIL.length]}`, "praise");
+    if (remaining === 1) return positive(c, `nearly:${n}`, "milestone", "One more.", "praise");
+    if (remaining === 2 && setTotal >= 6) return positive(c, `nearly:${n}`, "milestone", "Two more to go.", "praise");
+  }
+  if (e.valid && s.sessionMetrics.valid === 1) return positive(c, "first_rep", "milestone", "Great start.", "praise");
+  if (e.valid && e.rep % 3 === 0) {
+    const text = PRAISE[s.praiseCount % PRAISE.length];
+    s.praiseCount++;
+    positive(c, "praise", "praise", text, "praise");
+  }
+}
+
+/** Shows and (when the voice policy allows) speaks one positive line. Never replaces a correction that is on screen. */
+function positive(c: Ctx, key: string, kind: "praise" | "milestone" | "pacing", text: string, tone: "praise" | "info") {
+  const { s, cfg } = c;
+  if (!s.cue || c.now - s.cue.shownAt >= cfg.minCueDisplayMs) {
+    s.cue = { text, tone, priority: PRIORITY.praise, shownAt: c.now, source: "system" };
+    s.lastFeedback = { text, at: c.now };
+    c.fx.push({ kind: "cue", cue: s.cue });
+  }
+  speakOrDefer(c, { key, text, kind, priority: PRIORITY.praise, phase: s.currentPhase });
+}
+
+/**
+ * Says, objectively, that the last few movements were smaller than the first few. Never names a cause: it does not
+ * say tired, weak or hurt, because the camera cannot know. Once per set, only from measured range.
+ */
+function paceNote(s: CoachState, cfg: CoachConfig): string | null {
+  if (s.paceNoted || s.setRoms.length < cfg.paceMinReps) return null;
+  const mean = (xs: number[]) => xs.reduce((a, b) => a + b, 0) / xs.length;
+  const first = mean(s.setRoms.slice(0, cfg.paceWindow));
+  const last = mean(s.setRoms.slice(-cfg.paceWindow));
+  if (!(first > 0) || last > first * (1 - cfg.paceDropShare)) return null;
+  return "Your last few movements have been smaller. Take a short rest if you need one.";
+}
+
+const MILESTONE_TAIL = ["Nice and steady.", "You’re doing well.", "Keep that pace."];
+const SET_COMPLETE = ["Set complete. Take your time.", "That set is complete. Rest when you need to.", "Set complete. Well done."];
+
+/** Persistent problems become a therapist observation: what was measured, how often. No cause. */
+function checkObservations(c: Ctx) {
+  const { s, cfg } = c;
+  // Out of ALL attempts, good or not: a problem that came up in most tries is worth the therapist's attention.
+  const total = s.sessionMetrics.counted + s.sessionMetrics.invalid + s.sessionMetrics.partial;
   for (const issue of Object.values(s.issues)) {
     if (issue.observed) continue;
     const n = issue.repsAffected.length;
@@ -352,24 +488,94 @@ function nodeRepOutcome(c: Ctx, e: Extract<MovementEvent, { type: "rep_completed
       c.fx.push({ kind: "observe", observation: { code: issue.code, label: labelFor(c.template, issue.code), repsAffected: n, ofReps: total } });
     }
   }
+}
 
-  const anyActive = Object.values(s.issues).some((i) => i.active);
-  if (e.valid && !anyActive && (e.rep % 3 === 0)) {
-    const text = PRAISE[s.praiseCount % PRAISE.length];
-    s.praiseCount++;
-    if (!s.cue || c.now - s.cue.shownAt >= cfg.minCueDisplayMs) {
-      s.cue = { text, tone: "praise", priority: PRIORITY.praise, shownAt: c.now, source: "system" };
-      c.fx.push({ kind: "cue", cue: s.cue });
-    }
-    speakOrDefer(c, { key: "praise", text, kind: "praise", priority: PRIORITY.praise, phase: s.currentPhase });
+function mark(c: Ctx, m: AttemptMark) {
+  c.s.attemptMarks = [...c.s.attemptMarks, m].slice(-24);
+}
+
+function setVerdict(c: Ctx, kind: Verdict["kind"], extra: Partial<Verdict> = {}) {
+  const { s } = c;
+  s.verdictSeq++;
+  s.verdict = { kind, seq: s.verdictSeq, at: c.now, ...extra };
+}
+
+const NOT_COUNTED_LEAD = ["Not counted.", "That one wasn’t counted."];
+
+/**
+ * An attempt that did not count: it broke a mandatory rule (`invalid`) or fell short of the full range (`partial`).
+ * It is said once, plainly and without blame, together with the ONE thing to change ("Not counted. Sit tall."), and the
+ * same words are shown, spoken and captioned. It never moves the good-rep count, and the run of them feeds the gentle
+ * limits below so nobody is left trying forever.
+ */
+function nodeNotCounted(c: Ctx, kind: "invalid" | "partial", almost?: boolean, reasons: string[] = []) {
+  const { s, template } = c;
+  if (kind === "invalid") s.sessionMetrics.invalid++;
+  else s.sessionMetrics.partial++;
+  s.attemptNo++;
+  s.notCountedInChunk++;
+  s.streak++;
+  mark(c, kind === "partial" ? "partial" : "not_counted");
+
+  // The one thing to change: the most important of what was flagged, else the range rule for an attempt that fell short.
+  const codes = kind === "partial" ? [template.repRules.range.id] : reasons.length ? reasons : [];
+  const code = [...codes].sort((a, b) => priorityOf(template, a) - priorityOf(template, b))[0];
+  const found = code ? findRule(template, code) : null;
+  const dir: "low" | "high" = (code && s.issues[code]?.direction) || (kind === "partial" ? "low" : "high");
+  const show = (code && showFor(template, code, dir)) || (kind === "partial" ? (almost ? "A little farther" : "Go a bit further") : "Try that one again");
+  const lead = kind === "partial" ? "Not counted." : NOT_COUNTED_LEAD[(s.verdictSeq + 1) % NOT_COUNTED_LEAD.length];
+  const say = `${lead} ${show}.`;
+  setVerdict(c, kind === "partial" ? "partial" : "not_counted", { ...(almost !== undefined ? { almost } : {}), show, say, ...(code ? { code } : {}) });
+  checkObservations(c);
+
+  // This one message replaces the correction that was waiting to be spoken for the same fault, so the patient hears it once.
+  if (code && found) {
+    if (s.pending?.candidate.key === `err:${code}`) s.pending = null;
+    const issue = s.issues[code];
+    if (issue) s.issues[code] = { ...issue, attempts: issue.attempts + 1, lastCoachedAt: c.now, tier: issue.tier + 1 };
+  }
+  speakOrDefer(c, { key: `verdict:${s.verdictSeq}`, text: say, kind: "verdict", priority: PRIORITY.major, phase: s.currentPhase });
+  nodeTrapSafety(c);
+}
+
+/** A cycle the camera could not judge: not counted, never called wrong, never held against the patient. */
+function nodeUncertain(c: Ctx) {
+  const say = "I couldn’t see that one clearly. Let’s try it again.";
+  mark(c, "uncertain");
+  setVerdict(c, "uncertain", { show: "Let’s try it again", say });
+  speakOrDefer(c, { key: "uncertain", text: say, kind: "verdict", priority: PRIORITY.range, phase: c.s.currentPhase });
+}
+
+/**
+ * Because only good reps credit the set, someone who physically cannot do the movement yet must not be left trying
+ * without end, and must never be blamed. After a few attempts in a row that did not count: point to the guide. After
+ * more: suggest a rest and offer to finish for today (which keeps the good reps and tells the therapist, plainly).
+ */
+function nodeTrapSafety(c: Ctx) {
+  const { s, cfg } = c;
+  if (!s.suggestDemo && s.streak >= cfg.trapSimplifyStreak) {
+    s.suggestDemo = true;
+    speakOrDefer(c, { key: "suggest_demo", text: "Take your time. The guide can show you how this one goes.", kind: "pacing", priority: PRIORITY.range, phase: s.currentPhase });
+  }
+  const struggling = s.streak >= cfg.trapRestStreak || (s.notCountedInChunk >= cfg.trapMinNotCounted && s.notCountedInChunk >= cfg.trapNotCountedRatio * Math.max(1, s.validInChunk));
+  if (!s.offerFinish && struggling) {
+    s.offerFinish = true;
+    const text = "Let’s take a short rest. You can finish here for today if you’d like.";
+    showCue(c, { text, tone: "info", priority: PRIORITY.praise, source: "system" }, true);
+    speakOrDefer(c, { key: "offer_finish", text, kind: "pacing", priority: PRIORITY.major, phase: s.currentPhase });
   }
 }
 
 function nodeSetComplete(c: Ctx) {
-  const text = "Set complete. Well done.";
+  const text = SET_COMPLETE[Math.max(0, c.s.currentSet - 1) % SET_COMPLETE.length];
   c.s.pending = null;
   showCue(c, { text, tone: "praise", priority: PRIORITY.praise, source: "system" }, true);
   speakOrDefer(c, { key: "set_complete", text, kind: "ack", priority: PRIORITY.praise, phase: "rest" });
+}
+
+/** How long each result stays up: long enough to read and act on, never longer than useful. */
+function verdictTtl(kind: Verdict["kind"], cfg: CoachConfig): number {
+  return kind === "good" ? cfg.verdictGoodMs : kind === "corrected" ? 2000 : kind === "uncertain" ? 3000 : cfg.verdictNotCountedMs;
 }
 
 /** Called a couple of times a second, never per frame: expiry, retries, and adaptive escalation. */
@@ -377,12 +583,16 @@ function nodeTick(c: Ctx) {
   const { s, cfg, now } = c;
   if (s.paused) return;
 
+  if (s.verdict && now - s.verdict.at >= verdictTtl(s.verdict.kind, cfg)) s.verdict = null;
+
   if (s.cue) {
     const age = now - s.cue.shownAt;
     const ttl = s.cue.tone === "praise" ? cfg.ackDisplayMs : cfg.minCueDisplayMs;
     const stillAbout = s.cue.code ? isIssueActive(s, s.cue.code) : s.cue.tone === "camera" && s.camera !== null;
+    // One or the other: clearing the cue above leaves nothing to inspect (a long gap between ticks, such as
+    // resuming after a pause, used to read `tone` of a cue that had just been cleared and throw).
     if (age >= ttl && !stillAbout && s.cue.tone !== "setup") clearCue(c);
-    if (age >= ttl * 2 && s.cue.tone === "setup") clearCue(c);
+    else if (age >= ttl * 2 && s.cue.tone === "setup") clearCue(c);
   }
 
   flushPending(c);

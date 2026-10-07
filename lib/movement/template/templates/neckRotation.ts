@@ -100,6 +100,7 @@ export const neckRotation: MovementTemplate = {
       invalidatesRep: true,
       landmarks: [{ joint: "nose" }],
       low: {
+        show: "Turn a little farther",
         observation: "the head turned less far than the target range",
         texts: [
           "Turn your head a little further, as far as is comfortable.",
@@ -116,6 +117,7 @@ export const neckRotation: MovementTemplate = {
       invalidatesRep: false,
       landmarks: [{ joint: "nose" }],
       low: {
+        show: "Turn more slowly",
         observation: "the head turn was quicker than the controlled pace",
         texts: [
           "Turn your head more slowly and keep the movement smooth.",
@@ -125,6 +127,23 @@ export const neckRotation: MovementTemplate = {
       },
       ack: "Nice, that was smooth and slow.",
     },
+    shortHold: {
+      id: "short_hold",
+      label: "Did not hold at the top",
+      severity: "minor",
+      invalidatesRep: true,
+      landmarks: [{ joint: "nose" }],
+      low: {
+        show: "Hold a little longer",
+        observation: "there was no pause at the top of the movement",
+        texts: [
+          "Hold your head turned for a moment before you return.",
+          "Pause with your head turned and count to two before coming back.",
+          "Hold your head steady for the time your therapist set.",
+        ],
+      },
+      ack: "Good, that was a steady hold.",
+    },
     incompleteReturn: {
       id: "incomplete_return",
       label: "Did not return to centre",
@@ -132,6 +151,7 @@ export const neckRotation: MovementTemplate = {
       invalidatesRep: false,
       landmarks: [{ joint: "nose" }],
       high: {
+        show: "Come back to centre",
         observation: "the head did not come back to the centre",
         texts: [
           "Bring your head back to the centre before you turn again.",
@@ -158,6 +178,7 @@ export const neckRotation: MovementTemplate = {
       landmarks: [{ joint: "shoulder", side: "left" }, { joint: "shoulder", side: "right" }],
       bones: [[{ joint: "shoulder", side: "left" }, { joint: "shoulder", side: "right" }]],
       low: {
+        show: "Keep shoulders level",
         observation: "the shoulders are not level",
         texts: [
           "Keep both shoulders level and relaxed as your head turns.",
@@ -166,6 +187,7 @@ export const neckRotation: MovementTemplate = {
         ],
       },
       high: {
+        show: "Keep shoulders level",
         observation: "the shoulders are not level",
         texts: [
           "Keep both shoulders level and relaxed as your head turns.",
@@ -176,6 +198,22 @@ export const neckRotation: MovementTemplate = {
       ack: "Good correction, your shoulders are level.",
     },
   ],
+  validity: {
+    tempoFloorMs: 600,
+    holdTolerance: 0.8,
+    lowToleranceMs: 1000,
+    rationale: {
+      minRange: "A good rep is one where the nose moves 0.12 shoulder-widths from centre (a clear turn, independent of how far away the camera is). Engineering default, not tuned on real footage.",
+      almostBand: "The old halfway-credit line is now only the 'almost there' band, so the wording can say a little farther. That line is at 0.10 shoulder-widths: past it the turn is nearly there.",
+      setup: "The starting position is held for about a second so the person's own resting position is captured before any rep is judged.",
+      tempoFloor: "A whole cycle faster than 0.6 seconds is flicked through, not performed. This is half of the coaching pace and the only new mandatory tempo rule.",
+      hold: "A hold is mandatory only when one is required: the template's own, or the hold the therapist prescribed, with 20% tolerance so a slight early release is not punished.",
+      return: "A rep ends only when the movement returns to the starting zone, so a return is always required; a very slow return is coached, not rejected.",
+      visibility: "If the camera cannot see the movement for more than a second of a cycle (a third of a second when the rep fell short, so a missed peak is never blamed on the person), or cannot check a mandatory rule, the cycle is 'not seen', never wrong.",
+      shoulders_uneven: "Raising one shoulder is a common substitute for turning the head; it only coaches because the camera angle can fake a small slope.",
+    },
+    source: "engineering-default",
+  },
   statusJoints: [
     { label: "Head", ref: { joint: "nose" } },
     { label: "Left shoulder", ref: { joint: "shoulder", side: "left" } },

@@ -29,7 +29,7 @@ export interface WeeklyReportData {
   adherencePercent: number | null;
   averageRom?: number;
   averageFormScore?: number;
-  formBasis?: "engine2" | "legacy";
+  formBasis?: "engine2" | "engine4" | "legacy";
   quality?: {
     validReps: number;
     invalidReps: number;

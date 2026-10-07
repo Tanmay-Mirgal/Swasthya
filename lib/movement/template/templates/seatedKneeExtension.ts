@@ -74,6 +74,7 @@ export const seatedKneeExtension: MovementTemplate = {
       landmarks: [{ joint: "knee" }, { joint: "ankle" }],
       bones: [[{ joint: "knee" }, { joint: "ankle" }]],
       low: {
+        show: "Straighten a bit more",
         observation: "the knee stopped before it reached the target straightness",
         texts: [
           "Straighten your knee a little more at the top.",
@@ -90,6 +91,7 @@ export const seatedKneeExtension: MovementTemplate = {
       invalidatesRep: false,
       landmarks: [{ joint: "knee" }],
       low: {
+        show: "Slow down",
         observation: "the repetition was quicker than the controlled pace",
         texts: [
           "Slow down. Take about two seconds to straighten your leg.",
@@ -99,6 +101,23 @@ export const seatedKneeExtension: MovementTemplate = {
       },
       ack: "Nice, that was a controlled pace.",
     },
+    shortHold: {
+      id: "short_hold",
+      label: "Did not hold at the top",
+      severity: "minor",
+      invalidatesRep: true,
+      landmarks: [{ joint: "knee" }, { joint: "ankle" }],
+      low: {
+        show: "Hold a little longer",
+        observation: "there was no pause at the top of the movement",
+        texts: [
+          "Hold your leg straight at the top for a moment.",
+          "Pause with your knee straight and count to two before lowering.",
+          "Hold your leg steady at the top for the time your therapist set.",
+        ],
+      },
+      ack: "Good, that was a steady hold.",
+    },
     incompleteReturn: {
       id: "incomplete_return",
       label: "Did not lower fully",
@@ -106,6 +125,7 @@ export const seatedKneeExtension: MovementTemplate = {
       invalidatesRep: false,
       landmarks: [{ joint: "knee" }, { joint: "ankle" }],
       high: {
+        show: "Lower your foot fully",
         observation: "the leg was not lowered back to the starting position",
         texts: [
           "Lower your foot all the way back down before the next lift.",
@@ -131,6 +151,7 @@ export const seatedKneeExtension: MovementTemplate = {
       landmarks: [{ joint: "shoulder" }, { joint: "hip" }],
       bones: [[{ joint: "shoulder" }, { joint: "hip" }]],
       high: {
+        show: "Sit tall",
         observation: "the upper body is leaning away from upright",
         texts: [
           "Your back is leaning. Sit tall and lift your chest as the leg moves.",
@@ -141,6 +162,22 @@ export const seatedKneeExtension: MovementTemplate = {
       ack: "Good correction, your back is upright.",
     },
   ],
+  validity: {
+    tempoFloorMs: 800,
+    holdTolerance: 0.8,
+    lowToleranceMs: 1000,
+    rationale: {
+      minRange: "A good rep is one where the knee reaches 150 degrees (a leg close to straight). Engineering default, not tuned on real footage.",
+      almostBand: "The old halfway-credit line is now only the 'almost there' band, so the wording can say a little farther. That line is at 130 degrees: past it the leg is nearly there, short of 150 it is not counted.",
+      setup: "The starting position is held for about a second so the person's own resting position is captured before any rep is judged.",
+      tempoFloor: "A whole cycle faster than 0.8 seconds is flicked through, not performed. This is half of the coaching pace and the only new mandatory tempo rule.",
+      hold: "A hold is mandatory only when one is required: the template's own, or the hold the therapist prescribed, with 20% tolerance so a slight early release is not punished.",
+      return: "A rep ends only when the movement returns to the starting zone, so a return is always required; a very slow return is coached, not rejected.",
+      visibility: "If the camera cannot see the movement for more than a second of a cycle (a third of a second when the rep fell short, so a missed peak is never blamed on the person), or cannot check a mandatory rule, the cycle is 'not seen', never wrong.",
+      trunk_lean: "Leaning back lets the hip do the work of the leg; 18 degrees from upright is the point where the lean is clearly visible, 25 is the most the set-up accepts.",
+    },
+    source: "engineering-default",
+  },
   statusJoints: [
     { label: "Shoulder", ref: { joint: "shoulder" } },
     { label: "Hip", ref: { joint: "hip" } },

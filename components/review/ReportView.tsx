@@ -97,7 +97,7 @@ export default function ReportView({ report }: { report: WeeklyReportData }) {
       <section aria-label="Movement measured by the camera">
         <SectionHeading title="Movement quality" action={<Authorship by="automated" />} description="Counted on the patient’s device. This is guidance, not a clinical assessment." />
         <dl className="mt-4 grid grid-cols-2 gap-x-6 gap-y-5 sm:grid-cols-3">
-          <Fact label={report.formBasis === "legacy" ? "Form score (older, pace-based)" : "Reps that met the form checks"} value={report.averageFormScore !== undefined ? `${report.averageFormScore}%` : "Not measured"} />
+          <Fact label={report.formBasis === "legacy" ? "Form score (older, pace-based)" : report.formBasis === "engine4" ? "Attempts that counted as good reps" : "Reps that met the form checks"} value={report.averageFormScore !== undefined ? `${report.averageFormScore}%` : "Not measured"} />
           <Fact label="Average range of motion" value={report.averageRom ? `${report.averageRom}°` : "Not measured"} />
           <div className="col-span-2 min-w-0 sm:col-span-1">
             <dt className="text-sm text-slate-600">Compared with last week</dt>

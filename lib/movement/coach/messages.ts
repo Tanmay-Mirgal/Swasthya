@@ -43,6 +43,12 @@ export function messageFor(rule: AnyRule, direction: "low" | "high"): RuleMessag
   return (direction === "low" ? rule.low ?? rule.high : rule.high ?? rule.low) ?? null;
 }
 
+/** The short instruction shown on screen for a problem ("Sit tall"), at most 24 characters. */
+export function showFor(template: MovementTemplate, code: string, direction: "low" | "high"): string | null {
+  const found = findRule(template, code);
+  return found ? messageFor(found.rule, direction)?.show ?? null : null;
+}
+
 /** Wording for the nth time a problem is coached (0 = first). Escalates, then stays on the last tier. */
 export function textFor(template: MovementTemplate, code: string, direction: "low" | "high", tier: number): string | null {
   const found = findRule(template, code);

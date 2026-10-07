@@ -12,12 +12,14 @@
     "test:realtime": "tsx scripts/test_realtime_e2e.ts",
     "test:webrtc": "tsx --test lib/webrtc/__tests__/*.test.ts",
     "test:rehab": "tsx --test lib/rehab/*.test.ts",
+    "test:i18n": "tsx --conditions=react-server --test lib/i18n/*.test.ts services/voice/*.test.ts",
     "movement:replay": "tsx --conditions=react-server scripts/movement_replay.ts",
     "test:movement": "tsx --conditions=react-server --test lib/movement/__tests__/*.test.ts",
     "test:movement:e2e": "tsx --conditions=react-server scripts/test_movement_e2e.ts",
     "test:rehab:e2e": "tsx --conditions=react-server scripts/test_rehab_e2e.ts",
     "test:desktop:auth": "tsx --conditions=react-server scripts/test_desktop_auth.ts",
-    "migrate:plans": "tsx --conditions=react-server scripts/migrate_assignments_to_prescriptions.ts"
+    "migrate:plans": "tsx --conditions=react-server scripts/migrate_assignments_to_prescriptions.ts",
+    "templates:cards": "tsx --conditions=react-server tools/templates_cards.ts"
   },
   "dependencies": {
     "@clerk/backend": "^3.22.0",

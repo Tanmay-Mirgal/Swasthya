@@ -8,7 +8,7 @@
  * and a set can never be credited with more than its prescribed reps.
  */
 
-import { clampQuality, type ChunkQuality } from "./chunkQuality";
+import { clampQuality, creditsGoodRepsOnly, type ChunkQuality } from "./chunkQuality";
 
 export interface ChunkRecord extends ChunkQuality {
   chunkId: string;
@@ -82,7 +82,10 @@ export function applyChunk({ sets, targetSets, targetReps, setIndex, chunk }: Ap
   }
 
   const credited = Math.min(chunk.reps, targetReps - target.completedReps);
-  if (credited <= 0) return { ok: false, error: "No reps to record." };
+  // Since engine v4 only good reps credit the set, so a stretch of work can honestly contain none. It is still kept, with
+  // the attempts that did not count, so the patient's effort (and the therapist's picture of it) is not thrown away.
+  const attemptsOnly = creditsGoodRepsOnly(chunk.engine) && (chunk.invalidReps ?? 0) + (chunk.partialReps ?? 0) + (chunk.uncertainReps ?? 0) > 0;
+  if (credited <= 0 && !attemptsOnly) return { ok: false, error: "No reps to record." };
 
   target.completedReps += credited;
   target.chunks.push(clampQuality({ ...chunk, reps: credited }, credited));
