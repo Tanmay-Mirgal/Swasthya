@@ -46,7 +46,6 @@ function toCatalog(ex: ExtendedExerciseConfig): CatalogExercise {
 
 export function getPrescribableExercises(): CatalogExercise[] {
   return getAllExercises()
-    .filter((ex) => ex.isAvailable && getMovementTemplate(ex.id) !== null)
     .map(toCatalog)
     .sort((a, b) => a.name.localeCompare(b.name));
 }

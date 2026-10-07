@@ -9,8 +9,6 @@ const GUIDE_IMAGES: Record<string, string> = {
   "shoulder-abduction": "/exercise-guides/shoulder-abduction.png",
   "heel-raise": "/exercise-guides/heel-raise.png",
   "mini-squat": "/exercise-guides/mini-squat.png",
-  "straight-leg-raise": "/exercise-guides/straight-leg-raise.png",
-  "quad-stretch": "/exercise-guides/quad-stretch.png",
 };
 
 export function exerciseGuideImage(exerciseId: string): string | undefined {

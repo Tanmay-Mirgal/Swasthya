@@ -43,7 +43,7 @@ Closes the gap between clinic visits: real-time form feedback on the patient's o
 ## Evidence on Hand
 
 - Logo files (`public/swasthya-logo-full.png`, `-icon.png`, `-square.png`, `.jpg`).
-- Exercise guide photos in `public/exercise-guides/` (neck rotation, seated bicep curl, seated knee extension, sit to stand, shoulder abduction, heel raise, mini squat, straight leg raise, quad stretch).
+- Exercise guide photos in `public/exercise-guides/` (neck rotation, seated bicep curl, seated knee extension, sit to stand, shoulder abduction, heel raise, mini squat).
 - No testimonials, customer logos, outcome statistics, or clinical evidence exist. None may be fabricated.
 
 ## Product Principles

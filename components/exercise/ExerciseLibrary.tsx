@@ -124,15 +124,11 @@ export default function ExerciseLibrary({ exercises, suggestion, prescribedIds =
                     )}
                   </div>
                   <div className="col-span-2 sm:col-span-1">
-                    {ex.isAvailable ? (
-                      <Button asChild variant={isSuggested || isPrescribed ? "primary" : "outline"} className="w-full sm:w-auto">
-                        <Link href={`/exercise/${ex.id}/setup`}>
-                          <Play className="size-4 fill-current" aria-hidden="true" /> Start
-                        </Link>
-                      </Button>
-                    ) : (
-                      <span className="text-sm font-medium text-slate-600">Not available yet</span>
-                    )}
+                    <Button asChild variant={isSuggested || isPrescribed ? "primary" : "outline"} className="w-full sm:w-auto">
+                      <Link href={`/exercise/${ex.id}/setup`}>
+                        <Play className="size-4 fill-current" aria-hidden="true" /> Start
+                      </Link>
+                    </Button>
                   </div>
                 </li>
               );

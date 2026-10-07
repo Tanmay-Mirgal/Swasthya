@@ -22,7 +22,6 @@ export interface ClinicalProfile {
   contraindications?: string[];
   defaultSets: number;
   defaultReps: number;
-  isAvailable: boolean;
 }
 
 export interface RecommendationResult {
@@ -35,7 +34,6 @@ export interface RecommendationResult {
   clinicalRationale: string;
   targetSets: number;
   targetReps: number;
-  isAvailable: boolean;
 }
 
 // Comprehensive Clinical Ontology for Rehabilitation
@@ -87,7 +85,6 @@ export const CLINICAL_EXERCISE_PROFILES: Record<string, ClinicalProfile> = {
       "Isolates the quadriceps and activates the vastus medialis in an open-chain seated position, rebuilding terminal 0° knee extension without harmful compressive load.",
     defaultSets: 3,
     defaultReps: 10,
-    isAvailable: true,
   },
 
   "neck-rotation": {
@@ -131,7 +128,6 @@ export const CLINICAL_EXERCISE_PROFILES: Record<string, ClinicalProfile> = {
       "Restores transverse-plane cervical axial rotation, decompresses suboccipital tension, and mitigates forward head posture from prolonged desk work.",
     defaultSets: 2,
     defaultReps: 10,
-    isAvailable: true,
   },
 
   "seated-bicep-curl": {
@@ -172,7 +168,6 @@ export const CLINICAL_EXERCISE_PROFILES: Record<string, ClinicalProfile> = {
       "Re-educates elbow sagittal flexion and strengthens biceps tendinous insertion while maintaining spinal neutral posture.",
     defaultSets: 3,
     defaultReps: 10,
-    isAvailable: true,
   },
 
   "shoulder-abduction": {
@@ -209,60 +204,6 @@ export const CLINICAL_EXERCISE_PROFILES: Record<string, ClinicalProfile> = {
       "Enhances coronal plane glenohumeral abduction and stabilizes the rotator cuff force couple during arm elevation.",
     defaultSets: 3,
     defaultReps: 10,
-    isAvailable: true,
-  },
-
-  "straight-leg-raise": {
-    id: "straight-leg-raise",
-    name: "Straight Leg Raise",
-    bodySegment: "lower",
-    primaryJoint: "hip",
-    secondaryJoints: ["knee", "lumbar spine"],
-    targetMuscles: ["Quadriceps (Rectus Femoris)", "Iliopsoas", "Tensor Fasciae Latae"],
-    indicatedConditions: [
-      "knee",
-      "knee pain",
-      "knee rehabilitation",
-      "quadriceps weakness",
-      "acl recovery",
-      "patellar tendonitis",
-      "post-op knee",
-      "hip flexor strain",
-      "lower limb rehabilitation",
-      "sports injury",
-    ],
-    keywords: ["leg raise", "straight leg", "quad", "knee recovery", "knee pain", "patella"],
-    clinicalGoal:
-      "Strengthens the primary knee extensor and anterior hip chain with zero compressive patellofemoral shear.",
-    defaultSets: 3,
-    defaultReps: 10,
-    isAvailable: true,
-  },
-
-  "quad-stretch": {
-    id: "quad-stretch",
-    name: "Quad Stretch",
-    bodySegment: "lower",
-    primaryJoint: "knee",
-    secondaryJoints: ["hip", "quadriceps tendon"],
-    targetMuscles: ["Rectus femoris", "Vastus lateralis", "Vastus medialis"],
-    indicatedConditions: [
-      "knee",
-      "knee pain",
-      "knee stiffness",
-      "tight quads",
-      "patellar tracking",
-      "runner's knee",
-      "patellofemoral pain",
-      "mobility issues",
-      "rehabilitation",
-    ],
-    keywords: ["quad stretch", "thigh stretch", "knee flexion", "knee tightness", "flexibility"],
-    clinicalGoal:
-      "Elongates rectus femoris and relieves tension on the superior patellar pole, promoting fluid knee excursion.",
-    defaultSets: 3,
-    defaultReps: 3,
-    isAvailable: true,
   },
 };
 
@@ -368,10 +309,8 @@ export function scoreExerciseForConcerns(
   matchType = bestMatchType;
 
   // 3. Live Vision Readiness Boost (+15 pts)
-  // Ensures patient gets an active camera experience immediately
-  if (profile.isAvailable) {
-    score += 15;
-  }
+  // Every exercise has a movement template, so every recommendation gives an active camera experience immediately
+  score += 15;
 
   // 4. Session Adherence Bonus
   // If the user hasn't exercised this joint in recent sessions, prioritize it
@@ -430,7 +369,6 @@ export function getClinicalRecommendations({
       clinicalGoal: ex.description,
       defaultSets: 3,
       defaultReps: ex.targetReps || 10,
-      isAvailable: ex.isAvailable,
     };
 
     const { score, matchedConcern, matchType, rationale } = scoreExerciseForConcerns(
@@ -456,16 +394,11 @@ export function getClinicalRecommendations({
       clinicalRationale: rationale,
       targetSets: docPrescription?.targetSets || profile.defaultSets,
       targetReps: docPrescription?.targetReps || profile.defaultReps,
-      isAvailable: ex.isAvailable,
     });
   }
 
-  // Sort descending by score, prioritizing available exercises on ties
-  scoredResults.sort((a, b) => {
-    if (b.score !== a.score) return b.score - a.score;
-    if (b.isAvailable !== a.isAvailable) return b.isAvailable ? 1 : -1;
-    return 0;
-  });
+  // Sort descending by score
+  scoredResults.sort((a, b) => b.score - a.score);
 
   const primary = scoredResults[0];
 

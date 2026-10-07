@@ -241,7 +241,7 @@ These features are functionally complete, verified in code, and must be preserve
    *   *Issue*: `/login` and `/signup` are dummy HTML forms that simulate authentication with `router.push("/")` without invoking Clerk.
    *   *Cause*: When submitted, `AuthGuard` detects the user is unauthenticated and bounces them to `/sign-in`. Furthermore, `/onboarding` links directly to `/signup` rather than Clerk's `/sign-up`.
 3. **Incomplete Exercise Registry Entries**:
-   *   *Issue*: `straight-leg-raise` and `quad-stretch` are registered with `isAvailable: true` in `lib/exercises/registry.ts`, but **have no corresponding templates** in `lib/engine/templates/index.ts`.
+   *   *Issue* (resolved): `straight-leg-raise` and `quad-stretch` were registered in `lib/exercises/registry.ts` without a movement template. Exercises with no template are no longer registered at all.
    *   *Cause*: If a patient opens either exercise, `templateRef.current` evaluates to `null` and the live tracking engine freezes.
 4. **React 19 Ref Access During Render (ESLint Failure)**:
    *   *Issue*: 34 ESLint errors fail `npm run lint`.
@@ -427,7 +427,7 @@ Phase 5: Vercel Deployment Verification
 *   `app/(patient)/exercise/[exerciseId]/live/LiveExerciseClient.tsx` — Invoke `syncSessionToDatabase` with Clerk bearer token upon exercise finish.
 *   `app/api/therapist/patient/[patientId]/route.ts` — Query `ExerciseSession` collection for the requested patient and return in response payload.
 *   `app/(therapist)/therapist/patient/[patientId]/page.tsx` — Bind `sessions` state to API response data to render historical workout cards.
-*   `lib/exercises/registry.ts` — Set `isAvailable: false` on `straight-leg-raise` and `quad-stretch` until biomechanical templates are implemented.
+*   `lib/exercises/registry.ts` — (done) only exercises with a movement template are registered.
 
 ### Phase 4: Realtime Migration to Serverless
 *   `app/api/consultation/[id]/signal/route.ts` — **New Route**: Handles SDP Offer, Answer, and ICE candidate exchanges with short TTL.
