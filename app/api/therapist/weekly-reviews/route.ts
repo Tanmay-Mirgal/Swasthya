@@ -24,8 +24,12 @@ export async function GET(req: Request) {
       await generateWeeklyReport(r._id.toString(), cutoff).catch((e) => console.error("[reviews] report failed:", e));
     }
 
-    const filter: Record<string, unknown> = { doctorId: me.userId, status: { $ne: "upcoming" } };
-    if (status && ["recording_due", "report_ready", "reviewed"].includes(status)) filter.status = status;
+    // "upcoming" reviews stay hidden until their day, except ones the patient already sent a recording for.
+    const filter: Record<string, unknown> = { doctorId: me.userId, $or: [{ status: { $ne: "upcoming" } }, { recordingId: { $exists: true, $ne: null } }] };
+    if (status && ["recording_due", "report_ready", "reviewed"].includes(status)) {
+      delete filter.$or;
+      filter.status = status;
+    }
     const reviews = await WeeklyReview.find(filter).sort({ dueDate: -1 }).limit(100).lean();
 
     const patientIds = [...new Set(reviews.map((r) => r.patientId))];

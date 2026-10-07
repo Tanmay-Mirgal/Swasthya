@@ -59,6 +59,9 @@ export async function POST(req: Request) {
       durationSeconds: Number.isFinite(dur) && dur > 0 && dur < 3600 ? Math.round(dur) : undefined,
     });
     review.recordingId = recording._id.toString();
+    // The daily job is what normally moves a review to "recording_due", and the therapist's list hides
+    // "upcoming" reviews. A clip that arrives before that must still show up for the therapist.
+    if (review.status === "upcoming") review.status = "recording_due";
     await review.save();
 
     if (previous) {
