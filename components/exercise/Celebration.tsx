@@ -30,6 +30,9 @@ const PLAN = {
   3: { pieces: 165, ms: 4400, waves: 3 },
 } as const;
 
+/** How long a burst of this level takes to play out, so a screen that is about to close can wait for it. */
+export const burstDurationMs = (level: Burst["level"]) => PLAN[level].ms + 200;
+
 type Shape = "strip" | "tick" | "dot" | "ring";
 interface Piece {
   x: number;

@@ -8,6 +8,7 @@ import { BookOpen } from "lucide-react";
 import AppShell from "@/components/layout/AppShell";
 import MovementStage from "@/components/movement/MovementStage";
 import FocusFrame from "@/components/exercise/FocusFrame";
+import Celebration, { burstDurationMs, useCelebration } from "@/components/exercise/Celebration";
 import LivePanel from "@/components/exercise/LivePanel";
 import PoseGuidePanel from "@/components/exercise/PoseGuidePanel";
 import { useVoicePreference } from "@/components/exercise/useVoiceCoach";
@@ -64,7 +65,11 @@ function FreePracticeSession({ template }: { template: MovementTemplate }) {
   const [paused, setPaused] = useState(false);
   const [isGuideOpen, setIsGuideOpen] = useState(false);
   const [confirmEnd, setConfirmEnd] = useState(false);
-  const { voiceEnabled, toggleVoice, language } = useVoicePreference();
+  const { voiceEnabled, toggleVoice, language, voiceSettings } = useVoicePreference();
+  // Practice without a prescription is celebrated like a prescribed set: reaching the target is the moment worth marking.
+  const { burst, fire } = useCelebration(voiceSettings.celebrations);
+  /** When the party popper will have played out, so leaving for the summary does not cut it short. */
+  const celebrationEndsRef = useRef(0);
 
   const [startedAt] = useState(() => Date.now());
   const endingRef = useRef(false);
@@ -126,21 +131,29 @@ function FreePracticeSession({ template }: { template: MovementTemplate }) {
         /* the summary simply has no report link */
       }
     }
+    // Everything is saved by now; only the way out waits, so the confetti plays to the end.
+    const wait = celebrationEndsRef.current - Date.now();
+    if (wait > 0) await new Promise((resolve) => setTimeout(resolve, wait));
     router.push("/session");
   }, [getSummary, getToken, plannedReps, router, startedAt, template]);
 
-  // The engine counted every rep: save a moment later so the last one is seen.
+  // The engine counted every rep: celebrate now, and save a moment later so the last one is seen.
   useEffect(() => {
     finishRef.current = () => {
+      if (!endingRef.current && celebrationEndsRef.current === 0) {
+        fire(1, { on: voiceEnabled, volume: voiceSettings.volume });
+        if (voiceSettings.celebrations) celebrationEndsRef.current = Date.now() + burstDurationMs(1);
+      }
       setTimeout(() => void finishSession(), 1200);
     };
-  }, [finishSession]);
+  }, [finishSession, fire, voiceEnabled, voiceSettings.celebrations, voiceSettings.volume]);
 
   const ui = useMemo(() => localizeMovementUi(session.ui, language), [session.ui, language]);
   const completedReps = ui.counted;
 
   return (
     <>
+      <Celebration burst={burst} />
       <FocusFrame
         title={exercise.name}
         subtitle={`${completedReps} of ${ui.targetReps} good reps`}
