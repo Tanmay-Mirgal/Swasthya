@@ -17,30 +17,30 @@ const LINKS = [
 export default function LandingNav() {
   const [open, setOpen] = useState(false);
   return (
-    <header className="sticky top-0 z-40 border-b border-slate-300 bg-[var(--paper)]">
+    <header className="sticky top-0 z-40 border-b border-slate-200/80 bg-white/80 backdrop-blur-md transition-all">
       <div className="mx-auto flex h-16 w-full max-w-6xl items-center gap-6 px-5 sm:px-8">
-        <Link href="/" className="flex shrink-0 items-center gap-2.5 rounded" aria-label="Swasthya home">
-          <Image src="/swasthya-logo-icon.png" alt="" width={34} height={34} className="size-[34px] object-contain" priority />
-          <span translate="no" className="text-lg font-bold tracking-tight">Swasthya</span>
+        <Link href="/" className="flex shrink-0 items-center gap-2.5 rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500" aria-label="Swasthya home">
+          <Image src="/swasthya-logo-icon.png" alt="" width={32} height={32} className="size-8 object-contain drop-shadow-xs" priority />
+          <span translate="no" className="text-xl font-bold tracking-tight text-slate-950">Swasthya</span>
         </Link>
 
         <nav aria-label="Page" className="hidden items-center gap-1 md:flex">
           {LINKS.map((l) => (
-            <a key={l.href} href={l.href} className="rounded-md px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100 hover:text-slate-900">{l.label}</a>
+            <a key={l.href} href={l.href} className="rounded-lg px-3 py-1.5 text-sm font-semibold text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-900">{l.label}</a>
           ))}
         </nav>
 
-        <div className="ml-auto flex items-center gap-2">
+        <div className="ml-auto flex items-center gap-3">
           <LanguageSwitcher />
-          <Link href="/sign-in" className="hidden rounded-md px-3 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-100 sm:inline-flex">Sign in</Link>
-          <Link href="/onboarding" className="inline-flex h-10 items-center rounded-md bg-emerald-600 px-4 text-sm font-semibold text-white hover:bg-emerald-700">Get started</Link>
+          <Link href="/sign-in" className="hidden rounded-lg px-3.5 py-2 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-100 hover:text-slate-900 sm:inline-flex">Sign in</Link>
+          <Link href="/onboarding" className="inline-flex h-9.5 items-center rounded-xl bg-gradient-to-r from-emerald-600 to-emerald-700 px-4.5 text-sm font-semibold text-white shadow-sm shadow-emerald-700/20 transition-all hover:from-emerald-500 hover:to-emerald-600 hover:shadow-md hover:-translate-y-0.5 active:translate-y-0">Get started</Link>
           <button
             type="button"
             onClick={() => setOpen((o) => !o)}
             aria-expanded={open}
             aria-controls="landing-menu"
             aria-label={open ? "Close menu" : "Open menu"}
-            className="inline-flex size-10 items-center justify-center rounded-md text-slate-800 hover:bg-slate-100 md:hidden"
+            className="inline-flex size-9.5 items-center justify-center rounded-lg text-slate-700 hover:bg-slate-100 md:hidden"
           >
             {open ? <X className="size-5" aria-hidden="true" /> : <Menu className="size-5" aria-hidden="true" />}
           </button>
@@ -48,14 +48,14 @@ export default function LandingNav() {
       </div>
 
       {open && (
-        <nav id="landing-menu" aria-label="Page" className="border-t border-slate-300 bg-[var(--paper)] px-5 pb-4 pt-2 md:hidden">
+        <nav id="landing-menu" aria-label="Page" className="border-t border-slate-200/80 bg-white/95 backdrop-blur-md px-5 pb-4 pt-2 md:hidden">
           <ul>
             {LINKS.map((l) => (
               <li key={l.href}>
-                <a href={l.href} onClick={() => setOpen(false)} className="block border-b border-slate-300 py-3 text-base font-semibold text-slate-900">{l.label}</a>
+                <a href={l.href} onClick={() => setOpen(false)} className="block border-b border-slate-100 py-3 text-base font-semibold text-slate-800">{l.label}</a>
               </li>
             ))}
-            <li><Link href="/sign-in" className="block py-3 text-base font-semibold text-slate-900">Sign in</Link></li>
+            <li><Link href="/sign-in" className="block py-3 text-base font-semibold text-slate-800">Sign in</Link></li>
           </ul>
         </nav>
       )}

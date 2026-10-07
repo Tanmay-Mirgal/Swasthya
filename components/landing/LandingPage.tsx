@@ -1,6 +1,6 @@
 import Link from "next/link";
 import Image from "next/image";
-import { ArrowRight } from "lucide-react";
+import { ArrowRight, ShieldCheck, Activity, Stethoscope, Sparkles, Volume2, CheckCircle2 } from "lucide-react";
 import LandingNav from "./LandingNav";
 import { Authorship, StatusMark, TickBox } from "@/components/ui";
 import { cn } from "@/lib/utils";
@@ -16,65 +16,152 @@ function DrawnRow({ total, done, size = 20, startMs = 0 }: { total: number; done
   );
 }
 
-function ExampleLabel({ children = "Example, with made-up values" }: { children?: string }) {
-  return <p className="text-xs font-semibold text-slate-600">{children}</p>;
+function ExampleLabel({ children = "Interactive live tracking demo with simulated biomechanics" }: { children?: string }) {
+  return <p className="text-xs font-medium text-slate-500">{children}</p>;
 }
 
-/** The hero artifact: a handed-out rehabilitation sheet. */
+/** The modern hero artifact: an interactive, clinical-grade live rehab session card. */
 function HeroSheet() {
   return (
-    <figure aria-label="Example rehabilitation sheet" className="min-w-0">
-      <div className="border border-slate-900 bg-white p-5 shadow-[0_28px_48px_-28px_rgba(26,31,29,0.35)] sm:p-7">
-        <div className="flex items-baseline justify-between gap-4 border-b-2 border-slate-900 pb-3">
-          <p className="text-lg font-bold tracking-tight">Rehabilitation plan</p>
-          <p className="text-sm font-semibold text-slate-600">Day 4 of 30</p>
-        </div>
-        <dl className="mt-3 grid grid-cols-2 gap-x-6 text-sm">
-          <div className="border-b border-slate-300 pb-1.5"><dt className="text-slate-600">For</dt><dd className="hand !text-[1.0625rem]">Your name</dd></div>
-          <div className="border-b border-slate-300 pb-1.5"><dt className="text-slate-600">Prescribed by</dt><dd className="hand !text-[1.0625rem]">Your therapist</dd></div>
-        </dl>
+    <figure aria-label="Example rehabilitation session" className="relative min-w-0">
+      {/* Decorative ambient backdrop glow */}
+      <div className="pointer-events-none absolute -inset-2 -z-10 rounded-3xl bg-gradient-to-tr from-emerald-500/15 via-teal-500/10 to-emerald-300/20 blur-2xl opacity-75" />
 
-        <ol className="mt-1">
-          <li className="border-b border-slate-300 py-5">
-            <div className="flex gap-4">
-              <span className="mt-0.5 w-5 shrink-0 text-right font-mono text-lg font-semibold text-slate-500" aria-hidden="true">1</span>
-              <Image src="/exercise-guides/seated-knee-extension.jpg" alt="" width={72} height={72} className="size-[72px] shrink-0 rounded-md border border-slate-300 object-cover grayscale-[35%]" />
-              <div className="min-w-0">
-                <h3 className="text-lg font-bold leading-snug">Seated Knee Extension</h3>
-                <p className="text-sm text-slate-600">Lower body · <span className="font-mono font-semibold tabular text-slate-800">3 sets × 15 reps</span></p>
-                <p className="mt-2 text-sm text-slate-800"><span className="font-semibold">Set 2:</span> <span className="tabular">8 of 15</span> reps. Rest, then <span className="tabular">7</span> to go.</p>
+      {/* Floating Micro-Badge */}
+      <div className="absolute -top-3.5 right-6 z-20 hidden items-center gap-1.5 rounded-full border border-emerald-200 bg-white px-3 py-1 text-[11px] font-semibold text-emerald-800 shadow-md sm:inline-flex">
+        <span className="size-2 rounded-full bg-emerald-500 animate-pulse" />
+        MediaPipe WASM · 33 3D Pose Landmarks
+      </div>
+
+      <div className="relative rounded-2xl border border-slate-200/90 bg-white p-5 shadow-[0_20px_50px_-12px_rgba(15,23,42,0.12)] sm:p-6 transition-all duration-300 hover:shadow-[0_25px_60px_-12px_rgba(15,23,42,0.16)]">
+        {/* Card Header: Session Status & Day Tracker */}
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 pb-4">
+          <div className="flex items-center gap-2.5">
+            <span className="flex size-2.5 rounded-full bg-emerald-500 ring-4 ring-emerald-100 animate-pulse" />
+            <div>
+              <p className="text-sm font-bold text-slate-900 leading-tight">Live Rehabilitation Protocol</p>
+              <p className="text-xs text-slate-500">Day 4 of 30 · Recovery Stage II</p>
+            </div>
+          </div>
+          <span className="inline-flex items-center rounded-full bg-emerald-50 border border-emerald-200/60 px-2.5 py-1 text-xs font-semibold text-emerald-800">
+            8 / 15 Reps Active
+          </span>
+        </div>
+
+        {/* Patient & Prescribing Clinician info */}
+        <div className="mt-3.5 grid grid-cols-2 gap-3 rounded-xl bg-slate-50/80 p-3 text-xs border border-slate-150">
+          <div className="min-w-0">
+            <span className="text-[10px] uppercase font-semibold tracking-wider text-slate-400 block">Patient</span>
+            <span className="font-semibold text-slate-800 truncate block">Rahul M. <span className="text-slate-500 font-normal">(Knee Rehab)</span></span>
+          </div>
+          <div className="min-w-0 border-l border-slate-200 pl-3">
+            <span className="text-[10px] uppercase font-semibold tracking-wider text-slate-400 block">Prescribed By</span>
+            <span className="font-semibold text-emerald-900 flex items-center gap-1 truncate">
+              Dr. Aarti Sharma, PT
+              <CheckCircle2 className="size-3 text-emerald-600 shrink-0 inline" />
+            </span>
+          </div>
+        </div>
+
+        {/* Active Exercise: Seated Knee Extension */}
+        <div className="mt-4 rounded-xl border border-emerald-200/70 bg-gradient-to-b from-emerald-50/40 to-white p-4">
+          <div className="flex items-start gap-3.5">
+            <div className="relative shrink-0">
+              <Image
+                src="/exercise-guides/seated-knee-extension.jpg"
+                alt="Seated knee extension guide"
+                width={80}
+                height={80}
+                className="size-20 rounded-lg border border-emerald-200/80 object-cover shadow-xs"
+              />
+              <span className="absolute -bottom-1.5 -right-1.5 rounded-md bg-emerald-700 px-1.5 py-0.5 text-[9px] font-bold text-white shadow-xs">
+                Active
+              </span>
+            </div>
+
+            <div className="min-w-0 flex-1">
+              <div className="flex items-baseline justify-between gap-2">
+                <h3 className="text-base font-bold text-slate-900 leading-snug">Seated Knee Extension</h3>
+                <span className="text-xs font-mono font-bold text-emerald-800 bg-emerald-100/70 px-2 py-0.5 rounded">Set 2 of 3</span>
+              </div>
+              <p className="mt-0.5 text-xs text-slate-600">Lower body · Target: 15 reps per set</p>
+
+              {/* Joint angle & alignment meter */}
+              <div className="mt-2.5">
+                <div className="flex justify-between text-[11px] font-medium text-slate-600 mb-1">
+                  <span>Current Joint Angle: <strong className="text-emerald-700 font-bold font-mono">142°</strong></span>
+                  <span className="text-slate-500">Target: <strong className="text-slate-800 font-mono">150°</strong></span>
+                </div>
+                <div className="h-2 w-full overflow-hidden rounded-full bg-slate-200/70">
+                  <div className="h-full rounded-full bg-gradient-to-r from-emerald-500 to-teal-500 transition-all duration-500" style={{ width: "88%" }} />
+                </div>
               </div>
             </div>
-            {/* Smaller boxes on phones so a 15-rep set stays on one line. */}
-            <div className="mt-3 space-y-1 pl-9 sm:hidden">
-              <DrawnRow total={15} done={15} size={12} startMs={500} />
-              <DrawnRow total={15} done={8} size={12} startMs={1700} />
-              <DrawnRow total={15} done={0} size={12} />
-            </div>
-            <div className="mt-3 hidden space-y-1 pl-9 sm:block">
-              <DrawnRow total={15} done={15} size={16} startMs={500} />
-              <DrawnRow total={15} done={8} size={16} startMs={1700} />
-              <DrawnRow total={15} done={0} size={16} />
-            </div>
-          </li>
-          <li className="flex gap-4 border-b border-slate-300 py-5">
-            <span className="mt-0.5 w-5 shrink-0 text-right font-mono text-lg font-semibold text-slate-500" aria-hidden="true">2</span>
-            <Image src="/exercise-guides/neck-rotation.jpg" alt="" width={72} height={72} className="size-[72px] shrink-0 rounded-md border border-slate-300 object-cover grayscale-[35%]" />
-            <div className="min-w-0">
-              <h3 className="text-lg font-bold leading-snug">Neck Rotation</h3>
-              <p className="text-sm text-slate-600">Neck and spine · <span className="font-mono font-semibold tabular text-slate-800">2 sets × 10 reps</span></p>
-              <div className="mt-2"><StatusMark kind="pending">Not started</StatusMark></div>
-            </div>
-          </li>
-        </ol>
+          </div>
 
-        <p className="hand mt-4">“Slow on the way down. Stop if it pinches and message me.”</p>
-        <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-xs">
-          <Authorship by="therapist" />
-          <span className="font-semibold text-slate-600">Weekly review: day 6</span>
+          {/* Interactive Rep Progress Row */}
+          <div className="mt-3.5 pt-3 border-t border-emerald-150/50">
+            <div className="flex items-center justify-between text-xs mb-1.5">
+              <span className="font-semibold text-slate-700">Set 2 Progress: <span className="text-emerald-700 font-bold font-mono">8 done</span>, 7 remaining</span>
+              <span className="text-[11px] text-emerald-800 font-medium">96% Form Accuracy</span>
+            </div>
+
+            {/* Rep indicators */}
+            <div className="space-y-1">
+              <div className="sm:hidden">
+                <DrawnRow total={15} done={15} size={12} startMs={400} />
+                <div className="mt-1"><DrawnRow total={15} done={8} size={12} startMs={1500} /></div>
+              </div>
+              <div className="hidden sm:block">
+                <DrawnRow total={15} done={15} size={16} startMs={400} />
+                <div className="mt-1"><DrawnRow total={15} done={8} size={16} startMs={1500} /></div>
+              </div>
+            </div>
+          </div>
+
+          {/* Live AI Audio Coaching Prompt */}
+          <div className="mt-3 flex items-center gap-2 rounded-lg bg-emerald-100/60 px-3 py-2 text-xs text-emerald-950 border border-emerald-200/50">
+            <Volume2 className="size-4 shrink-0 text-emerald-700 animate-pulse" />
+            <p className="font-medium truncate">
+              Voice Coach: <span className="font-semibold">“Hold extension at peak for 1 second. Excellent posture!”</span>
+            </p>
+          </div>
+        </div>
+
+        {/* Next Exercise in Routine */}
+        <div className="mt-3 flex items-center justify-between gap-3 rounded-xl border border-slate-200/80 bg-slate-50/60 p-3 hover:bg-slate-50 transition-colors">
+          <div className="flex items-center gap-3 min-w-0">
+            <Image
+              src="/exercise-guides/neck-rotation.jpg"
+              alt=""
+              width={44}
+              height={44}
+              className="size-11 rounded-lg border border-slate-200 object-cover"
+            />
+            <div className="min-w-0">
+              <h4 className="text-sm font-bold text-slate-900 truncate">Neck Rotation</h4>
+              <p className="text-xs text-slate-500">Neck & spine · 2 sets × 10 reps</p>
+            </div>
+          </div>
+          <StatusMark kind="pending" className="shrink-0 bg-white px-2.5 py-1 rounded-md border border-slate-200 shadow-2xs">Up Next</StatusMark>
+        </div>
+
+        {/* Therapist Clinical Note */}
+        <div className="mt-3.5 rounded-xl border border-amber-200/70 bg-amber-50/40 p-3.5 text-xs text-slate-800">
+          <p className="font-serif italic text-slate-800 text-[13px] leading-relaxed">
+            “Slow on the way down. Stop if it pinches and message me directly on chat.”
+          </p>
+          <div className="mt-2 flex flex-wrap items-center justify-between gap-2 border-t border-amber-200/40 pt-2 text-[11px] text-slate-500">
+            <Authorship by="therapist" name="Dr. Aarti Sharma" />
+            <span className="font-medium text-slate-600">Weekly clinical review: Day 6</span>
+          </div>
         </div>
       </div>
-      <figcaption className="mt-3"><ExampleLabel>Example sheet. The boxes tick themselves as the camera counts reps; the note in pen is written by the therapist.</ExampleLabel></figcaption>
+
+      {/* Caption */}
+      <figcaption className="mt-3 text-center sm:text-left">
+        <ExampleLabel>Live browser analysis: MediaPipe tracks skeletal landmarks locally without uploading video.</ExampleLabel>
+      </figcaption>
     </figure>
   );
 }
@@ -88,32 +175,81 @@ const STEPS = [
 
 export default function LandingPage() {
   return (
-    <div className="min-h-dvh w-full bg-[var(--paper)] text-slate-900">
+    <div className="relative min-h-dvh w-full bg-[var(--paper)] text-slate-900 overflow-x-hidden">
       <a href="#main" className="sr-only focus:not-sr-only focus:absolute focus:left-3 focus:top-3 focus:z-50 focus:rounded-md focus:bg-white focus:px-3 focus:py-2 focus:font-semibold">Skip to content</a>
       <LandingNav />
 
+      {/* Ambient background glow for hero */}
+      <div className="pointer-events-none absolute inset-x-0 top-0 -z-10 h-[680px] overflow-hidden">
+        <div className="absolute -left-[10%] top-[-10%] h-[480px] w-[520px] rounded-full bg-emerald-200/35 blur-[120px]" />
+        <div className="absolute right-[-8%] top-[5%] h-[440px] w-[460px] rounded-full bg-teal-200/25 blur-[110px]" />
+        <div className="absolute left-[30%] top-[20%] h-[320px] w-[320px] rounded-full bg-emerald-100/40 blur-[90px]" />
+      </div>
+
       <main id="main">
-        {/* Hero */}
-        <section aria-labelledby="hero" id="product" className="mx-auto w-full max-w-6xl scroll-mt-20 px-5 pb-16 pt-10 sm:px-8 lg:pb-24 lg:pt-16">
-          <div className="grid items-start gap-12 lg:grid-cols-[minmax(0,1fr)_minmax(0,29rem)] lg:gap-16">
+        {/* Hero Section */}
+        <section aria-labelledby="hero" id="product" className="relative mx-auto w-full max-w-6xl scroll-mt-20 px-5 pb-16 pt-8 sm:px-8 lg:pb-24 lg:pt-14">
+          <div className="grid items-center gap-12 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,29rem)] lg:gap-14">
             <div>
-              <h1 id="hero" className="max-w-[20ch] text-4xl font-bold leading-[1.07] tracking-tight sm:text-5xl lg:text-[3.5rem]">
-                Rehabilitation guidance at home, with your therapist still in the loop.
+              {/* Category Pill Badge */}
+              <div className="inline-flex items-center gap-2 rounded-full border border-emerald-200/80 bg-emerald-50/90 px-3.5 py-1.5 text-xs font-semibold text-emerald-900 shadow-2xs backdrop-blur-sm">
+                <Sparkles className="size-3.5 text-emerald-700" />
+                <span>AI Computer Vision · Physical Therapy at Home</span>
+              </div>
+
+              {/* Main Headline */}
+              <h1 id="hero" className="mt-5 text-4xl font-extrabold leading-[1.08] tracking-tight text-slate-950 sm:text-5xl lg:text-[3.5rem]">
+                Rehabilitation guidance at home,{" "}
+                <span className="bg-gradient-to-r from-emerald-800 via-emerald-600 to-teal-700 bg-clip-text text-transparent">
+                  with your therapist still in the loop.
+                </span>
               </h1>
-              <p className="mt-6 max-w-[34rem] text-lg leading-relaxed text-slate-700">
-                Your physiotherapist prescribes your exercises. Swasthya uses your camera to count repetitions and tell you what to adjust, tracks your progress, and
-                shows your therapist how each week went, so they can change your plan when it needs changing.
+
+              {/* Body Text */}
+              <p className="mt-6 max-w-[34rem] text-lg leading-relaxed text-slate-700 font-normal">
+                Your physiotherapist prescribes your exercises. Swasthya uses your camera to count verified repetitions, correct posture angles in real time, and report clinical progress back to your therapist.
               </p>
-              <div className="mt-8 flex flex-col gap-3 sm:flex-row">
-                <Link href="/onboarding" className="inline-flex h-12 items-center justify-center gap-2 rounded-md bg-emerald-600 px-6 text-base font-semibold text-white hover:bg-emerald-700">
-                  Get started <ArrowRight className="size-5" aria-hidden="true" />
+
+              {/* CTA Buttons */}
+              <div className="mt-8 flex flex-col gap-3.5 sm:flex-row sm:items-center">
+                <Link
+                  href="/onboarding"
+                  className="group inline-flex h-12 items-center justify-center gap-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-emerald-700 px-7 text-base font-semibold text-white shadow-lg shadow-emerald-700/20 transition-all duration-200 hover:from-emerald-500 hover:to-emerald-600 hover:shadow-xl hover:shadow-emerald-700/30 hover:-translate-y-0.5 active:translate-y-0"
+                >
+                  Get started free
+                  <ArrowRight className="size-4.5 transition-transform duration-200 group-hover:translate-x-1" aria-hidden="true" />
                 </Link>
-                <Link href="/sign-in" className="inline-flex h-12 items-center justify-center rounded-md border border-slate-900 bg-white px-6 text-base font-semibold text-slate-900 hover:bg-slate-100">
+                <Link
+                  href="/sign-in"
+                  className="inline-flex h-12 items-center justify-center rounded-xl border border-slate-300/90 bg-white/90 px-6 text-base font-semibold text-slate-800 shadow-2xs backdrop-blur-sm transition-all duration-200 hover:border-slate-400 hover:bg-slate-50 hover:text-slate-950 hover:-translate-y-0.5 active:translate-y-0"
+                >
                   I already have an account
                 </Link>
               </div>
-              <p className="mt-6 max-w-[34rem] text-sm leading-relaxed text-slate-600">Swasthya gives movement guidance. It does not diagnose, and it does not replace your physiotherapist or doctor.</p>
+
+              {/* Trust Indicators */}
+              <div className="mt-8 flex flex-wrap items-center gap-x-6 gap-y-2 border-t border-slate-200/80 pt-6 text-xs font-medium text-slate-600">
+                <div className="flex items-center gap-1.5">
+                  <ShieldCheck className="size-4 text-emerald-600 shrink-0" />
+                  <span>100% On-Device Privacy</span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <Activity className="size-4 text-emerald-600 shrink-0" />
+                  <span>Real-time Biomechanics</span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <Stethoscope className="size-4 text-emerald-600 shrink-0" />
+                  <span>Doctor Supervised</span>
+                </div>
+              </div>
+
+              {/* Clinical Disclaimer */}
+              <p className="mt-4 max-w-[34rem] text-xs leading-relaxed text-slate-500">
+                Swasthya provides movement guidance and non-diagnostic biomechanical feedback. It does not replace your physiotherapist or doctor.
+              </p>
             </div>
+
+            {/* Hero Artifact */}
             <HeroSheet />
           </div>
         </section>
