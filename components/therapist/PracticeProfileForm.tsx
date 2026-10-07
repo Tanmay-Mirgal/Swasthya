@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Plus, X } from "lucide-react";
+import { Check, Circle, Plus, X } from "lucide-react";
 import { Button, Field, Input, Notice, Textarea, TickBox } from "@/components/ui";
 import { cn } from "@/lib/utils";
 import type { TherapistProfileData } from "./types";
@@ -70,8 +70,20 @@ export default function PracticeProfileForm({ initial, fallbackName, onSave }: P
 
   const all = Array.from(new Set([...SPECIALIZATION_SUGGESTIONS, ...conditions]));
 
+  const checks = [
+    { label: "Name and title", done: !!name.trim() && !!title.trim() },
+    { label: "Qualification", done: !!qual.trim() },
+    { label: "Clinic or hospital", done: !!clinic.trim() },
+    { label: "Experience", done: !!exp.trim() },
+    { label: "At least 3 specialisations", done: conditions.length >= 3 },
+    { label: "A short bio", done: bio.trim().length >= 40 },
+  ];
+  const doneCount = checks.filter((c) => c.done).length;
+  const initials = name.replace(/^dr\.?\s+/i, "").split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]?.toUpperCase()).join("") || "?";
+
   return (
-    <form onSubmit={submit} className="max-w-2xl space-y-6">
+    <div className="grid items-start gap-8 xl:grid-cols-[minmax(0,42rem)_minmax(20rem,26rem)] xl:gap-12">
+    <form onSubmit={submit} className="space-y-6">
       <div className="grid gap-4 sm:grid-cols-2">
         <Field label="Professional name" htmlFor="pp-name"><Input id="pp-name" required value={name} onChange={(e) => setName(e.target.value)} /></Field>
         <Field label="Title" htmlFor="pp-title" hint="For example Senior Orthopaedic Physiotherapist."><Input id="pp-title" value={title} onChange={(e) => setTitle(e.target.value)} /></Field>
@@ -116,5 +128,48 @@ export default function PracticeProfileForm({ initial, fallbackName, onSave }: P
       {message && <Notice tone={message.tone} title={message.text} />}
       <Button type="submit" size="lg" disabled={saving}>{saving ? "Saving…" : "Save practice profile"}</Button>
     </form>
+
+    <aside aria-label="Profile preview" className="space-y-5 xl:sticky xl:top-8">
+      <section className="rounded-xl border border-slate-300 bg-white p-5">
+        <p className="text-xs font-semibold uppercase tracking-wide text-slate-600">How patients see you</p>
+        <div className="mt-4 flex items-start gap-3">
+          <div aria-hidden="true" className="flex size-12 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-base font-bold text-emerald-900">{initials}</div>
+          <div className="min-w-0">
+            <p className="truncate text-base font-bold text-slate-900">{name || "Your name"}</p>
+            <p className="text-sm text-slate-700">{title || "Your title"}</p>
+            {qual && <p className="mt-0.5 text-sm text-slate-600">{qual}</p>}
+          </div>
+        </div>
+        <dl className="mt-4 grid grid-cols-2 gap-3 border-t border-slate-200 pt-4 text-sm">
+          <div className="col-span-2"><dt className="text-xs text-slate-600">Clinic</dt><dd className="font-medium">{clinic || "—"}</dd></div>
+          <div><dt className="text-xs text-slate-600">Experience</dt><dd className="font-medium">{exp || "—"}</dd></div>
+          <div><dt className="text-xs text-slate-600">Consultation</dt><dd className="font-medium tabular">{fee ? `₹${fee}` : "Not shown"}</dd></div>
+        </dl>
+        {conditions.length > 0 && (
+          <ul className="mt-4 flex flex-wrap gap-1.5" aria-label="Specialisations">
+            {conditions.slice(0, 6).map((c) => <li key={c} className="rounded-md bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-900">{c}</li>)}
+            {conditions.length > 6 && <li className="px-1 py-0.5 text-xs text-slate-600">+{conditions.length - 6} more</li>}
+          </ul>
+        )}
+        {bio.trim() && <p className="mt-4 line-clamp-4 border-t border-slate-200 pt-4 text-sm leading-relaxed text-slate-700">{bio}</p>}
+      </section>
+
+      <section className="rounded-xl border border-slate-300 bg-white p-5">
+        <div className="flex items-baseline justify-between">
+          <h3 className="text-sm font-semibold">Profile completeness</h3>
+          <span className="text-sm font-semibold tabular text-slate-900">{doneCount}/{checks.length}</span>
+        </div>
+        <ul className="mt-3 space-y-2">
+          {checks.map((c) => (
+            <li key={c.label} className={cn("flex items-center gap-2 text-sm", c.done ? "text-slate-900" : "text-slate-600")}>
+              {c.done ? <Check className="size-4 text-emerald-700" aria-hidden="true" /> : <Circle className="size-4 text-slate-400" aria-hidden="true" />}
+              {c.label}<span className="sr-only">{c.done ? " done" : " to do"}</span>
+            </li>
+          ))}
+        </ul>
+        <p className="mt-4 text-xs text-slate-600">Patients are matched to you using your specialisations, so a fuller profile gets you better matches.</p>
+      </section>
+    </aside>
+    </div>
   );
 }

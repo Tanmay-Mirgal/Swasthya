@@ -21,7 +21,8 @@ export async function GET(req: Request) {
     if (me.role === "doctor") {
       const pendingRequests = await AppointmentRequest.countDocuments({ therapistId: me.userId, status: "pending" });
       const reviewsReady = await WeeklyReview.countDocuments({ doctorId: me.userId, status: "report_ready" });
-      return NextResponse.json({ success: true, data: { role: "doctor", unreadMessages, pendingRequests, reviewsReady, messagesHref: null, liveConsultationId: null } });
+      const patientCount = await TherapistAssignment.countDocuments({ therapistId: me.userId, status: "active" });
+      return NextResponse.json({ success: true, data: { role: "doctor", unreadMessages, patientCount, pendingRequests, reviewsReady, messagesHref: null, liveConsultationId: null } });
     }
 
     const assignment = await TherapistAssignment.findOne({ patientId: me.userId, status: "active" }).lean<{ therapistId: string }>();
@@ -38,6 +39,7 @@ export async function GET(req: Request) {
       data: {
         role: "patient",
         unreadMessages,
+        patientCount: 0,
         pendingRequests: 0,
         reviewsReady: 0,
         messagesHref: assignment?.therapistId ? `/chat/${assignment.therapistId}` : null,

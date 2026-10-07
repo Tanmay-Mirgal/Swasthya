@@ -36,8 +36,8 @@ export function getNavItems(isTherapist: boolean, badges: NavBadges): NavItem[] 
         label: "Patients",
         href: "/therapist?tab=patients",
         icon: Users,
-        badge: badges.unreadMessages || undefined,
-        badgeLabel: "unread messages",
+        badge: badges.patientCount || undefined,
+        badgeLabel: "patients",
         isActive: (p, t) => (p === "/therapist" && t === "patients") || p.startsWith("/therapist/patient"),
       },
       {

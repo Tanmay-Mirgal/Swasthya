@@ -4,6 +4,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { useState } from "react";
 import { Menu, X } from "lucide-react";
+import LanguageSwitcher from "@/components/i18n/LanguageSwitcher";
 
 const LINKS = [
   { href: "#product", label: "Product" },
@@ -20,7 +21,7 @@ export default function LandingNav() {
       <div className="mx-auto flex h-16 w-full max-w-6xl items-center gap-6 px-5 sm:px-8">
         <Link href="/" className="flex shrink-0 items-center gap-2.5 rounded" aria-label="Swasthya home">
           <Image src="/swasthya-logo-icon.png" alt="" width={34} height={34} className="size-[34px] object-contain" priority />
-          <span className="text-lg font-bold tracking-tight">Swasthya</span>
+          <span translate="no" className="text-lg font-bold tracking-tight">Swasthya</span>
         </Link>
 
         <nav aria-label="Page" className="hidden items-center gap-1 md:flex">
@@ -30,6 +31,7 @@ export default function LandingNav() {
         </nav>
 
         <div className="ml-auto flex items-center gap-2">
+          <LanguageSwitcher />
           <Link href="/sign-in" className="hidden rounded-md px-3 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-100 sm:inline-flex">Sign in</Link>
           <Link href="/onboarding" className="inline-flex h-10 items-center rounded-md bg-emerald-600 px-4 text-sm font-semibold text-white hover:bg-emerald-700">Get started</Link>
           <button

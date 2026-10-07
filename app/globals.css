@@ -319,3 +319,12 @@
   animation: tick-draw 260ms cubic-bezier(0.22, 1, 0.36, 1) both;
   animation-delay: var(--tick-delay, 0ms);
 }
+
+/* Google Translate: we drive it with our own language switcher, so hide its banner and widget chrome. */
+.skiptranslate iframe,
+iframe.skiptranslate,
+.goog-te-banner-frame { display: none !important; }
+body { top: 0 !important; }
+#google_translate_element { display: none !important; }
+.goog-text-highlight { background: none !important; box-shadow: none !important; }
+font[style] { background: transparent !important; box-shadow: none !important; }

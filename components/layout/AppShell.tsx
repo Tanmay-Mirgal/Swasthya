@@ -5,6 +5,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { ChevronLeft } from "lucide-react";
 import { SignInButton, SignUpButton, UserButton, useAuth } from "@clerk/react";
+import LanguageSwitcher from "@/components/i18n/LanguageSwitcher";
 import SideRail from "./SideRail";
 import BottomNav from "./BottomNav";
 import { cn } from "@/lib/utils";
@@ -100,6 +101,7 @@ export default function AppShell({
             )}
             <div className="flex items-center gap-2">
               {rightAction}
+              <LanguageSwitcher />
               {isLoaded && !isSignedIn && (
                 <>
                   <SignInButton mode="modal">

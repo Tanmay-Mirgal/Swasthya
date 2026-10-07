@@ -7,6 +7,7 @@ import { SignInButton, SignUpButton, UserButton, useAuth, useUser } from "@clerk
 import { UserRound } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useNavBadges } from "@/hooks/useNavBadges";
+import LanguageSwitcher from "@/components/i18n/LanguageSwitcher";
 import { getNavItems, navHiddenFor, PROFILE_HREF } from "./navConfig";
 
 /** Desktop navigation: a green rail down the left edge. Hidden below md (bottom bar takes over). */
@@ -27,7 +28,7 @@ export default function SideRail() {
     <aside data-on-dark className="on-dark fixed inset-y-0 left-0 z-40 hidden w-60 flex-col bg-emerald-900 text-emerald-50 md:flex">
       <Link href={isTherapist ? "/therapist" : "/"} className="flex items-center gap-3 px-5 pb-5 pt-6">
         <Image src="/swasthya-logo-icon.png" alt="" width={36} height={36} className="size-9 rounded-md bg-white p-0.5 object-contain" />
-        <span className="text-lg font-bold tracking-tight">Swasthya</span>
+        <span translate="no" className="text-lg font-bold tracking-tight">Swasthya</span>
       </Link>
 
       <nav aria-label="Main" className="flex-1 overflow-y-auto px-3">
@@ -61,6 +62,7 @@ export default function SideRail() {
       </nav>
 
       <div className="border-t border-emerald-800 px-4 py-4">
+        <LanguageSwitcher variant="dark" className="mb-3 w-full [&>select]:w-full" />
         {isLoaded && !isSignedIn && (
           <div className="flex flex-col gap-2">
             <SignInButton mode="modal">

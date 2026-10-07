@@ -4,6 +4,7 @@ import { Geist, Geist_Mono, Kalam } from "next/font/google";
 import AuthGuard from "@/components/auth/AuthGuard";
 import CallProvider from "@/components/consultation/CallProvider";
 import { ToastProvider } from "@/components/ui/Toast";
+import GoogleTranslate from "@/components/i18n/GoogleTranslate";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -59,6 +60,7 @@ export default function RootLayout({
   return (
     <html
       lang="en"
+      suppressHydrationWarning
       className={`${geistSans.variable} ${geistMono.variable} ${kalam.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col bg-[var(--paper)] text-slate-900">
@@ -69,6 +71,7 @@ export default function RootLayout({
             </a>
             <AuthGuard>{children}</AuthGuard>
             <CallProvider />
+            <GoogleTranslate />
           </ToastProvider>
         </ClerkClientProvider>
       </body>
