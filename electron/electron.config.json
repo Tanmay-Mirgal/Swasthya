@@ -1,8 +1,20 @@
 {
   "appUrl": "https://swasthya.tanmaymirgal.dev",
-  "appName": "Swasthya - AI Physical Therapy",
+  "appName": "Swasthya",
   "minWidth": 1024,
   "minHeight": 700,
   "defaultWidth": 1366,
-  "defaultHeight": 850
+  "defaultHeight": 850,
+  "releasesUrl": "https://github.com/Tanmay-Mirgal/rehablens/releases",
+  "macAutoUpdate": false,
+  "trustedOrigins": [
+    "https://*.clerk.accounts.dev",
+    "https://*.clerk.com",
+    "https://checkout.razorpay.com",
+    "https://api.razorpay.com"
+  ],
+  "paymentOrigins": [
+    "https://checkout.razorpay.com",
+    "https://api.razorpay.com"
+  ]
 }

@@ -1,42 +1,59 @@
 {
-  "name": "Swasthya-desktop",
+  "name": "swasthya-desktop",
   "version": "1.0.0",
-  "description": "Swasthya Desktop Application",
-  "main": "main.js",
+  "description": "Swasthya desktop app (Electron shell around the Swasthya web app)",
+  "main": "src/main.js",
   "author": "Swasthya Team",
+  "license": "UNLICENSED",
+  "private": true,
   "scripts": {
     "start": "electron .",
-    "dev": "electron .",
+    "dev": "SWASTHYA_APP_URL=http://localhost:3000 electron .",
     "pack": "electron-builder --dir",
-    "build": "electron-builder --win",
-    "dist": "electron-builder --win",
-    "dist:portable": "electron-builder --win portable"
+    "dist": "electron-builder",
+    "dist:mac": "electron-builder --mac",
+    "dist:win": "electron-builder --win"
   },
   "dependencies": {
-    "dotenv": "^16.4.7"
+    "electron-updater": "^6.8.9"
   },
   "devDependencies": {
-    "electron": "^33.2.1",
-    "electron-builder": "^25.1.8"
+    "@electron/fuses": "^2.1.3",
+    "electron": "^44.6.0",
+    "electron-builder": "^26.15.3"
   },
   "build": {
     "appId": "dev.tanmaymirgal.swasthya",
     "productName": "Swasthya",
     "copyright": "Copyright © 2026 Swasthya",
-    "directories": {
-      "output": "dist"
+    "directories": { "output": "dist", "buildResources": "build" },
+    "files": ["src/**/*", "offline.html", "electron.config.json", "icon.png", "package.json"],
+    "afterPack": "build/afterPack.js",
+    "protocols": [{ "name": "Swasthya", "schemes": ["swasthya"] }],
+    "publish": [{ "provider": "github", "owner": "Tanmay-Mirgal", "repo": "rehablens" }],
+    "mac": {
+      "category": "public.app-category.healthcare-fitness",
+      "icon": "icon.png",
+      "target": [
+        { "target": "dmg", "arch": ["arm64", "x64"] },
+        { "target": "zip", "arch": ["arm64", "x64"] }
+      ],
+      "hardenedRuntime": true,
+      "gatekeeperAssess": false,
+      "entitlements": "build/entitlements.mac.plist",
+      "entitlementsInherit": "build/entitlements.mac.plist",
+      "extendInfo": {
+        "NSCameraUsageDescription": "Swasthya uses your camera to count and check your exercise repetitions and for video consultations.",
+        "NSMicrophoneUsageDescription": "Swasthya uses your microphone for video consultations with your physiotherapist."
+      }
     },
     "win": {
-      "target": [
-        "nsis",
-        "portable"
-      ],
-      "icon": "icon.png"
+      "icon": "icon.png",
+      "target": [{ "target": "nsis", "arch": ["x64"] }]
     },
     "nsis": {
       "oneClick": true,
       "perMachine": false,
-      "allowElevation": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
       "shortcutName": "Swasthya"

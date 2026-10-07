@@ -1,0 +1,58 @@
+name: Desktop release
+
+# Tag a release with `git tag desktop-v1.0.1 && git push origin desktop-v1.0.1`.
+# The tag must match electron/package.json "version" (without the "desktop-v" prefix).
+on:
+  push:
+    tags: ["desktop-v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        working-directory: electron
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: electron/package-lock.json
+
+      - run: npm ci
+
+      - name: Check tag matches version
+        if: startsWith(github.ref, 'refs/tags/desktop-v')
+        shell: bash
+        run: |
+          expected="desktop-v$(node -p "require('./package.json').version")"
+          if [ "$GITHUB_REF_NAME" != "$expected" ]; then
+            echo "Tag $GITHUB_REF_NAME does not match package.json version ($expected)"; exit 1
+          fi
+
+      # Unsigned for now. To sign later, add these as repository/environment SECRETS (never in the repo)
+      # and remove CSC_IDENTITY_AUTO_DISCOVERY:
+      #   macOS:   CSC_LINK, CSC_KEY_PASSWORD, APPLE_API_KEY, APPLE_API_KEY_ID, APPLE_API_ISSUER
+      #            (and set "notarize": true in electron/package.json "mac")
+      #   Windows: the signing service/certificate credentials you choose
+      - name: Build and publish
+        if: startsWith(github.ref, 'refs/tags/desktop-v')
+        run: npx electron-builder --publish always
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+
+      - name: Build only (manual run)
+        if: ${{ !startsWith(github.ref, 'refs/tags/desktop-v') }}
+        run: npx electron-builder --publish never
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"

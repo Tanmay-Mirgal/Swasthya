@@ -123,7 +123,7 @@
       </svg>
     </div>
     <h1>Connecting to Swasthya</h1>
-    <p>Unable to load the web application. Please check your internet connection or verify the URL configured.</p>
+    <p>Swasthya needs an internet connection. Check your connection; it will reconnect automatically.</p>
     <div class="url-badge" id="targetUrl">Loading...</div>
     <div class="actions">
       <button onclick="window.retryConnection()">
@@ -137,16 +137,22 @@
 
   <script>
     const urlParams = new URLSearchParams(window.location.search);
-    const target = urlParams.get('url') || 'Configured URL';
-    document.getElementById('targetUrl').textContent = target;
+    const raw = urlParams.get('url') || '';
+    let target = '';
+    try {
+      const u = new URL(raw);
+      if (u.protocol === 'https:' || u.protocol === 'http:') target = u.href;
+    } catch (e) { /* no valid target */ }
+    document.getElementById('targetUrl').textContent = target || 'Swasthya';
 
-    window.retryConnection = function() {
-      if (urlParams.get('url')) {
-        window.location.href = urlParams.get('url');
-      } else {
-        window.location.reload();
-      }
+    window.retryConnection = function () {
+      if (target) window.location.href = target;
+      else window.location.reload();
     };
+
+    // Come back on its own when the connection returns.
+    window.addEventListener('online', window.retryConnection);
+    setInterval(function () { if (navigator.onLine) window.retryConnection(); }, 15000);
   </script>
 </body>
 </html>

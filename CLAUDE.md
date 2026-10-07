@@ -59,4 +59,6 @@ MediaPipe (image + world landmarks) → `signal/stabilizer` (One Euro, time-base
 - Email is Nodemailer in `lib/email` (server-only; `SMTP_*`, `EMAIL_FROM`, falls back to `GOOGLE_APP_*`). Recordings are PRIVATE Vercel Blob objects behind `lib/storage/recordingStorage.ts`; the browser uploads with a scoped token and playback streams through an authorised route. Never expose a storage URL. Only exercises with an engine template are prescribable (`lib/rehab/exerciseCatalog.ts`).
 - UI: `components/prescription` (builder), `components/review` (reports, reviews list, recording player), `components/exercise/PrescribedSession` (set-by-set live flow), `components/patient/PatientHome`, `components/landing`. The `/ui-preview` route is development-only fixtures for design review.
 
-**Other:** `electron/` is a separate desktop wrapper with its own `package.json`. `services/` holds doctor/voice helpers. UI primitives are Shadcn-style in `components/ui`.
+**Desktop:** `electron/` is a thin Electron shell with its own `package.json` that loads the production site (no second backend or UI); see `electron/README.md`. `npm run electron:dev` points it at `localhost:3000`. Social sign-in in the desktop app goes through the system browser (`app/desktop-auth`, `app/api/desktop/auth/*`, `electron/src/protocol.js`). MediaPipe/WebRTC/realtime are untouched and run as in a browser.
+
+**Other:** `services/` holds doctor/voice helpers. UI primitives are Shadcn-style in `components/ui`.

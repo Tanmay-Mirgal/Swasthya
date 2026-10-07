@@ -52,3 +52,7 @@ GSD-STYLE.md
 model_capabilities.yaml
 PROJECT_RULES.md
 VERSION.next-verify
+
+# electron desktop shell
+/electron/node_modules
+/electron/dist

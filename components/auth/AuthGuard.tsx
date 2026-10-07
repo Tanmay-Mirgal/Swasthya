@@ -4,7 +4,7 @@ import { useAuth, useUser } from "@clerk/react";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect } from "react";
 
-const publicRoutes = ["/", "/sign-in", "/sign-up", "/login", "/signup", "/onboarding", "/splash"];
+const publicRoutes = ["/", "/sign-in", "/sign-up", "/login", "/signup", "/onboarding", "/splash", "/desktop-auth"];
 // Design fixtures (dev only): the route itself 404s in production.
 if (process.env.NODE_ENV !== "production") publicRoutes.push("/ui-preview");
 

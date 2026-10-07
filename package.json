@@ -7,6 +7,8 @@
     "build": "next build",
     "start": "NODE_ENV=production tsx server.ts",
     "lint": "eslint",
+    "electron:dev": "npm --prefix electron run dev",
+    "electron:build": "npm --prefix electron run dist",
     "test:realtime": "tsx scripts/test_realtime_e2e.ts",
     "test:webrtc": "tsx --test lib/webrtc/__tests__/*.test.ts",
     "test:rehab": "tsx --test lib/rehab/*.test.ts",
@@ -14,6 +16,7 @@
     "test:movement": "tsx --conditions=react-server --test lib/movement/__tests__/*.test.ts",
     "test:movement:e2e": "tsx --conditions=react-server scripts/test_movement_e2e.ts",
     "test:rehab:e2e": "tsx --conditions=react-server scripts/test_rehab_e2e.ts",
+    "test:desktop:auth": "tsx --conditions=react-server scripts/test_desktop_auth.ts",
     "migrate:plans": "tsx --conditions=react-server scripts/migrate_assignments_to_prescriptions.ts"
   },
   "dependencies": {

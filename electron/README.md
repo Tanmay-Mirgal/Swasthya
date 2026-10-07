@@ -1,69 +1,48 @@
-# 🚀 Swasthya Desktop Application (Electron)
+# Swasthya Desktop (Electron)
 
-Ye folder aapki Swasthya desktop application ke liye configure kiya gaya hai. Yahan se aap apni live link ko direct Windows Desktop App (`.exe`) me convert aur build kar sakte hain.
+A thin desktop shell around the Swasthya web app. It has **no backend and no UI of its own**: it loads
+`https://swasthya.tanmaymirgal.dev` (see `electron.config.json`), so every web deploy updates the desktop
+UI immediately. The installer only changes when the shell (Electron/Chromium, menus, permissions) changes.
 
----
+## Develop
 
-## 📌 Step 1: Apni Live / Vercel Link Kahan Daalni Hai?
-
-Current link already set hai: `https://swasthya.tanmaymirgal.dev`
-
-Agar aapko future me link change karni ho, toh 2 simple options hain:
-
-### Option A: `.env` file me (Recommended)
-`electron/.env` file kholein aur apni link paste karein:
-```env
-APP_URL=https://swasthya.tanmaymirgal.dev
-```
-
-### Option B: `electron.config.json` me
-`electron/electron.config.json` file kholein:
-```json
-{
-  "appUrl": "https://swasthya.tanmaymirgal.dev"
-}
-```
-
----
-
-## 💻 Step 2: Install Dependencies (Sirf Pehli Baar)
-
-Terminal me `electron` folder ke andar jaakar run karein:
 ```bash
-cd electron
-npm install
+npm run dev            # terminal 1, repo root: the web app on :3000
+npm run electron:dev   # terminal 2, repo root: the shell pointing at http://localhost:3000
 ```
 
----
+First time only: `npm --prefix electron install`. The shell shows an offline screen until the server is up
+and reconnects on its own. `SWASTHYA_APP_URL` overrides the URL **only when unpackaged**.
 
-## 🏃 Step 3: Local Test Run Karna
+## Build installers
 
-Desktop app ko direct open karke check karne ke liye:
 ```bash
-npm start
-```
-*(App turant khulegi aur aapki Vercel live website ko native desktop app me load karegi)*
-
----
-
-## 📦 Step 4: Windows Desktop App (`.exe`) Build Karna
-
-Apna standalone Windows installer aur portable `.exe` banane ke liye:
-```bash
-npm run dist
+npm run electron:build                           # for the current OS, into electron/dist
+npm --prefix electron run dist:mac               # macOS dmg + zip (arm64, x64), on a Mac
+npm --prefix electron run dist:win               # Windows NSIS installer (x64), on Windows
 ```
 
-### Build Kahan Milega?
-Command complete hone ke baad `electron/dist/` folder me aapko milenge:
-1. **`Swasthya Setup 1.0.0.exe`** - Windows Installer
-2. **`Swasthya 1.0.0.exe`** - Direct Portable run file (bina install kiye chalane ke liye)
-3. **`win-unpacked/Swasthya.exe`** - Ready to run unpacked folder
+Releases are built by `.github/workflows/desktop-release.yml` when you push a tag such as `desktop-v1.0.1`
+(it must match `version` in `electron/package.json`) and are published to GitHub Releases.
 
----
+## What the shell does
 
-## ✨ Features Included:
-- ✅ **Auto Camera & Mic Permissions**: RehabLens ke MediaPipe AI pose tracking aur Doctor-Patient video call ke liye automatic camera/mic permissions granted hain (no browser popups).
-- ✅ **Offline Screen**: Agar internet down ho ya Vercel link reachable na ho toh sleek dark-mode retry screen aayegi.
-- ✅ **Keyboard Shortcuts**:
-  - `F5` ya `Ctrl + R` -> Page reload
-  - `Ctrl + Shift + I` -> Inspect / Developer Console
+- **Security:** sandboxed renderer, context isolation, no Node in the page. The window may only show Swasthya
+  plus Clerk and Razorpay; other links open in the system browser (https/mailto/tel only). Camera and microphone
+  are granted only to the Swasthya origin, and the OS privacy switches are respected (macOS prompt; guidance to
+  Settings on macOS and Windows when denied). Packaged builds disable Node CLI/inspector fuses and encrypt cookies.
+- **Sign-in:** email sign-in works inside the window. Social login (Google) is refused by providers in embedded
+  windows, so the sign-in page offers *Continue in your browser*: the browser signs in, then returns a one-time
+  code through `swasthya://auth`, redeemed with a PKCE verifier that never leaves the app (`src/protocol.js`,
+  `app/desktop-auth`, `app/api/desktop/auth`).
+- **Updates:** `electron-updater` via GitHub Releases. Windows updates automatically. macOS builds are unsigned
+  for now, so the app only points to the download page; set `macAutoUpdate` to `true` in `electron.config.json`
+  once builds are signed and notarized.
+- **Not here on purpose:** MediaPipe, WebRTC, realtime and recording all run unchanged in Chromium, exactly as
+  in the browser. Do not re-implement them in the shell.
+
+## Signing (later)
+
+Unsigned builds show a SmartScreen warning on Windows and are blocked by Gatekeeper on macOS until the user
+chooses *Open*. To sign, add credentials as GitHub Actions secrets (see the comment in the workflow); never
+commit certificates or keys.

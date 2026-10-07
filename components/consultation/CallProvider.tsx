@@ -6,6 +6,7 @@ import { useAuth } from "@clerk/react";
 import { useRealtime } from "@/lib/realtime/client/useRealtime";
 import { RealtimeEvent } from "@/lib/realtime/protocol/events";
 import { DEFAULT_CALL_TIMEOUTS } from "@/lib/webrtc/config";
+import { notifyIfBackground } from "@/lib/notify";
 import IncomingCallModal from "./IncomingCallModal";
 
 interface Ring {
@@ -29,9 +30,12 @@ export default function CallProvider() {
   const ringRef = useRef<Ring | null>(null);
   const onConsultationPage = pathname.startsWith("/consultation/");
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const osNotice = useRef<Notification | null>(null);
 
   const clear = useCallback(() => {
     clearTimeout(timer.current);
+    osNotice.current?.close();
+    osNotice.current = null;
     ringRef.current = null;
     setRing(null);
   }, []);
@@ -44,6 +48,7 @@ export default function CallProvider() {
         const next = { consultationId: p.consultationId, callId: p.callId, callerName: packet.from?.name || p.callerName || "Incoming call" };
         ringRef.current = next;
         setRing(next);
+        osNotice.current = notifyIfBackground({ title: "Incoming call", body: `${next.callerName} is calling you on Swasthya`, tag: `call-${p.callId}` });
         clearTimeout(timer.current);
         timer.current = setTimeout(clear, DEFAULT_CALL_TIMEOUTS.incomingRingMs);
       }),
