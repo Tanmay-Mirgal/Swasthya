@@ -70,7 +70,7 @@ export interface ThresholdsUsed {
 }
 
 export interface ChunkQuality {
-  /** "manual" = the patient counted these reps themselves (no camera); no movement judgment exists for them. */
+  /** Where the reps came from. "manual" (counted by hand, no camera) only exists on records saved before that was removed; `recordChunk` refuses it. */
   source?: "camera" | "manual";
   /** Version of the movement engine that produced these numbers. Absent on older records. */
   engine?: number;
@@ -113,8 +113,6 @@ const codes = (v: unknown, max: number): string[] =>
 export function cleanQuality(raw: unknown, reps: number): ChunkQuality {
   if (!raw || typeof raw !== "object") return {};
   const r = raw as Record<string, unknown>;
-  // Reps the patient counted by hand carry no judgment: whatever else was sent with them is ignored.
-  if (r.source === "manual") return { source: "manual" };
   const out: ChunkQuality = {};
   if (r.source === "camera") out.source = "camera";
 

@@ -24,8 +24,6 @@ interface Props {
   onRetry: () => void;
   /** Hide the camera advice banner (for example while paused). */
   quiet?: boolean;
-  /** When the camera cannot start, offer to carry on without it. */
-  onManual?: () => void;
   children?: ReactNode;
 }
 
@@ -34,7 +32,7 @@ interface Props {
  * blocked and camera-advice states. The canvas is drawn by the movement hook, not by React.
  * Controls never sit on top of the body.
  */
-export default function MovementStage({ videoRef, canvasRef, ui, error, onRetry, quiet, onManual, children }: Props) {
+export default function MovementStage({ videoRef, canvasRef, ui, error, onRetry, quiet, children }: Props) {
   const running = ui.status === "running";
   const failure = error ? describeError(error) : null;
   const showSetup = running && !quiet && !ui.advice && ui.phase === "setup" && ui.tracking;
@@ -80,11 +78,6 @@ export default function MovementStage({ videoRef, canvasRef, ui, error, onRetry,
           {ui.status !== "loading" && (
             <Button onClick={onRetry} size="lg" className="pointer-events-auto mt-1">
               {failure ? "Try again" : "Turn on camera"}
-            </Button>
-          )}
-          {failure && onManual && (
-            <Button onClick={onManual} size="lg" variant="outline" className="pointer-events-auto">
-              Continue without the camera
             </Button>
           )}
         </div>

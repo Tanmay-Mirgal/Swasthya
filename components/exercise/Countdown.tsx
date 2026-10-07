@@ -9,7 +9,7 @@ interface Props {
 /**
  * The 3 · 2 · 1 before a set. Large, calm and plain: the number is the only thing that changes, nothing flashes,
  * and it is announced to screen readers once per second. Sits over the camera window (which is not showing a
- * skeleton yet) or on its own page in manual mode.
+ * skeleton yet).
  */
 export default function Countdown({ count, label = "Get ready" }: Props) {
   return (

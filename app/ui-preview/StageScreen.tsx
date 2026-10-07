@@ -66,7 +66,6 @@ export default function StageScreen({ scenario }: { scenario: StageScenario }) {
         canvasRef={canvasRef}
         error={null}
         onRetry={noop}
-        onManual={noop}
         viewScale={vs}
         title="Seated Knee Extension"
         subtitle="Set 1 of 3"

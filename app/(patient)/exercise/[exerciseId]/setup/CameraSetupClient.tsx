@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, use } from "react";
+import { useMemo, useState, use } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@clerk/react";
@@ -9,9 +9,11 @@ import AppShell from "@/components/layout/AppShell";
 import MovementStage from "@/components/movement/MovementStage";
 import { ConfidenceBadge } from "@/components/movement/ConfidenceBadge";
 import FocusFrame from "@/components/exercise/FocusFrame";
+import CoachLanguageSwitch from "@/components/exercise/CoachLanguageSwitch";
 import { useVoicePreference } from "@/components/exercise/useVoiceCoach";
 import { Button, Notice, TickBox } from "@/components/ui";
 import { useMovementSession } from "@/hooks/useMovementSession";
+import { localizeMovementUi } from "@/lib/i18n/coachUi";
 import { getMovementTemplate } from "@/lib/movement/template/registry";
 import type { MovementTemplate } from "@/lib/movement/template/schema";
 import { JOINT_OK } from "@/lib/movement/types";
@@ -42,7 +44,7 @@ function CameraSetup({ template }: { template: MovementTemplate }) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { getToken } = useAuth();
-  const { voiceEnabled } = useVoicePreference();
+  const { voiceEnabled, language } = useVoicePreference();
   // Everything that identifies the run (free-practice reps, or the prescription and review) travels on to the live page.
   const passthrough = new URLSearchParams();
   for (const key of ["reps", "plan", "ex", "review"]) {
@@ -53,7 +55,8 @@ function CameraSetup({ template }: { template: MovementTemplate }) {
   const [showGuide, setShowGuide] = useState(true);
 
   const session = useMovementSession({ template, targetReps: 1, voiceEnabled, llmEnabled: false, getToken });
-  const { ui } = session;
+  // The coach's camera advice is shown in the chosen language, the same words the voice says.
+  const ui = useMemo(() => localizeMovementUi(session.ui, language), [session.ui, language]);
 
   const seen = ui.tracking && ui.confidence !== "LOW";
   const isReady = seen && !ui.advice;
@@ -81,12 +84,15 @@ function CameraSetup({ template }: { template: MovementTemplate }) {
       panel={
         <div className="flex flex-col gap-5 p-4 sm:p-5">
           <div>
-            <h2 className="text-xl font-bold leading-snug text-slate-900">Get in position</h2>
+            <div className="flex items-start justify-between gap-3">
+              <h2 className="text-xl font-bold leading-snug text-slate-900">Get in position</h2>
+              <CoachLanguageSwitch className="shrink-0" />
+            </div>
             <p className="mt-1 text-sm leading-relaxed text-slate-700">{template.camera.hint}</p>
           </div>
 
           <div role="status" aria-live="polite" className="flex flex-col gap-1.5">
-            <p className="text-base font-semibold text-slate-900">{headline}</p>
+            <p translate={ui.tracking && ui.advice ? "no" : undefined} className="text-base font-semibold text-slate-900">{headline}</p>
             <p className="text-sm text-slate-700">{detail}</p>
             <ConfidenceBadge level={ui.confidence} tracking={ui.tracking} />
           </div>

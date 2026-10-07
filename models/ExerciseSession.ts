@@ -13,6 +13,7 @@ export interface IExerciseSessionSet {
     formScore?: number;
     issues?: Record<string, number>;
     /** Movement-engine quality measurements (see lib/rehab/chunkQuality). Absent on older records. */
+    /** "manual" only on chunks saved before counting without the camera was removed; nothing writes it any more. */
     source?: "camera" | "manual";
     engine?: number;
     validReps?: number;

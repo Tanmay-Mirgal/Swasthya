@@ -11,14 +11,13 @@ interface Props {
   /** The exercise's own placement hint, e.g. "Sit side-on to the camera". */
   hint: string;
   onReady: () => void;
-  onManual: () => void;
 }
 
 /** True when the camera can see everything the exercise needs and has nothing to advise. */
 export const isCameraReady = (ui: Pick<MovementUi, "tracking" | "confidence" | "advice">): boolean => ui.tracking && ui.confidence !== "LOW" && !ui.advice;
 
 /** "Let's get you ready": one plain instruction at a time, and the way forward only when the camera is happy. */
-export default function ReadyCheck({ ui, hint, onReady, onManual }: Props) {
+export default function ReadyCheck({ ui, hint, onReady }: Props) {
   const ready = isCameraReady(ui);
   const headline = !ui.tracking ? "I can’t see you yet" : ui.advice ? ui.advice.message : ready ? "I can see you well" : "I can’t see everything yet";
   const detail = ready ? "You’re ready when you are." : ui.advice ? "Adjust your position and I’ll check again." : hint;
@@ -52,7 +51,6 @@ export default function ReadyCheck({ ui, hint, onReady, onManual }: Props) {
       <div className="grid gap-2">
         <Button size="lg" disabled={!ready} onClick={onReady}>I’m ready</Button>
         {!ready && <p className="text-sm text-slate-700">This turns on when the camera can see everything it needs.</p>}
-        <Button size="lg" variant="ghost" onClick={onManual}>Continue without the camera</Button>
       </div>
     </div>
   );

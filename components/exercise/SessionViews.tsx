@@ -29,8 +29,6 @@ interface IntroProps {
   reviewRecordingChosen: boolean;
   onChooseRecording: (record: boolean) => void;
   onStart: () => void;
-  /** Carry on without the camera: the patient counts their own reps. */
-  onManual: () => void;
   /** Plain steps for doing the exercise, shown before the camera starts. */
   steps?: string[];
   /** How last time went, only when earlier judged sessions make it true. */
@@ -38,7 +36,7 @@ interface IntroProps {
 }
 
 /** What the patient sees before a set: the dose they were prescribed, where they are, and (on review day) the recording choice. */
-export function SessionIntro({ name, progress, doctorName, instructions, modifications, askRecording, recordingOn, reviewRecordingChosen, onChooseRecording, onStart, onManual, steps, lastTime }: IntroProps) {
+export function SessionIntro({ name, progress, doctorName, instructions, modifications, askRecording, recordingOn, reviewRecordingChosen, onChooseRecording, onStart, steps, lastTime }: IntroProps) {
   const set = progress.currentSetIndex !== null ? progress.sets[progress.currentSetIndex] : null;
   const started = progress.completedReps > 0;
   return (
@@ -84,7 +82,6 @@ export function SessionIntro({ name, progress, doctorName, instructions, modific
         <div className="flex flex-wrap items-center gap-3">
           <Button size="lg" onClick={onStart}>{started ? `Continue set ${set ? set.index + 1 : ""}`.trim() : "Start set 1"}</Button>
           <Button asChild size="lg" variant="ghost"><Link href="/">Not now</Link></Button>
-          <Button size="lg" variant="ghost" onClick={onManual}>Continue without the camera</Button>
           {recordingOn && <StatusMark kind="info">Recording on</StatusMark>}
         </div>
       )}

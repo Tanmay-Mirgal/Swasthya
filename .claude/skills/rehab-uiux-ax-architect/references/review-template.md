@@ -25,11 +25,11 @@ Rate each (pass / risk / fail) with evidence:
 
 1. Visibility of system status (does it say whether the rep counted, whether the camera sees them?)
 2. Match between system and real world (plain words, no jargon)
-3. User control and freedom (pause, stop, switch to manual, undo)
+3. User control and freedom (pause, stop, undo)
 4. Consistency (same mark, word, colour for the same state everywhere)
 5. Error prevention (setup check before starting, no rushed start)
 6. Recognition over recall (instruction visible, not remembered)
-7. Flexibility and efficiency (voice, captions, manual mode)
+7. Flexibility and efficiency (voice, captions, hands-free rest)
 8. Aesthetic and minimalist design (one job per screen)
 9. Error recovery (kind wording, one fix, a way out)
 10. Accessibility: WCAG 2.2 AA (contrast, target size, focus, reflow, text spacing, motion, status messages) plus older-adult usability, rehabilitation safety, distance readability

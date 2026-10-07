@@ -6,19 +6,16 @@
  *
  *   loading → intro → ready (camera check) → countdown 3·2·1 → active ⇄ paused → rest → countdown → active … → done
  *
- * "Manual" mode is the same flow without the camera: the patient taps each rep themselves. Nothing here judges
- * movement; the engine does that, and only while the phase is `active` in camera mode.
+ * Nothing here judges movement; the engine does that, and only while the phase is `active`.
  */
 
 export type FlowPhase = "loading" | "unavailable" | "intro" | "ready" | "countdown" | "active" | "paused" | "rest" | "done";
-export type FlowMode = "camera" | "manual";
 
 /** Seconds counted down before every set (and after every pause), so nobody is rushed into position. */
 export const COUNTDOWN_FROM = 3;
 
 export interface FlowState {
   phase: FlowPhase;
-  mode: FlowMode;
   /** The number on screen during the countdown (3, 2, 1); 0 otherwise. */
   count: number;
 }
@@ -28,8 +25,6 @@ export type FlowEvent =
   | { type: "unavailable" }
   /** The patient pressed Start on the intro. */
   | { type: "start" }
-  /** The patient chose to continue without the camera (or the camera could not start). */
-  | { type: "use_manual" }
   /** The camera check passed and the patient confirmed they are ready. */
   | { type: "ready" }
   /** Start the next set, or resume after a pause. */
@@ -39,7 +34,7 @@ export type FlowEvent =
   | { type: "set_complete"; exerciseComplete: boolean }
   | { type: "finish" };
 
-export const initialFlow = (): FlowState => ({ phase: "loading", mode: "camera", count: 0 });
+export const initialFlow = (): FlowState => ({ phase: "loading", count: 0 });
 
 const counting = (s: FlowState): FlowState => ({ ...s, phase: "countdown", count: COUNTDOWN_FROM });
 
@@ -51,14 +46,7 @@ export function flowReducer(s: FlowState, e: FlowEvent): FlowState {
     case "unavailable":
       return s.phase === "loading" ? { ...s, phase: "unavailable" } : s;
     case "start":
-      if (s.phase !== "intro") return s;
-      return s.mode === "manual" ? counting(s) : { ...s, phase: "ready" };
-    case "use_manual":
-      if (s.mode === "manual") return s;
-      if (s.phase === "intro" || s.phase === "ready") return counting({ ...s, mode: "manual" });
-      if (s.phase === "active") return { ...s, mode: "manual", phase: "paused", count: 0 }; // the camera went away mid-set
-      if (s.phase === "paused" || s.phase === "rest" || s.phase === "countdown") return { ...s, mode: "manual" };
-      return s;
+      return s.phase === "intro" ? { ...s, phase: "ready" } : s;
     case "ready":
       return s.phase === "ready" ? counting(s) : s;
     case "begin_set":
@@ -76,7 +64,7 @@ export function flowReducer(s: FlowState, e: FlowEvent): FlowState {
 }
 
 /** True while the movement engine should be judging frames. */
-export const isJudging = (s: FlowState): boolean => s.mode === "camera" && s.phase === "active";
+export const isJudging = (s: FlowState): boolean => s.phase === "active";
 
 /** True while the camera window is shown (it stays on from the camera check until the exercise ends). */
-export const showsCamera = (s: FlowState): boolean => s.mode === "camera" && (s.phase === "ready" || s.phase === "countdown" || s.phase === "active" || s.phase === "paused" || s.phase === "rest");
+export const showsCamera = (s: FlowState): boolean => s.phase === "ready" || s.phase === "countdown" || s.phase === "active" || s.phase === "paused" || s.phase === "rest";

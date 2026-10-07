@@ -2,7 +2,7 @@
 
 Every patient flow designs all 22 states explicitly, so none is ambiguous and none is a dead end. For each state specify: **hierarchy, copy, interaction, accessibility, audio, animation, transition, exit condition.** The defaults below are the starting point; deviate only with a reason.
 
-Code anchors: `lib/rehab/sessionFlow.ts` `FlowPhase` = `loading | unavailable | intro | ready | countdown | active | paused | rest | done` (`unavailable` means the plan or exercise could not be loaded, not the camera); `FlowMode` = `camera | manual`; `Verdict.kind` = `good | not_counted | partial`; engine events in `lib/movement/types.ts`; screen state in `lib/movement/ui/movementUi.ts`; offline queue in `lib/rehab/chunkOutbox.ts`; manual mode in `components/exercise/ManualCounter.tsx`. Preview each at `/ui-preview` (see SKILL.md).
+Code anchors: `lib/rehab/sessionFlow.ts` `FlowPhase` = `loading | unavailable | intro | ready | countdown | active | paused | rest | done` (`unavailable` means the plan or exercise could not be loaded, not the camera); `Verdict.kind` = `good | not_counted | partial`; engine events in `lib/movement/types.ts`; screen state in `lib/movement/ui/movementUi.ts`; offline queue in `lib/rehab/chunkOutbox.ts`. There is no camera-free mode: counting by hand was removed. Preview each at `/ui-preview` (see SKILL.md).
 
 Global defaults for every state: one job per screen; a visible next action >= 56 px; the state is announced once (`role="status"`, or `role="alert"` only when blocking); the mark and word carry the meaning with motion off; text readable at the tier of its importance (see distance reference).
 
@@ -12,7 +12,7 @@ Format: **Hierarchy** (primary / secondary / tertiary) · **Copy** · **Interact
 
 **LOADING** (`loading`). P: "Getting your set ready" + calm progress. S: exercise name. T: none. Interaction: back only. A11y: `aria-busy`, status text. Audio: none. Motion: gentle indeterminate, none under reduced motion. Transition: → INTRO (data in) or EMPTY/ERROR. Exit: plan loaded, failed, or 10 s with "Still working…" plus a retry.
 
-**READY** (`intro` + `ready` camera check). P: how to stand/sit and where to place the camera, with the guide photo; one green "I'm ready". S: therapist's instruction (Pen, attributed, only if real). T: switch to counting by hand. Copy: "Place the camera so I can see your whole arm." A11y: the instruction is text, not only the photo; the camera-advice banner is `role="status"`. Audio: optional read-out of the setup step. Motion: tick when framing is good. Transition: → COUNTDOWN on confirm; → CAMERA_UNAVAILABLE / MANUAL_MODE on choice. Exit: person confirms; never auto-starts.
+**READY** (`intro` + `ready` camera check). P: how to stand/sit and where to place the camera, with the guide photo; one green "I'm ready". S: therapist's instruction (Pen, attributed, only if real). Copy: "Place the camera so I can see your whole arm." A11y: the instruction is text, not only the photo; the camera-advice banner is `role="status"`. Audio: optional read-out of the setup step. Motion: tick when framing is good. Transition: → COUNTDOWN on confirm; → CAMERA_UNAVAILABLE if the camera cannot start. Exit: person confirms; never auto-starts.
 
 **COUNTDOWN** (`countdown`). P: giant 3·2·1 (counter tier). S: "Get into position." T: cancel/pause. Never rushes: it exists so nobody is hurried. A11y: number announced each second at most; skip never required. Audio: spoken numbers if voice is on. Motion: number swap 200 ms, no pulsing. Transition: → ACTIVE at 0. Exit: reaches 0 or the person pauses.
 
@@ -46,7 +46,7 @@ Format: **Hierarchy** (primary / secondary / tertiary) · **Copy** · **Interact
 
 ## Conditions and fallbacks
 
-**CAMERA_UNAVAILABLE** (blocked, not found, in use). P: plain reason + what to do ("The camera is blocked. Allow it in your browser, or count your reps yourself."). S: retry. T: manual mode. Never a dead end. A11y: `role="alert"`. Exit: camera starts, or the person picks MANUAL_MODE.
+**CAMERA_UNAVAILABLE** (blocked, not found, in use). P: plain reason + what to do ("The camera is blocked. Allow it in your browser, then try again."). S: retry. Never a dead end: it always says what to do next. A11y: `role="alert"`. Exit: the camera starts.
 
 **LOW_CONFIDENCE** (`camera_issue`, confidence LOW, ongoing). P: yellow ring + one camera fix ("Please move back a little."). Judgement is frozen: no rep, no error, no red. S: confidence badge in words. Audio: camera advice only, debounced. Exit: `camera_ok`. Differs from UNCERTAIN (one attempt that could not be judged).
 
@@ -54,7 +54,6 @@ Format: **Hierarchy** (primary / secondary / tertiary) · **Copy** · **Interact
 
 **AI_UNAVAILABLE** (Groq off or failing). Patient sees **no change**: wording falls back to deterministic template text with no visible gap. Therapist/report view labels the report "automatic summary" as usual. Never show "AI failed" to a patient. Exit: n/a.
 
-**MANUAL_MODE** (`mode: manual`). P: the same big number, plain +/- buttons >= 56 px. S: "The camera is off, so form isn't checked. Your reps are saved as counted by you." Same set flow, no verdicts, no skeleton. Stored as counted by hand and labelled so in reports. Exit: finish, or retry the camera.
 
 **ERROR** (`unavailable` with `loadError`, or unexpected failure). P: what happened in plain words + the one next step + retry. Copy: "We couldn't load your plan." Never blame, never show codes to the patient. A11y: `role="alert"`, focus on the retry. Exit: retry succeeds or back to Today.
 

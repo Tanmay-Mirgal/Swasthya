@@ -54,7 +54,6 @@ export interface LiveStageProps {
   canvasRef: RefObject<HTMLCanvasElement | null>;
   error: string | null;
   onRetry: () => void;
-  onManual?: () => void;
   viewScale: number;
   title: string;
   subtitle?: string;
@@ -143,7 +142,6 @@ export default function LiveStage(p: LiveStageProps) {
         <p data-distance="instruction" className="mt-2 font-semibold leading-tight" style={{ fontSize: "calc(var(--t-instr) * 0.75)" }}>{p.cameraReady ? "Press start when ready" : stage.instruction}</p>
         <div className="mt-4 space-y-3">
           <StageButton onClick={p.onReady} disabled={!p.cameraReady}>I’m ready</StageButton>
-          {p.onManual && <StageButton kind="ghost" onClick={p.onManual} className={p.cameraReady ? "" : "border-slate-900 text-slate-900 hover:bg-black/10"}>Continue without the camera</StageButton>}
         </div>
       </Card>
     );
@@ -240,7 +238,7 @@ export default function LiveStage(p: LiveStageProps) {
       backLabel={p.backLabel}
       onBack={p.onBack}
       actions={p.actions}
-      camera={<MovementStage videoRef={p.videoRef} canvasRef={p.canvasRef} ui={ui} error={p.error} onRetry={p.onRetry} onManual={p.onManual} quiet />}
+      camera={<MovementStage videoRef={p.videoRef} canvasRef={p.canvasRef} ui={ui} error={p.error} onRetry={p.onRetry} quiet />}
       progress={progress}
       verdict={verdict}
       contentKey={`${p.mode}:${ui.stage.kind}:${ui.stage.word}:${mini}:${p.calibration?.calibrated}`}

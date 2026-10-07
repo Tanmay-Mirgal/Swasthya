@@ -12,7 +12,6 @@ import LivePanel from "./LivePanel";
 import PoseGuidePanel from "./PoseGuidePanel";
 import { Button, Dialog, Notice, PageLoading } from "@/components/ui";
 import Countdown from "./Countdown";
-import ManualCounter from "./ManualCounter";
 import ReadyCheck, { isCameraReady } from "./ReadyCheck";
 import LiveStage, { StageAction } from "./stage/LiveStage";
 import StageDetails from "./stage/StageDetails";
@@ -90,8 +89,6 @@ function PrescribedSessionInner({ exerciseId, planId, exerciseKey, reviewId, tem
 
   const [flow, dispatchFlow] = useReducer(flowReducer, undefined, initialFlow);
   const phase = flow.phase;
-  const mode = flow.mode;
-  const [manualCount, setManualCount] = useState(0);
   const [snap, setSnap] = useState<PlanSnapshot | null>(null);
   const [progress, setProgress] = useState<ExerciseProgress | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -153,16 +150,10 @@ function PrescribedSessionInner({ exerciseId, planId, exerciseKey, reviewId, tem
   const endingRef = useRef(false);
   const bestRomRef = useRef(0);
   const phaseRef = useRef<FlowPhase>("loading");
-  const modeRef = useRef(mode);
-  const manualCountRef = useRef(0);
   const progressRef = useRef<ExerciseProgress | null>(null);
   useEffect(() => {
     phaseRef.current = phase;
-    modeRef.current = mode;
-  }, [phase, mode]);
-  useEffect(() => {
-    manualCountRef.current = manualCount;
-  }, [manualCount]);
+  }, [phase]);
   useEffect(() => {
     progressRef.current = progress;
   }, [progress]);
@@ -173,7 +164,7 @@ function PrescribedSessionInner({ exerciseId, planId, exerciseKey, reviewId, tem
     targetReps: chunkTarget,
     paused: !isJudging(flow),
     // Keep the camera view live (skeleton, "can I see you") through the camera check, countdown, pause and rest, without judging anything.
-    observe: mode === "camera",
+    observe: true,
     set: currentSet,
     autoStart: false,
     voiceEnabled,
@@ -308,8 +299,6 @@ function PrescribedSessionInner({ exerciseId, planId, exerciseKey, reviewId, tem
       setChunkSaved(false);
       setChunkTarget(cur.remainingReps);
       setCurrentSet(cur.index + 1);
-      setManualCount(0);
-      manualCountRef.current = 0;
       configureEngine(toleranceRef.current);
       resetSession(cur.remainingReps, cur.index + 1, cur.completedReps);
     },
@@ -331,22 +320,6 @@ function PrescribedSessionInner({ exerciseId, planId, exerciseKey, reviewId, tem
 
   const buildChunk = useCallback((): OutboxChunk | null => {
     const ex = progressRef.current;
-    if (modeRef.current === "manual") {
-      if (!ex || ex.currentSetIndex === null || manualCountRef.current <= 0) return null;
-      // Counted by the patient: no range, no form score, no per-rep judgment.
-      noteSetStats(ex.currentSetIndex, { good: manualCountRef.current });
-      return {
-        chunkId: chunkIdRef.current,
-        prescriptionId: planId,
-        exerciseKey,
-        setIndex: ex.currentSetIndex,
-        reps: manualCountRef.current,
-        source: "manual",
-        startedAt: chunkStartRef.current.toISOString(),
-        endedAt: new Date().toISOString(),
-        day: new Date().toDateString(),
-      };
-    }
     const summary = getSummary();
     // A stretch with no good rep but real attempts is still saved: those attempts are the patient's effort, and the therapist's picture of it.
     const notCounted = summary ? summary.invalid + summary.partial + summary.uncertain : 0;
@@ -410,7 +383,7 @@ function PrescribedSessionInner({ exerciseId, planId, exerciseKey, reviewId, tem
         totalSets,
         exerciseComplete,
         routineComplete,
-        judged: modeRef.current === "camera",
+        judged: true,
         goodOnly: true,
         good: st.good,
         invalid: st.invalid,
@@ -542,24 +515,6 @@ function PrescribedSessionInner({ exerciseId, planId, exerciseKey, reviewId, tem
     return () => clearTimeout(t);
   }, [phase, flow.count, say]);
 
-  // Manual mode: when the patient has tapped the last rep of this part of the set, save it a moment later.
-  useEffect(() => {
-    if (mode !== "manual" || phase !== "active" || manualCount < chunkTarget || endingRef.current) return;
-    const t = setTimeout(() => void endChunk("set_complete"), 900);
-    return () => clearTimeout(t);
-  }, [mode, phase, manualCount, chunkTarget, endChunk]);
-
-  /** Carries on without the camera. Reps already counted by the camera are saved first. */
-  const switchToManual = useCallback(async () => {
-    if (phaseRef.current === "active") await submitChunk();
-    stopCamera();
-    const ex = progressRef.current;
-    const startsCountdown = phaseRef.current === "intro" || phaseRef.current === "ready";
-    if (ex && startsCountdown) prepareChunk(ex);
-    dispatchFlow({ type: "use_manual" });
-    if (startsCountdown) say("Three", true);
-  }, [prepareChunk, say, stopCamera, submitChunk]);
-
   /** Starts a set, or resumes after a pause, through the countdown. */
   const beginSet = useCallback(
     (event: "ready" | "begin_set") => {
@@ -574,7 +529,7 @@ function PrescribedSessionInner({ exerciseId, planId, exerciseKey, reviewId, tem
   /** Pauses (saving what was done so far) or cancels a countdown. One path for the button, the keyboard and "the person left the frame". */
   const pauseNow = useCallback(() => {
     const u = uiRef.current;
-    const work = modeRef.current === "camera" && ((u?.counted ?? 0) > 0 || (u?.notCounted ?? 0) > 0);
+    const work = (u?.counted ?? 0) > 0 || (u?.notCounted ?? 0) > 0;
     if (phaseRef.current === "active" && work) void endChunk("pause");
     else dispatchFlow({ type: "pause" });
   }, [endChunk]);
@@ -585,7 +540,6 @@ function PrescribedSessionInner({ exerciseId, planId, exerciseKey, reviewId, tem
   const foundSinceRef = useRef<number | null>(null);
   const autoPausedRef = useRef(false);
   useEffect(() => {
-    if (mode !== "camera") return;
     const id = setInterval(() => {
       const u = uiRef.current;
       const now = Date.now();
@@ -622,19 +576,19 @@ function PrescribedSessionInner({ exerciseId, planId, exerciseKey, reviewId, tem
       }
     }, 500);
     return () => clearInterval(id);
-  }, [mode, beginSet, pauseNow, say]);
+  }, [beginSet, pauseNow, say]);
 
   const anyDialogOpen = settingsOpen || guideOpen || confirmEnd || confirmFinishEarly || detailsOpen;
   // Hands-free rest, only if the patient chose it: the next set starts itself (through the 3·2·1) after the chosen time. Never while a dialog is open.
   useEffect(() => {
-    if (mode !== "camera" || phase !== "rest" || startForMe === 0 || anyDialogOpen) return;
+    if (phase !== "rest" || startForMe === 0 || anyDialogOpen) return;
     const t = setTimeout(() => beginSet("begin_set"), startForMe * 1000);
     return () => clearTimeout(t);
-  }, [mode, phase, startForMe, anyDialogOpen, beginSet]);
+  }, [phase, startForMe, anyDialogOpen, beginSet]);
 
   // Keyboard and presenter clicker: Space, Enter, Page Down or Right Arrow carry on (start, next set, resume); P, Page Up, Left Arrow or Escape pause.
   useEffect(() => {
-    if (mode !== "camera" || anyDialogOpen) return;
+    if (anyDialogOpen) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.defaultPrevented || e.metaKey || e.ctrlKey || e.altKey) return;
       const el = e.target instanceof HTMLElement ? e.target : null;
@@ -656,7 +610,7 @@ function PrescribedSessionInner({ exerciseId, planId, exerciseKey, reviewId, tem
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [mode, anyDialogOpen, beginSet, pauseNow]);
+  }, [anyDialogOpen, beginSet, pauseNow]);
 
   // ── Views ─────────────────────────────────────────────────────────────────
   if (!exercise) {
@@ -712,11 +666,6 @@ function PrescribedSessionInner({ exerciseId, planId, exerciseKey, reviewId, tem
             startCameraOnce();
             dispatchFlow({ type: "start" });
           }}
-          onManual={() => {
-            VoiceService.prime();
-            primeCheer();
-            void switchToManual();
-          }}
         />
       </AppShell>
     );
@@ -756,10 +705,9 @@ function PrescribedSessionInner({ exerciseId, planId, exerciseKey, reviewId, tem
 
   // Everything from the camera check to the rest between sets. The camera, once started, stays on.
   const ui = shownUi;
-  const manual = mode === "manual";
-  const chunkReps = manual ? manualCount : ui.counted;
+  const chunkReps = ui.counted;
   // Anything worth saving: good reps, or attempts that did not count.
-  const hasWork = chunkReps > 0 || (!manual && ui.notCounted > 0);
+  const hasWork = chunkReps > 0 || ui.notCounted > 0;
   const base = set ? set.completedReps : 0;
   const setTarget = set?.targetReps ?? chunkTarget;
   const paused = phase !== "active";
@@ -791,39 +739,7 @@ function PrescribedSessionInner({ exerciseId, planId, exerciseKey, reviewId, tem
   };
 
   let main: ReactNode;
-  if (manual) {
-    main = (
-      <AppShell title={exercise.name} hideNav>
-        {restPanel ? (
-          <div className="mx-auto max-w-xl pt-2">{restPanel}</div>
-        ) : phase === "countdown" ? (
-          <div className="mx-auto max-w-xl space-y-4 pt-2">
-            <div className="h-80 w-full overflow-hidden rounded-lg bg-slate-900"><Countdown count={flow.count} /></div>
-            <Button size="lg" variant="outline" className="w-full" onClick={() => dispatchFlow({ type: "pause" })}>Not yet</Button>
-          </div>
-        ) : (
-          <>
-            {voiceSettings.captions && <div className="mx-auto mb-4 max-w-xl"><CaptionsBar lines={captionLines} /></div>}
-            {saveNotice && <div className="mx-auto mb-4 max-w-xl"><Notice tone="warning" title="Not saved yet">{saveNotice}</Notice></div>}
-            <ManualCounter
-              name={exercise.name}
-              setLabel={`${setLabel}${base > 0 ? `, ${base} saved earlier` : ""}`}
-              count={manualCount}
-              target={chunkTarget}
-              instruction={exercise.instructions[0] ?? template.setup.instruction}
-              paused={phase === "paused"}
-              onAdd={() => setManualCount((n) => Math.min(chunkTarget, n + 1))}
-              onUndo={() => setManualCount((n) => Math.max(0, n - 1))}
-              onPause={onTogglePause}
-              onResume={onTogglePause}
-              onFinish={() => void endChunk("set_complete")}
-            />
-          </>
-        )}
-        <div className="mx-auto mt-6 max-w-xl"><Button size="lg" variant="ghost" onClick={askStop}>Stop for now</Button></div>
-      </AppShell>
-    );
-  } else if (LIVE_V2) {
+  if (LIVE_V2) {
     const day = snap?.daily?.exercises ?? [];
     const lastOne = day.length > 1 && day.filter((e) => e.status !== "complete").length === 1 && day.some((e) => e.key === exerciseKey && e.status !== "complete");
     main = (
@@ -834,7 +750,6 @@ function PrescribedSessionInner({ exerciseId, planId, exerciseKey, reviewId, tem
         canvasRef={session.canvasRef}
         error={session.error}
         onRetry={() => void startCamera()}
-        onManual={() => void switchToManual()}
         viewScale={viewScale.viewScale}
         title={exercise.name}
         subtitle={phase === "ready" ? "Camera check" : setLabel || undefined}
@@ -903,7 +818,7 @@ function PrescribedSessionInner({ exerciseId, planId, exerciseKey, reviewId, tem
           </>
         }
         camera={
-          <MovementStage videoRef={session.videoRef} canvasRef={session.canvasRef} ui={ui} error={session.error} onRetry={() => void startCamera()} onManual={() => void switchToManual()} quiet={phase !== "active" && phase !== "ready"}>
+          <MovementStage videoRef={session.videoRef} canvasRef={session.canvasRef} ui={ui} error={session.error} onRetry={() => void startCamera()} quiet={phase !== "active" && phase !== "ready"}>
             {phase === "countdown" && <Countdown count={flow.count} />}
             {phase === "paused" && (
               <div className="flex size-full items-center justify-center bg-slate-950/55">
@@ -920,7 +835,7 @@ function PrescribedSessionInner({ exerciseId, planId, exerciseKey, reviewId, tem
         panelTop={voiceSettings.captions ? <CaptionsBar lines={captionLines} /> : undefined}
         panel={
           phase === "ready" ? (
-            <ReadyCheck ui={ui} hint={template.camera.hint} onReady={() => beginSet("ready")} onManual={() => void switchToManual()} />
+            <ReadyCheck ui={ui} hint={template.camera.hint} onReady={() => beginSet("ready")} />
           ) : phase === "countdown" ? (
             <div className="flex flex-col gap-4 p-4 sm:p-5">
               <p className="text-xl font-bold text-slate-900">Get ready</p>
@@ -967,7 +882,7 @@ function PrescribedSessionInner({ exerciseId, planId, exerciseKey, reviewId, tem
       {main}
       <Celebration burst={burst} />
 
-      <SettingsSheet open={settingsOpen} onClose={() => setSettingsOpen(false)} voiceEnabled={voiceEnabled} onVoiceEnabled={setVoiceEnabled} settings={voiceSettings} onChange={updateVoiceSettings} language={language} viewScale={LIVE_V2 && mode === "camera" ? viewScale.viewScale : undefined} onViewScale={LIVE_V2 && mode === "camera" ? viewScale.setViewScale : undefined} startForMe={mode === "camera" ? startForMe : undefined} onStartForMe={mode === "camera" ? (s) => { setStartForMe(s); setStartForMeState(s); } : undefined} />
+      <SettingsSheet open={settingsOpen} onClose={() => setSettingsOpen(false)} voiceEnabled={voiceEnabled} onVoiceEnabled={setVoiceEnabled} settings={voiceSettings} onChange={updateVoiceSettings} language={language} viewScale={LIVE_V2 ? viewScale.viewScale : undefined} onViewScale={LIVE_V2 ? viewScale.setViewScale : undefined} startForMe={startForMe} onStartForMe={(s) => { setStartForMe(s); setStartForMeState(s); }} />
       <StageDetails
         open={detailsOpen}
         onClose={() => setDetailsOpen(false)}

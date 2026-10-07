@@ -297,6 +297,11 @@ function parseDate(v?: string): Date | undefined {
 }
 
 export async function recordChunk(patientId: string, input: RecordChunkInput): Promise<RecordChunkResult> {
+  // Counting reps without the camera was removed, so nothing may credit the plan with reps that were never measured. This is the one
+  // door a page that was left open from before could still use; 409 makes the browser drop the chunk instead of retrying it.
+  if (input.source !== undefined && input.source !== "camera") {
+    throw new HttpError(409, "Counting reps without the camera is no longer available. Reload the page and use the camera.");
+  }
   if (!mongoose.isValidObjectId(input.prescriptionId)) throw new HttpError(400, "That prescription id is not valid.");
   const prescription = await Prescription.findById(input.prescriptionId);
   // Authorization is the patient id on the stored plan, never a client claim.
@@ -312,16 +317,14 @@ export async function recordChunk(patientId: string, input: RecordChunkInput): P
   if (!exercise) throw new HttpError(409, "That exercise is not part of today's plan.");
 
   const chunkQuality = cleanQuality(input, Number(input.reps));
-  // Reps the patient counted by hand have no measured range, form score or issues, whatever the client sent.
-  const manual = chunkQuality.source === "manual";
   const chunk = {
     chunkId: String(input.chunkId ?? ""),
     reps: Number(input.reps),
     startedAt: parseDate(input.startedAt),
     endedAt: parseDate(input.endedAt),
-    rom: !manual && Number.isFinite(Number(input.rom)) && Number(input.rom) > 0 ? Math.min(360, Number(input.rom)) : undefined,
-    formScore: !manual && Number.isFinite(Number(input.formScore)) ? Math.max(0, Math.min(100, Math.round(Number(input.formScore)))) : undefined,
-    issues: manual ? undefined : cleanIssues(input.issues),
+    rom: Number.isFinite(Number(input.rom)) && Number(input.rom) > 0 ? Math.min(360, Number(input.rom)) : undefined,
+    formScore: Number.isFinite(Number(input.formScore)) ? Math.max(0, Math.min(100, Math.round(Number(input.formScore)))) : undefined,
+    issues: cleanIssues(input.issues),
     ...chunkQuality,
   };
   const discomfort = ["none", "mild", "moderate", "severe"].includes(input.discomfort ?? "") ? input.discomfort : undefined;

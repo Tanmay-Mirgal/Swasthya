@@ -71,36 +71,16 @@ test("a pause that completes the exercise ends it rather than leaving the patien
   assert.equal(flowReducer(paused, { type: "set_complete", exerciseComplete: false }).phase, "rest");
 });
 
-test("manual mode from the intro skips the camera check and never judges", () => {
-  const s = run([{ type: "loaded", complete: false }, { type: "use_manual" }]);
-  assert.deepEqual([s.mode, s.phase, s.count], ["manual", "countdown", COUNTDOWN_FROM]);
-  const active = run(tick(3), s);
-  assert.equal(active.phase, "active");
-  assert.equal(isJudging(active), false, "manual reps are counted by the patient, not judged");
-  assert.equal(showsCamera(active), false);
-});
-
-test("the camera failing in the camera check offers manual mode, which continues to the countdown", () => {
+test("the camera is shown from the camera check until the exercise ends, and is judged only while active", () => {
   const ready = run([{ type: "loaded", complete: false }, { type: "start" }]);
   assert.equal(ready.phase, "ready");
-  assert.equal(showsCamera(ready), true);
-  const manual = flowReducer(ready, { type: "use_manual" });
-  assert.deepEqual([manual.mode, manual.phase], ["manual", "countdown"]);
-});
-
-test("the camera dying mid-set pauses it so reps are saved before continuing by hand", () => {
-  const active = run([{ type: "loaded", complete: false }, { type: "start" }, { type: "ready" }, ...tick(3)]);
-  const s = flowReducer(active, { type: "use_manual" });
-  assert.deepEqual([s.mode, s.phase], ["manual", "paused"]);
-  assert.equal(flowReducer(s, { type: "begin_set" }).mode, "manual", "and the next set stays manual");
-});
-
-test("once manual, later sets in the exercise stay manual and skip the camera check", () => {
-  let s = run([{ type: "loaded", complete: false }, { type: "use_manual" }, ...tick(3), { type: "set_complete", exerciseComplete: false }]);
-  assert.equal(s.mode, "manual");
-  s = flowReducer(s, { type: "begin_set" });
-  assert.equal(s.phase, "countdown");
-  assert.equal(showsCamera(s), false);
+  assert.deepEqual([showsCamera(ready), isJudging(ready)], [true, false]);
+  const active = run([{ type: "ready" }, ...tick(3)], ready);
+  assert.deepEqual([showsCamera(active), isJudging(active)], [true, true]);
+  const rest = flowReducer(active, { type: "set_complete", exerciseComplete: false });
+  assert.deepEqual([showsCamera(rest), isJudging(rest)], [true, false]);
+  const done = flowReducer(active, { type: "set_complete", exerciseComplete: true });
+  assert.deepEqual([showsCamera(done), isJudging(done)], [false, false]);
 });
 
 test("events that do not apply in the current phase change nothing", () => {
@@ -115,7 +95,7 @@ test("events that do not apply in the current phase change nothing", () => {
 
 test("stopping can end the exercise from anywhere", () => {
   for (const phase of ["intro", "ready", "countdown", "active", "paused", "rest"] as const) {
-    assert.equal(flowReducer({ phase, mode: "camera", count: 0 }, { type: "finish" }).phase, "done");
+    assert.equal(flowReducer({ phase, count: 0 }, { type: "finish" }).phase, "done");
   }
 });
 

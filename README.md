@@ -28,7 +28,6 @@ Designed for ease of use, accessibility, and clear guidance during independent e
   - **Confidence Indicators:** The system alerts the user if it cannot confidently assess the movement (e.g., "Please step back into the frame").
 - **Accessibility:**
   - High-contrast UI, clear typography, and auditory cues.
-  - Alternatives provided for users unable to use camera-based tracking (e.g., manual logging options).
 
 ### 2. Therapist Portal
 
