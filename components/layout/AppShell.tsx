@@ -7,6 +7,7 @@ import { ChevronLeft } from "lucide-react";
 import { SignInButton, SignUpButton, UserButton, useAuth } from "@clerk/react";
 import LanguageSwitcher from "@/components/i18n/LanguageSwitcher";
 import SideRail from "./SideRail";
+import { useSidebarCollapsed } from "@/hooks/useSidebarCollapsed";
 import BottomNav from "./BottomNav";
 import { cn } from "@/lib/utils";
 
@@ -42,6 +43,7 @@ export default function AppShell({
   className,
 }: AppShellProps) {
   const { isLoaded, isSignedIn } = useAuth();
+  const [sidebarCollapsed] = useSidebarCollapsed();
 
   const width = maxWidth === "full" ? "max-w-none" : maxWidth === "wide" ? "max-w-[80rem]" : "max-w-5xl";
 
@@ -56,9 +58,9 @@ export default function AppShell({
 
       <div
         className={cn(
-          "flex flex-1 flex-col",
+          "flex flex-1 flex-col transition-[padding] duration-200 motion-reduce:transition-none",
           fullBleed ? "h-dvh overflow-hidden" : "min-h-dvh",
-          !hideNav && "md:pl-60",
+          !hideNav && (sidebarCollapsed ? "md:pl-16" : "md:pl-60"),
         )}
       >
         {!hideHeader && (

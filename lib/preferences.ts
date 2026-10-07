@@ -148,3 +148,25 @@ export function setStartForMe(seconds: StartForMe): void {
     /* the choice is simply not remembered */
   }
 }
+
+// ── Sidebar ────────────────────────────────────────────────────────────────────
+
+const SIDEBAR_KEY = "swasthya_sidebar_collapsed";
+
+/** The desktop sidebar is open unless the person collapsed it. Stored on this device only. */
+export function getSidebarCollapsed(): boolean {
+  if (typeof window === "undefined") return false;
+  try {
+    return localStorage.getItem(SIDEBAR_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+export function setSidebarCollapsed(collapsed: boolean): void {
+  try {
+    localStorage.setItem(SIDEBAR_KEY, collapsed ? "1" : "0");
+  } catch {
+    /* the choice is simply not remembered */
+  }
+}
