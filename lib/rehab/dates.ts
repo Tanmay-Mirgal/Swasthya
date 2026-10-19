@@ -81,3 +81,30 @@ export function formatDateKey(key: DateKey, opts: Intl.DateTimeFormatOptions = {
 export function dayEndedEverywhere(now: Date = new Date()): DateKey {
   return dateKeyInTimezone(now, "Etc/GMT+12");
 }
+
+/** Compare two DateKey strings chronologically: -1 if a < b, 1 if a > b, 0 if equal. */
+export function compareDateKeys(a: DateKey, b: DateKey): number {
+  if (a < b) return -1;
+  if (a > b) return 1;
+  return 0;
+}
+
+/** Clamps `key` between `min` and `max` (inclusive). */
+export function clampDateKey(key: DateKey, min: DateKey, max: DateKey): DateKey {
+  if (key < min) return min;
+  if (key > max) return max;
+  return key;
+}
+
+/**
+ * Returns an array of consecutive DateKeys from `start` through `end` inclusive.
+ * If `start > end`, returns an empty array.
+ */
+export function dateRange(start: DateKey, end: DateKey): DateKey[] {
+  if (start > end) return [];
+  const days: DateKey[] = [];
+  for (let d = start; d <= end; d = addDays(d, 1)) {
+    days.push(d);
+  }
+  return days;
+}
