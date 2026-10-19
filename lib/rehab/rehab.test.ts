@@ -1,6 +1,15 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { addDays, dateKeyInTimezone, diffDays, isDateKey, weekdayOf } from "./dates";
+import {
+  addDays,
+  clampDateKey,
+  compareDateKeys,
+  dateKeyInTimezone,
+  dateRange,
+  diffDays,
+  isDateKey,
+  weekdayOf,
+} from "./dates";
 import {
   adherenceBetween,
   adherencePercent,
@@ -35,6 +44,23 @@ test("date keys: validation, arithmetic, timezone", () => {
   assert.equal(dateKeyInTimezone(new Date("2026-10-01T20:00:00Z"), "Asia/Kolkata"), "2026-10-02");
   assert.equal(dateKeyInTimezone(new Date("2026-10-01T20:00:00Z"), "UTC"), "2026-10-01");
   assert.equal(dateKeyInTimezone(new Date("2026-10-01T20:00:00Z"), "Not/AZone"), "2026-10-02"); // falls back
+});
+
+test("date helpers: compareDateKeys, clampDateKey, dateRange", () => {
+  assert.equal(compareDateKeys("2026-10-01", "2026-10-02"), -1);
+  assert.equal(compareDateKeys("2026-10-05", "2026-10-05"), 0);
+  assert.equal(compareDateKeys("2026-10-10", "2026-10-02"), 1);
+
+  assert.equal(clampDateKey("2026-09-30", "2026-10-01", "2026-10-31"), "2026-10-01");
+  assert.equal(clampDateKey("2026-10-15", "2026-10-01", "2026-10-31"), "2026-10-15");
+  assert.equal(clampDateKey("2026-11-05", "2026-10-01", "2026-10-31"), "2026-10-31");
+
+  assert.deepEqual(dateRange("2026-10-05", "2026-10-01"), []);
+  assert.deepEqual(dateRange("2026-10-01", "2026-10-01"), ["2026-10-01"]);
+  assert.deepEqual(
+    dateRange("2026-10-30", "2026-11-02"),
+    ["2026-10-30", "2026-10-31", "2026-11-01", "2026-11-02"]
+  );
 });
 
 test("30-day plan ends on day 30", () => {

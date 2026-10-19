@@ -7,7 +7,7 @@
  * prescription plus the real session records, so there is no second copy to drift.
  */
 
-import { addDays, diffDays, weekdayOf, type DateKey } from "./dates";
+import { addDays, dateRange, diffDays, weekdayOf, type DateKey } from "./dates";
 
 export type Frequency = "daily" | "alternate" | "weekdays";
 
@@ -245,7 +245,7 @@ export function adherenceBetween(
   const lastDay = to > today ? today : to; // future days are not reported
   const end = lastDay > input.endDate ? input.endDate : lastDay;
   const out: DayAdherence[] = [];
-  for (let d = start; d <= end; d = addDays(d, 1)) {
+  for (const d of dateRange(start, end)) {
     const plan = computeDailyPlan(input, d, logsByDay[d] ?? []);
     if (plan.totalExercises === 0) continue; // rest day
     const status: DayAdherence["status"] =
