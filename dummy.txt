@@ -1,3 +1,5 @@
+
+
 NEXT_PUBLIC_GROQ_API_KEY=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
 # Server-side only Groq key (not exposed to browser) — used by /api/feedback route
 GROQ_API_KEY=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
