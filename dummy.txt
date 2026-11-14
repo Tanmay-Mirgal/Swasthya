@@ -1,0 +1,32 @@
+NEXT_PUBLIC_GROQ_API_KEY=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
+# Server-side only Groq key (not exposed to browser) — used by /api/feedback route
+GROQ_API_KEY=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
+
+NEXT_PUBLIC_CLERK_SIGN_IN_URL=/sign-in
+NEXT_PUBLIC_CLERK_SIGN_UP_URL=/sign-up
+NEXT_PUBLIC_CLERK_SIGN_IN_FALLBACK_REDIRECT_URL=/
+NEXT_PUBLIC_CLERK_SIGN_UP_FALLBACK_REDIRECT_URL=/
+
+# Clerk̥
+NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=pk_test_dG91Z2gtc2xvdGgtMzE3Mi5jbGVyay5hY2NvdW50cy5kZXYk
+CLERK_SECRET_KEY=sk_test_GymXxoooZyHsQdOvgSefMHgOa1nDdYfcMc92UofCQD
+
+MONGODB_URI="mongodb+srv://adityashah2701_db_user:pYf7FlSdZ9RXRmh3@cluster0.zmlhlpe.mongodb.net/swasthya"
+CLERK_WEBHOOK_SECRET=whsec_wWpeSsMAL67z1ZDNr9dw455EriFNrgVu
+
+
+
+SMTP_HOST=smtp.example.com
+SMTP_PORT=465
+SMTP_USER=codinggurus123@gmail.com
+SMTP_PASSWORD=fomfnixrffowupit
+EMAIL_FROM="Swasthya <codinggurus123@gmail.com>"
+BLOB_STORE_ID="store_kVevF1umberZLwdS"
+BLOB_READ_WRITE_TOKEN="vercel_blob_rw_kVevF1umberZLwdS_mF8siqf8pqLNeuvLzOz8LNvhpgBvXW"
+APP_URL=https://swasthya.tanmaymirgal.dev/
+CRON_SECRET=4b24d58afa1ca630d1a5386e338bb4b36a5033de4388de80cf55259584841ae3
+
+
+TURN_URLS=turn:global.relay.metered.ca:80,turn:global.relay.metered.ca:80?transport=tcp,turn:global.relay.metered.ca:443,turns:global.relay.metered.ca:443?transport=tcp
+TURN_USERNAME=329e3671cf28f12e74969576
+TURN_CREDENTIAL=kn2xKHM06Rwd6YTI
